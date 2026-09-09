@@ -745,9 +745,11 @@ $('#btnBack').onclick=goBack;
 const expMask=$('#expMask');
 let expCtx=null; // {tagId, dimKey, name}
 async function openExpenseList(tag){
-  expCtx={tagId:tag.tagId, dimKey:S.dim, name:tag.name};
-  $('#expTitle').textContent=S.dim==='category'?'品类 · '+tag.name:tag.name;
-  $('#expDelTag').textContent='删除「'+tag.name+'」tag';
+  // 推断 tag 所属维度（CATS=category / CTXS=context）
+  const dimKey=CATS.some(c=>c.tagId===tag.tagId)?'category':(CTXS.some(c=>c.tagId===tag.tagId)?'context':S.dim);
+  expCtx={tagId:tag.tagId, dimKey, name:tag.name};
+  $('#expTitle').textContent=(dimKey==='category'?'品类 · ':'情境 · ')+tag.name;
+  $('#expDelTag').textContent='删除「'+tag.name+'」';
   expMask.hidden=false;
   await refreshExpList();
 }
@@ -762,19 +764,26 @@ async function refreshExpList(){
     const {items=[]}=await OrbitAPI.listExpenses(Data.ledgerId,{from,to});
     // 匹配：该 tag 作为 primary（category 维按 primary；context 同）——也包含副 tag 提及？只列 primary
     const mine=items.filter(e=>e.tags.some(t=>t.role==='primary'&&t.tag_id===expCtx.tagId));
-    if(!mine.length){box.innerHTML='<div class="e-empty">本月该'+ (S.dim==='category'?'品类':'情境') +'暂无花销</div>';return}
+    if(!mine.length){box.innerHTML='<div class="e-empty">本月该'+ (expCtx.dimKey==='category'?'品类':'情境') +'暂无花销</div>';return}
     box.innerHTML=mine.map(e=>{
       const d=e.date.slice(5).replace('-','/');
       const amt=(e.amount_cents/100);
       const ctxTag=e.tags.find(t=>t.role==='primary'&&t.dim_key!=='category')?.name;
-      return `<div class="e-row" data-id="${e.id}">
+      return `<div class="e-row" data-id="${e.id}" data-json="${encodeURIComponent(JSON.stringify(e))}">
         <span class="e-date">${d}</span>
         <span class="e-note">${(e.note||'')}${ctxTag?' · '+ctxTag:''}</span>
         <span class="e-amt">¥${amt.toLocaleString()}</span>
+        <button class="e-edit" title="编辑这笔">✎</button>
         <button class="e-del" title="删除这笔">✕</button>
       </div>`;
     }).join('');
     box.querySelectorAll('.e-row').forEach(row=>{
+      row.querySelector('.e-edit').onclick=(ev)=>{
+        ev.stopPropagation();
+        const raw=decodeURIComponent(row.dataset.json);
+        const exp=JSON.parse(raw);
+        openExpenseEditor(exp);
+      };
       row.querySelector('.e-del').onclick=async (ev)=>{
         ev.stopPropagation();
         const eid=Number(row.dataset.id);
@@ -810,6 +819,12 @@ $('#expDelTag').onclick=async ()=>{
   }catch(err){
     toast('删除失败：'+(err.message||err)+'（请先删除使用它的花销）');
   }
+};
+// 重命名 tag
+$('#expRenameTag').onclick=()=>{
+  if(!expCtx)return;
+  openNameBox({kind:'tag',mode:'rename',dimKey:expCtx.dimKey,targetId:expCtx.tagId,currentName:expCtx.name});
+  expMask.hidden=false; // 保持明细在命名浮层后仍可回看
 };
 
 
@@ -899,6 +914,7 @@ function renderLedgerDD(){
     </button>`).join('')+`
     <div class="dd-sep"></div>
     <button class="dd-new" id="ddNewLedger">＋ 新建账本</button>
+    <button class="dd-rename" id="ddRenameLedger">✎ 重命名当前账本</button>
     <button class="dd-danger" id="ddDelLedger">🗑 删除当前账本</button>`;
   menu.querySelectorAll('.dd-item').forEach(b=>b.onclick=async ()=>{
     const id=isNaN(Number(b.dataset.id))?b.dataset.id:Number(b.dataset.id);
@@ -907,6 +923,12 @@ function renderLedgerDD(){
   });
   const nb=menu.querySelector('#ddNewLedger');
   if(nb)nb.onclick=()=>{menu.hidden=true;openNameBox({kind:'ledger'})};
+  const rb=menu.querySelector('#ddRenameLedger');
+  if(rb)rb.onclick=()=>{
+    if(!cur)return;
+    menu.hidden=true;
+    openNameBox({kind:'ledger',mode:'rename',targetId:cur.id,currentName:cur.name});
+  };
   const db=menu.querySelector('#ddDelLedger');
   if(db)db.onclick=async ()=>{
     const name=cur?cur.name:'';
@@ -960,16 +982,20 @@ rail.addEventListener('pointerup',()=>{railDrag=false;toast('即将支持')});
 /* 记账浮层（真实提交：POST → 重拉 → 图谱刷新） */
 const mask=$('#modalMask');
 
-/* ---- 命名浮层（新建账本 / 品类 tag / 情境 tag 共用）---- */
+/* ---- 命名浮层（账本/tag 的新建与重命名共用）---- */
 const nameMask=$('#nameMask');
-let nameAction=null; // {kind:'ledger'} | {kind:'tag',dimKey:'category'|'context'}
+let nameAction=null; // {kind:'ledger'|'tag', dimKey?, mode:'create'|'rename', targetId?, currentName?}
+function nameBoxTitle(a){
+  const what=a.kind==='ledger'?'账本':(a.dimKey==='category'?'品类 tag':'情境 tag');
+  return a.mode==='rename'?'重命名'+what:'新建'+what;
+}
 function openNameBox(action){
   nameAction=action;
-  $('#nameTitle').textContent=
-    action.kind==='ledger'?'新建账本':(action.dimKey==='category'?'新建品类 tag':'新建情境 tag');
-  $('#nameInput').value='';
+  $('#nameTitle').textContent=nameBoxTitle(action);
+  $('#nameInput').value=action.currentName||'';
+  $('#nameInput').placeholder=action.kind==='ledger'?'账本名…':'tag 名…';
   nameMask.hidden=false;
-  setTimeout(()=>$('#nameInput').focus(),60);
+  setTimeout(()=>{const el=$('#nameInput');el.focus();el.select()},60);
 }
 function closeNameBox(){nameMask.hidden=true;nameAction=null}
 $('#nameClose').onclick=closeNameBox;
@@ -980,32 +1006,56 @@ $('#nameOk').onclick=async ()=>{
   if(!raw){toast('名称不能为空');return}
   const act=nameAction; closeNameBox();
   try{
+    const isRename=act.mode==='rename';
     if(act.kind==='ledger'){
-      await Data.createLedger(raw);           // 建后自动选中（含默认维度）
-      S.ledgerId=Data.ledgerId;
-      refreshTagArrays();refreshMonths();refreshAmounts();
-      TODAY=Math.max(0,MONTHS.length-1);
-      const ni=MONTHS.findIndex(m=>m.y===Data._currentMonthY&&m.m===Data._currentMonthM);
-      TL.sel={level:'month',idx:ni>=0?ni:TODAY};
-      renderLedgerDD();
-      buildGraph();syncChrome();
-      toast('账本 · '+raw+' 已创建');
-    }else{
-      await Data.createTag(act.dimKey,raw);   // 当前账本内建 tag，已重拉维度
-      refreshTagArrays();refreshAmounts();
-      // 若记一笔浮层正开着，重渲染 chips 并默认选中新 tag
-      if(!mask.hidden){
-        const target=act.dimKey==='category'?CATS:CTXS;
-        const fresh=target[target.length-1];
-        if(fresh){
-          if(act.dimKey==='category'){renderModalChips();document.querySelectorAll('#mCats .m-chip').forEach((b,i)=>b.classList.toggle('on',b.dataset.tagId===String(fresh.tagId)));}
-          else{renderModalChips();document.querySelectorAll('#mCtx .m-chip').forEach((b,i)=>b.classList.toggle('on',b.dataset.tagId===String(fresh.tagId)));}
-        }
+      if(isRename){
+        await OrbitAPI.renameLedger(act.targetId,raw);
+        const hit=Data.ledgers.find(l=>String(l.id)===String(act.targetId));
+        if(hit)hit.name=raw;
+        renderLedgerDD();buildGraph();syncChrome();
+        toast('账本已重命名为「'+raw+'」');
+      }else{
+        await Data.createLedger(raw);           // 建后自动选中（含默认维度）
+        S.ledgerId=Data.ledgerId;
+        refreshTagArrays();refreshMonths();refreshAmounts();
+        TODAY=Math.max(0,MONTHS.length-1);
+        const ni=MONTHS.findIndex(m=>m.y===Data._currentMonthY&&m.m===Data._currentMonthM);
+        TL.sel={level:'month',idx:ni>=0?ni:TODAY};
+        renderLedgerDD();
+        buildGraph();syncChrome();
+        toast('账本 · '+raw+' 已创建');
       }
-      toast('tag · '+raw+' 已创建');
+    }else{ // tag
+      if(isRename){
+        await OrbitAPI.updateTag(Data.ledgerId,act.targetId,{name:raw});
+        await Data.selectLedger(Data.ledgerId); // 重拉维度
+        refreshTagArrays();refreshAmounts();
+        if(!mask.hidden)renderModalChips();
+        buildGraph();syncChrome();
+        // 若花销明细浮层开着且正是该 tag，同步标题
+        if(!expMask.hidden&&expCtx&&String(expCtx.tagId)===String(act.targetId)){
+          expCtx.name=raw;
+          $('#expTitle').textContent=(expCtx.dimKey==='category'?'品类 · ':'情境 · ')+raw;
+          $('#expDelTag').textContent='删除「'+raw+'」';
+        }
+        toast('tag 已重命名为「'+raw+'」');
+      }else{
+        await Data.createTag(act.dimKey,raw);   // 当前账本内建 tag，已重拉维度
+        refreshTagArrays();refreshAmounts();
+        // 若记一笔浮层正开着，重渲染 chips 并默认选中新 tag
+        if(!mask.hidden){
+          const target=act.dimKey==='category'?CATS:CTXS;
+          const fresh=target[target.length-1];
+          if(fresh){
+            renderModalChips();
+            document.querySelectorAll((act.dimKey==='category'?'#mCats ':'#mCtx ')+'.m-chip').forEach(b=>b.classList.toggle('on',b.dataset.tagId===String(fresh.tagId)));
+          }
+        }
+        toast('tag · '+raw+' 已创建');
+      }
     }
   }catch(e){
-    toast('创建失败：'+(e.message||e));
+    toast('操作失败：'+(e.message||e));
   }
 };
 $('#btnAddLedger').onclick=()=>openNameBox({kind:'ledger'});
@@ -1034,12 +1084,15 @@ function syncModalLedgerOptions(){
 function renderModalChips(){
   // 收入时品类候选只留名字含「收入」的 tag
   const catList0=modalIsIncome?CATS.filter(c=>c.name.includes('收入')):CATS;
+  // 编辑预选：当前编辑对象的品类/情境 primary tag id
+  const preCat=editingExpense?editingExpense._preCat:null;
+  const preCtx=editingExpense?editingExpense._preCtx:null;
   if(!catList0.length){
     $('#mCats').innerHTML='<div style="color:#8b96b5;font-size:12px">暂无收入类目，请先在品类维新建「收入·…」tag</div>';
   }else{
-    $('#mCats').innerHTML=catList0.map((c,i)=>`<button class="m-chip${i===0?' on':''}" data-tag-id="${c.tagId}"><i style="background:${c.color}"></i>${c.name}</button>`).join('');
+    $('#mCats').innerHTML=catList0.map((c,i)=>`<button class="m-chip${(preCat===c.tagId)||(!preCat&&i===0)?' on':''}" data-tag-id="${c.tagId}"><i style="background:${c.color}"></i>${c.name}</button>`).join('');
   }
-  $('#mCtx').innerHTML=CTXS.map((c,i)=>`<button class="m-chip${i===1?' on':''}" data-tag-id="${c.tagId}">${c.name}</button>`).join('');
+  $('#mCtx').innerHTML=CTXS.map((c,i)=>`<button class="m-chip${(preCtx===c.tagId)||(!preCtx&&i===1)?' on':''}" data-tag-id="${c.tagId}">${c.name}</button>`).join('');
   document.querySelectorAll('#mCats .m-chip,#mCtx .m-chip').forEach(b=>b.onclick=e=>{e.preventDefault();
     [...b.parentElement.children].forEach(x=>x.classList.remove('on'));b.classList.add('on')});
   document.querySelectorAll('.m-tab').forEach(b=>b.onclick=()=>{
@@ -1049,13 +1102,44 @@ function renderModalChips(){
     renderModalChips();
   });
 }
+let editingExpense=null; // 编辑中的花销（含 amount_cents/date/note/tags 原始数据 + _preCat/_preCtx 预选）
+/** 打开编辑模式（从花销明细行进入） */
+function openExpenseEditor(exp){
+  editingExpense=exp;
+  const tags=exp.tags||[];
+  // primary: category 与 context（取 dim_key）
+  const catP=tags.find(t=>t.role==='primary'&&t.dim_key==='category');
+  const ctxP=tags.find(t=>t.role==='primary'&&t.dim_key==='context');
+  const isIncome=exp.type==='income';
+  editingExpense._preCat=catP?catP.tag_id:null;
+  editingExpense._preCtx=ctxP&&!ctxP.is_unnamed?ctxP.tag_id:null; // 未标注则不预选（语义=不传）
+  // 类型 tab
+  document.querySelectorAll('.m-tab').forEach(x=>x.classList.toggle('active',x.textContent.trim()===(isIncome?'收入':'支出')));
+  modalIsIncome=isIncome;
+  $('#modalMode').textContent='编辑';
+  $('#mAmount').value=(exp.amount_cents/100).toFixed(0);
+  const di=document.querySelector('.m-row input[type=date]');if(di)di.value=exp.date;
+  const rm=document.querySelector('.m-remark');if(rm)rm.value=exp.note||'';
+  // 账本 select 锁定为该笔所属账本（不支持跨账本迁移）
+  syncModalLedgerOptions();
+  const sel=document.querySelector('.m-row select');
+  if(sel){sel.value=String(exp.ledger_id);sel.disabled=true}
+  renderModalChips();
+  mask.hidden=false;
+}
 $('#btnAdd').onclick=()=>{
   mask.hidden=false;
+  editingExpense=null;
+  $('#modalMode').textContent='记一笔';
   // 打开时回到当前账本的真实 tags 与默认类型
-  modalIsIncome=document.querySelector('.m-tab.active')?.textContent.trim()==='收入';
+  modalIsIncome=false;
+  document.querySelectorAll('.m-tab').forEach(x=>x.classList.toggle('active',x.textContent.trim()==='支出'));
   syncModalLedgerOptions();
+  const sel=document.querySelector('.m-row select');if(sel)sel.disabled=false;
   const di=document.querySelector('.m-row input[type=date]');
-  if(di&&!di.value)di.value=new Date().toISOString().slice(0,10);
+  if(di){di.value=new Date().toISOString().slice(0,10)}
+  const rm=document.querySelector('.m-remark');if(rm)rm.value='';
+  $('#mAmount').value='88';
   renderModalChips();
 };
 $('#modalClose').onclick=$('#modalCancel').onclick=()=>mask.hidden=true;
@@ -1091,6 +1175,28 @@ $('#modalSave').onclick=async ()=>{
     if(!nm.includes('收入')){toast('收入请选择「收入·生活费」类目（可先在品类维建收入 tag）');return}
   }
   try{
+    if(editingExpense){
+      // 编辑：PUT 全量替换（保持原 ledger_id）
+      await OrbitAPI.updateExpense(editingExpense.ledger_id,editingExpense.id,payload);
+      const savedDate=payload.date;
+      mask.hidden=true;editingExpense=null;
+      // 刷新并跳转（若日期改了月份则跳到新月份）
+      await Data.afterChange();refreshMonths();refreshAmounts();
+      if(savedDate&&/^\d{4}-\d{2}-\d{2}$/.test(savedDate)){
+        const cy=Number(savedDate.slice(0,4)),cm=Number(savedDate.slice(5,7));
+        if(!(Data._currentMonthY===cy&&Data._currentMonthM===cm)){
+          await Data.selectMonth({year:cy,month:cm});
+          refreshMonths();refreshAmounts();
+        }
+      }
+      const mi=MONTHS.findIndex(m=>m.y===Data._currentMonthY&&m.m===Data._currentMonthM);
+      if(mi>=0)TL.sel={level:'month',idx:mi};
+      TODAY=Math.max(0,MONTHS.length-1);
+      buildGraph();syncChrome();
+      if(!expMask.hidden)await refreshExpList();
+      toast('已保存修改 · ¥'+yuan.toLocaleString());
+      return;
+    }
     const created=await OrbitAPI.addExpense(ledgerId,payload);
     mask.hidden=true;
     // 若记到别的账本：先切账本再刷新；否则重拉当前月统计与月序列

@@ -39,6 +39,9 @@ const API = {
   // 删除账本（连带该账本全部花销/维度/tag）
   deleteLedger: (id) => request(`/ledgers/${id}`, { method: 'DELETE' }),
 
+  // 重命名账本
+  renameLedger: (id, name) => request(`/ledgers/${id}`, { method: 'PATCH', body: { name } }),
+
   // 获取单个账本
   getLedger: (id) => request(`/ledgers/${id}`),
 
