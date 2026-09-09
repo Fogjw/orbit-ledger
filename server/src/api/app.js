@@ -1,13 +1,14 @@
-// Express 应用组装：CORS(localhost 放开) + json + 路由 + 404 + 错误映射
+// Express 应用组装：CORS(localhost 放开) + json + 路由 + MCP + 404 + 错误映射
 import express from 'express';
 import { BizError } from '../services/ledgerService.js';
 import { ledgersRouter } from './routes/ledgers.js';
 import { expensesRouter } from './routes/expenses.js';
 import { statsRouter } from './routes/stats.js';
+import { createMcpMiddleware } from '../mcp/index.js';
 
 /**
  * 组装应用。services 由外部注入（便于测试替换）。
- * @param {{ ledgers, expenses, tags, reports }} svc
+ * @param {{ ledgers, expenses, tags, reports, exports }} svc
  */
 export function createApp(svc) {
   const app = express();
@@ -28,6 +29,10 @@ export function createApp(svc) {
   app.use('/api/ledgers', ledgersRouter(svc));
   app.use('/api/ledgers/:ledgerId', statsRouter(svc));          // .../stats
   app.use('/api/ledgers/:ledgerId/expenses', expensesRouter(svc)); // .../expenses
+
+  // MCP（2026-07-28 stateless）——同进程同端口，复用同一 services
+  const mcp = createMcpMiddleware(svc);
+  app.post('/mcp', (req, res) => mcp(req, res, req.body));
 
   // 404
   app.use((req, res) => res.status(404).json({ error: 'NOT_FOUND', message: `无此端点: ${req.method} ${req.path}` }));
