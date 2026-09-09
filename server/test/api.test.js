@@ -90,6 +90,63 @@ describe('API 全流程', () => {
     assert.equal(empty.totals.expense, 0);
   });
 
+  test('PUT 编辑花销：全量替换 + 统计守恒 + 404 隔离', async () => {
+    const ledger = svc.ledgers.create('编辑账本');
+    // 建副 tag（供记账引用）
+    await fetch(`${base}/api/ledgers/${ledger.id}/tags`, {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ dimensionKey: 'category', name: '夜宵' }),
+    });
+    // 记一笔
+    let r = await fetch(`${base}/api/ledgers/${ledger.id}/expenses`, {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        amountCents: 4560, date: '2026-06-07', note: '撸串',
+        primary: { category: '餐饮', context: '和朋友' }, tags: ['夜宵'],
+      }),
+    });
+    const expense = await j(r);
+
+    // PUT 全量替换
+    r = await fetch(`${base}/api/ledgers/${ledger.id}/expenses/${expense.id}`, {
+      method: 'PUT', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        amountCents: 2000, date: '2026-06-08',
+        primary: { category: '交通', context: '通勤' }, tags: [],
+      }),
+    });
+    assert.equal(r.status, 200);
+    const updated = await j(r);
+    assert.equal(updated.amount_cents, 2000);
+    assert.equal(updated.tags.some(t => t.name === '餐饮'), false);
+    assert.equal(updated.tags.filter(t => t.role === 'primary').length, 2);
+
+    // 统计守恒
+    r = await fetch(`${base}/api/ledgers/${ledger.id}/stats`);
+    const stats = await j(r);
+    assert.equal(stats.totals.expense, 2000);
+    assert.equal(stats.byDimension.category.find(t => t.name === '交通').amount_cents, 2000);
+
+    // 跨账本 PUT → 404
+    const other = svc.ledgers.create('另一账本');
+    r = await fetch(`${base}/api/ledgers/${other.id}/expenses/${expense.id}`, {
+      method: 'PUT', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ amountCents: 1, date: '2026-06-08', primary: { category: '交通' } }),
+    });
+    assert.equal(r.status, 404);
+
+    // 跨账本 GET 单笔 → 404
+    r = await fetch(`${base}/api/ledgers/${other.id}/expenses/${expense.id}`);
+    assert.equal(r.status, 404);
+
+    // 非法金额 PUT → 400
+    r = await fetch(`${base}/api/ledgers/${ledger.id}/expenses/${expense.id}`, {
+      method: 'PUT', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ amountCents: 0, date: '2026-06-08', primary: { category: '交通' } }),
+    });
+    assert.equal(r.status, 400);
+  });
+
   test('错误映射：404 / 400 / 业务错误', async () => {
     let r = await fetch(`${base}/api/nonexistent`);
     assert.equal(r.status, 404);

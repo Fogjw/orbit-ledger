@@ -48,6 +48,40 @@ export function createExpenseService(db) {
     return out;
   }
 
+  /**
+   * 记账输入 → 待写 expense 字段 + links 列表（add/update 共用，规则单一来源）。
+   * 校验不变量：金额正整数、日期 YYYY-MM-DD、品类 primary 必填、每维恰一 primary、
+   * 全部 tag 属于同一账本。不改库；写库由调用方在事务内执行。
+   */
+  function plan(input) {
+    const { ledgerId, amountCents, date } = input;
+    if (!Number.isInteger(amountCents) || amountCents <= 0) {
+      throw new BizError('金额必须为正整数（分）', 'INVALID_AMOUNT');
+    }
+    if (!DATE_RE.test(date)) throw new BizError('日期格式须为 YYYY-MM-DD', 'INVALID_DATE');
+    const type = input.type === 'income' ? 'income' : 'expense';
+
+    const links = [];
+    // 主 tag：遍历账本全部维度；category 必填，其余维缺省 → 该维「未标注」
+    const dims = tags.dimensions(ledgerId);
+    for (const dim of dims) {
+      const ref = input.primary ? input.primary[dim.key] : undefined;
+      if (dim.key === 'category' && (ref === undefined || ref === null || ref === '')) {
+        throw new BizError('品类主 tag 必填（这是啥钱）', 'CATEGORY_REQUIRED');
+      }
+      const tag = resolvePrimary(ledgerId, dim.key, ref, dim.name);
+      links.push({ tagId: tag.id, role: 'primary' });
+    }
+    for (const t of resolveSecondary(ledgerId, input.tags)) {
+      links.push({ tagId: t.id, role: 'secondary' });
+    }
+
+    return {
+      fields: { ledgerId, type, amountCents, date, note: input.note ?? null },
+      links,
+    };
+  }
+
   const api = {
     /**
      * 记一笔（支出/收入）。单事务，任一步失败整体回滚。
@@ -61,34 +95,10 @@ export function createExpenseService(db) {
      * @param {Array<number|string>} [input.tags] 副 tag
      */
     add(input) {
-      const { ledgerId, amountCents, date } = input;
-      if (!Number.isInteger(amountCents) || amountCents <= 0) {
-        throw new BizError('金额必须为正整数（分）', 'INVALID_AMOUNT');
-      }
-      if (!DATE_RE.test(date)) throw new BizError('日期格式须为 YYYY-MM-DD', 'INVALID_DATE');
-      const type = input.type === 'income' ? 'income' : 'expense';
-
+      const p = plan(input);
       return transaction(db, () => {
-        const expenseId = expenses.insert({
-          ledgerId, type, amountCents, date, note: input.note ?? null,
-        });
-
-        const links = [];
-        // 主 tag：遍历账本全部维度；category 必填，其余维缺省 → 该维「未标注」
-        const dims = tags.dimensions(ledgerId);
-        for (const dim of dims) {
-          const ref = input.primary ? input.primary[dim.key] : undefined;
-          if (dim.key === 'category' && (ref === undefined || ref === null || ref === '')) {
-            throw new BizError('品类主 tag 必填（这是啥钱）', 'CATEGORY_REQUIRED');
-          }
-          const tag = resolvePrimary(ledgerId, dim.key, ref, dim.name);
-          links.push({ tagId: tag.id, role: 'primary' });
-        }
-        for (const t of resolveSecondary(ledgerId, input.tags)) {
-          links.push({ tagId: t.id, role: 'secondary' });
-        }
-        expenses.linkTags(expenseId, links);
-
+        const expenseId = expenses.insert(p.fields);
+        expenses.linkTags(expenseId, p.links);
         return api.byId(expenseId);
       });
     },
@@ -100,10 +110,48 @@ export function createExpenseService(db) {
       return { ...e, tags: expenses.tagsOf(id) };
     },
 
+    /**
+     * 账本内单笔读取（含 tag 明细）。花销不存在或不属于该账本 → null。
+     * 账本隔离：跨账本访问与"不存在"同语义（路由映射 404，不泄露资源归属）。
+     */
+    getInLedger(ledgerId, expenseId) {
+      const e = expenses.byId(expenseId);
+      if (!e || e.ledger_id !== ledgerId) return null;
+      return api.byId(expenseId);
+    },
+
     /** 时间窗内花销（含各自 tag 明细） */
     listByWindow(ledgerId, win = {}) {
       const rows = expenses.listByWindow(ledgerId, win);
       return rows.map(e => ({ ...e, tags: expenses.tagsOf(e.id) }));
+    },
+
+    /**
+     * 编辑花销（D-10 PUT 全量替换，规则与 add 同源）。单事务：
+     * 更新事实行 + 清空旧 links + 重写全部主/副 tag，任一步失败整体回滚。
+     * @param {number} ledgerId 路径账本（隔离校验基准）
+     * @param {number} expenseId 目标花销
+     * @param {object} input 同 add 的记账输入（不含 ledgerId，由路径参数决定归属）
+     */
+    update(ledgerId, expenseId, input) {
+      const existing = expenses.byId(expenseId);
+      if (!existing || existing.ledger_id !== ledgerId) {
+        throw new BizError(`花销不存在: ${expenseId}`, 'NOT_FOUND', 404);
+      }
+      const p = plan({ ...input, ledgerId });
+      return transaction(db, () => {
+        expenses.update(expenseId, p.fields);
+        expenses.replaceLinks(expenseId, p.links);
+        return api.byId(expenseId);
+      });
+    },
+
+    /** 删除账本内花销；不存在或跨账本 → 返回 false（路由映射 404） */
+    removeInLedger(ledgerId, expenseId) {
+      const e = expenses.byId(expenseId);
+      if (!e || e.ledger_id !== ledgerId) return false;
+      expenses.remove(expenseId);
+      return true;
     },
 
     remove(id) {

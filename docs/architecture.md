@@ -64,16 +64,17 @@ Base: `http://localhost:5310/api`（端口 env `ORBIT_PORT` 覆盖）。CORS 放
 | POST | `/ledgers/:id/tags` | 建 tag `{dimensionKey,name,color}` |
 | POST | `/ledgers/:id/expenses` | 记一笔（见下） |
 | GET | `/ledgers/:id/expenses?from&to&type` | 时间窗列表（含 tag 明细） |
-| GET/DELETE | `/ledgers/:id/expenses/:eid` | 单笔 |
+| GET/PUT/DELETE | `/ledgers/:id/expenses/:eid` | 单笔 / 编辑 / 删除（单笔操作账本内校验，跨账本 404） |
 | GET | `/ledgers/:id/stats?from&to&type` | 聚合视图 |
 
-记一笔请求体：
+记一笔与编辑共用请求体（D-10：PUT = 全量替换）：
 ```json
 { "type": "expense", "amountCents": 4560, "date": "2026-06-07", "note": "撸串",
   "primary": { "category": "餐饮", "context": "和朋友" },
   "tags": ["夜宵"] }
 ```
-响应花销含 `tags[]`（role primary/secondary、dim_key、is_unnamed）。
+- PUT 语义：金额/日期/类型/备注/主副 tag **一次重写**（旧关联清空），单事务回滚；校验同记一笔（品类必填、账本内 tag）。
+- 响应花销含 `tags[]`（role primary/secondary、dim_key、is_unnamed）。
 
 统计响应（图谱/星轨数据源）：
 ```json
@@ -89,7 +90,7 @@ Base: `http://localhost:5310/api`（端口 env `ORBIT_PORT` 覆盖）。CORS 放
 
 ## 质量
 
-- 测试：`npm test`（node:test 12 项：Σ 守恒/隔离/回滚/校验/聚合/API 全流程/错误映射）。
+- 测试：`npm test`（node:test 19 项：Σ 守恒/隔离/回滚/校验/编辑全量替换/聚合/API 全流程/错误映射）。
 - 金额守恒是记账正确性生死线，回归必查。
 
 ## 技术要点与取舍

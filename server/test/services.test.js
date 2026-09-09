@@ -115,6 +115,107 @@ describe('记账（正交维度 Σ 守恒）', () => {
   });
 });
 
+describe('花销编辑（S1：PUT 全量替换，单事务）', () => {
+  test('编辑金额/日期/备注/主副 tag 全部生效（旧关联清空重写）', () => {
+    const { svc } = setup();
+    const l = svc.ledgers.create('生活费');
+    svc.tags.create(l.id, { dimensionKey: 'category', name: '夜宵', color: '#ffb066' });
+    const e = svc.expenses.add({
+      ledgerId: l.id, amountCents: 4560, date: '2026-06-07', note: '撸串',
+      primary: { category: '餐饮', context: '和朋友' }, tags: ['夜宵'],
+    });
+    const updated = svc.expenses.update(l.id, e.id, {
+      amountCents: 2000, date: '2026-06-08', note: '改坐地铁',
+      primary: { category: '交通', context: '通勤' }, tags: [],
+    });
+    assert.equal(updated.amount_cents, 2000);
+    assert.equal(updated.date, '2026-06-08');
+    assert.equal(updated.note, '改坐地铁');
+    // primary 每维一个（交通/通勤），无餐饮、无夜宵残留
+    const primaries = updated.tags.filter(t => t.role === 'primary');
+    assert.equal(primaries.length, 2);
+    assert.deepEqual(new Set(primaries.map(t => t.name)), new Set(['交通', '通勤']));
+    assert.equal(updated.tags.some(t => t.name === '餐饮'), false);
+    assert.equal(updated.tags.some(t => t.name === '夜宵'), false);
+  });
+
+  test('编辑后 Σ 守恒：改金额/换主 tag 反映到各维聚合', () => {
+    const { svc } = setup();
+    const l = svc.ledgers.create('生活费');
+    const e = svc.expenses.add({ ledgerId: l.id, amountCents: 4560, date: '2026-06-07', primary: { category: '餐饮' } });
+    svc.expenses.update(l.id, e.id, { amountCents: 1000, date: '2026-06-07', primary: { category: '交通', context: '通勤' } });
+    const view = svc.reports.windowView(l.id, { type: 'expense' });
+    assert.equal(view.totals.expense, 1000);
+    const sumBy = (rows) => rows.reduce((s, r) => s + r.amount_cents, 0);
+    assert.equal(sumBy(view.byDimension.category), 1000, '品类 Σ=总额');
+    assert.equal(sumBy(view.byDimension.context), 1000, '情境 Σ=总额');
+    const cat = view.byDimension.category;
+    assert.equal(cat.find(t => t.name === '交通').amount_cents, 1000);
+    assert.equal(cat.some(t => t.name === '餐饮'), false, '旧主 tag 金额应归零（不再出现在聚合）');
+  });
+
+  test('编辑失败 → 整体回滚，原值原关联不变', () => {
+    const { db, svc } = setup();
+    const l = svc.ledgers.create('X');
+    svc.tags.create(l.id, { dimensionKey: 'category', name: '夜宵' });
+    const e = svc.expenses.add({ ledgerId: l.id, amountCents: 4560, date: '2026-06-07', primary: { category: '餐饮' }, tags: ['夜宵'] });
+    // 副 tag 不存在 → 抛错回滚
+    assert.throws(
+      () => svc.expenses.update(l.id, e.id, { amountCents: 999, date: '2026-06-08', primary: { category: '交通' }, tags: ['不存在的tag'] }),
+      { code: 'TAG_NOT_FOUND' }
+    );
+    const after = svc.expenses.byId(e.id);
+    assert.equal(after.amount_cents, 4560, '金额未变');
+    assert.equal(after.date, '2026-06-07');
+    const cnt = db.prepare('SELECT COUNT(*) n FROM expense_tag_links').get();
+    assert.equal(cnt.n, 3, 'links 未被破坏（餐饮 primary + 未标注 primary + 夜宵 secondary）');
+  });
+
+  test('编辑仍需品类必填（全量替换语义）', () => {
+    const { svc } = setup();
+    const l = svc.ledgers.create('X');
+    const e = svc.expenses.add({ ledgerId: l.id, amountCents: 4560, date: '2026-06-07', primary: { category: '餐饮' } });
+    assert.throws(
+      () => svc.expenses.update(l.id, e.id, { amountCents: 100, date: '2026-06-08', primary: {} }),
+      { code: 'CATEGORY_REQUIRED' }
+    );
+    const after = svc.expenses.byId(e.id);
+    assert.equal(after.amount_cents, 4560, '失败应回滚');
+  });
+
+  test('跨账本编辑/删除/单笔读取 → 404（隔离收紧）', () => {
+    const { svc } = setup();
+    const a = svc.ledgers.create('A');
+    const b = svc.ledgers.create('B');
+    const e = svc.expenses.add({ ledgerId: a.id, amountCents: 4560, date: '2026-06-07', primary: { category: '餐饮' } });
+    // B 编辑 A 的花销
+    assert.throws(
+      () => svc.expenses.update(b.id, e.id, { amountCents: 1, date: '2026-06-07', primary: { category: '餐饮' } }),
+      { code: 'NOT_FOUND', status: 404 }
+    );
+    // B 单笔读 A 的花销 → null（路由映射 404）
+    assert.equal(svc.expenses.getInLedger(b.id, e.id), null);
+    // A 正常读得到
+    assert.ok(svc.expenses.getInLedger(a.id, e.id));
+    // 不存在的 id
+    assert.throws(
+      () => svc.expenses.update(a.id, 99999, { amountCents: 1, date: '2026-06-07', primary: { category: '餐饮' } }),
+      { code: 'NOT_FOUND', status: 404 }
+    );
+  });
+
+  test('编辑可切换 income/expense 类型', () => {
+    const { svc } = setup();
+    const l = svc.ledgers.create('X');
+    const e = svc.expenses.add({ ledgerId: l.id, amountCents: 4560, date: '2026-06-07', primary: { category: '餐饮' } });
+    const updated = svc.expenses.update(l.id, e.id, { type: 'income', amountCents: 10000, date: '2026-06-07', primary: { category: '餐饮' } });
+    assert.equal(updated.type, 'income');
+    const view = svc.reports.windowView(l.id, {});
+    assert.equal(view.totals.income, 10000);
+    assert.equal(view.totals.expense, 0, '由支出转收入后 expense Σ 归零');
+  });
+});
+
 describe('聚合', () => {
   test('月度/每日序列按时间窗过滤', () => {
     const { svc } = setup();

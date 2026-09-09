@@ -34,12 +34,28 @@ export function createExpenseRepo(db) {
       db.prepare('DELETE FROM expenses WHERE id = ?').run(id);
     },
 
+    /** 更新花销事实行（不动 ledger_id / created_at） */
+    update(id, { type, amountCents, date, note }) {
+      db.prepare(
+        'UPDATE expenses SET type = ?, amount_cents = ?, date = ?, note = ? WHERE id = ?'
+      ).run(type, amountCents, date, note ?? null, id);
+    },
+
     // ---- tag 关联 ----
     linkTags(expenseId, links) {
       const stmt = db.prepare(
         'INSERT INTO expense_tag_links (expense_id, tag_id, role) VALUES (?, ?, ?)'
       );
       for (const { tagId, role } of links) stmt.run(expenseId, tagId, role);
+    },
+
+    /**
+     * 整笔替换一笔花销的 tag 关联（编辑语义：全量重写）。
+     * 调用方须在事务内：先清旧 links，再写新 links，任一步失败整体回滚。
+     */
+    replaceLinks(expenseId, links) {
+      db.prepare('DELETE FROM expense_tag_links WHERE expense_id = ?').run(expenseId);
+      this.linkTags(expenseId, links);
     },
 
     /** 一笔花销的全部 tag（带维度 key 与名称） */
