@@ -62,12 +62,12 @@ export function createExpenseService(db) {
     const type = input.type === 'income' ? 'income' : 'expense';
 
     const links = [];
-    // 主 tag：遍历账本全部维度；category 必填，其余维缺省 → 该维「未标注」
+    // 主 tag：遍历账本全部维度；required 维主 tag 必填，其余维缺省 → 该维「未标注」
     const dims = tags.dimensions(ledgerId);
     for (const dim of dims) {
       const ref = input.primary ? input.primary[dim.key] : undefined;
-      if (dim.key === 'category' && (ref === undefined || ref === null || ref === '')) {
-        throw new BizError('品类主 tag 必填（这是啥钱）', 'CATEGORY_REQUIRED');
+      if (dim.required && (ref === undefined || ref === null || ref === '')) {
+        throw new BizError(`维度「${dim.name}」主 tag 必填`, 'REQUIRED_TAG');
       }
       const tag = resolvePrimary(ledgerId, dim.key, ref, dim.name);
       links.push({ tagId: tag.id, role: 'primary' });

@@ -9,7 +9,7 @@ export function createTagRepo(db) {
     /** 账本维度列表（含每维 tags） */
     dimensions(ledgerId) {
       const dims = plainAll(db.prepare(
-        'SELECT id, key, name, position FROM dimensions WHERE ledger_id = ? ORDER BY position, id'
+        'SELECT id, key, name, position, required FROM dimensions WHERE ledger_id = ? ORDER BY position, id'
       ).all(ledgerId));
       const tags = plainAll(db.prepare(
         'SELECT id, ledger_id, dimension_id, name, is_unnamed, color, position FROM tags WHERE ledger_id = ? ORDER BY position, id'
@@ -21,7 +21,7 @@ export function createTagRepo(db) {
     /** 取维度（按 key） */
     dimensionByKey(ledgerId, key) {
       return plain(db.prepare(
-        'SELECT id, key, name FROM dimensions WHERE ledger_id = ? AND key = ?'
+        'SELECT id, key, name, required FROM dimensions WHERE ledger_id = ? AND key = ?'
       ).get(ledgerId, key));
     },
 
@@ -58,11 +58,11 @@ export function createTagRepo(db) {
       ).get(ledgerId, dimensionKey));
     },
 
-    /** 建维度 */
-    createDimension(ledgerId, key, name, position = 0) {
+    /** 建维度（required=1 表示该维每笔必填主 tag，如品类） */
+    createDimension(ledgerId, key, name, position = 0, required = 0) {
       const { lastInsertRowid } = db.prepare(
-        'INSERT INTO dimensions (ledger_id, key, name, position) VALUES (?, ?, ?, ?)'
-      ).run(ledgerId, key, name, position);
+        'INSERT INTO dimensions (ledger_id, key, name, position, required) VALUES (?, ?, ?, ?, ?)'
+      ).run(ledgerId, key, name, position, required ? 1 : 0);
       return Number(lastInsertRowid);
     },
 

@@ -74,12 +74,12 @@ describe('记账（正交维度 Σ 守恒）', () => {
     assert.equal(ctxSum, total, '情境 Σ=总额（含未标注）');
   });
 
-  test('品类必填：缺省主 tag 抛 CATEGORY_REQUIRED 且事务回滚', () => {
+  test('品类必填：缺省主 tag 抛 REQUIRED_TAG 且事务回滚', () => {
     const { db, svc } = setup();
     const l = svc.ledgers.create('X');
     assert.throws(
       () => svc.expenses.add({ ledgerId: l.id, amountCents: 100, date: '2026-06-01', primary: {} }),
-      { code: 'CATEGORY_REQUIRED' }
+      { code: 'REQUIRED_TAG' }
     );
     // 事务回滚：无残留花销
     const cnt = db.prepare('SELECT COUNT(*) n FROM expenses').get();
@@ -177,7 +177,7 @@ describe('花销编辑（S1：PUT 全量替换，单事务）', () => {
     const e = svc.expenses.add({ ledgerId: l.id, amountCents: 4560, date: '2026-06-07', primary: { category: '餐饮' } });
     assert.throws(
       () => svc.expenses.update(l.id, e.id, { amountCents: 100, date: '2026-06-08', primary: {} }),
-      { code: 'CATEGORY_REQUIRED' }
+      { code: 'REQUIRED_TAG' }
     );
     const after = svc.expenses.byId(e.id);
     assert.equal(after.amount_cents, 4560, '失败应回滚');

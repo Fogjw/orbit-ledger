@@ -56,7 +56,9 @@ export function createLedgerService(db) {
       return transaction(db, () => {
         const ledger = ledgers.create(clean);
         DEFAULT_DIMENSIONS.forEach((dim, i) => {
-          const dimId = tags.createDimension(ledger.id, dim.key, dim.name, i);
+          // required = 该维主 tag 每笔必填（v2 语义：品类必填数据化，不再硬编码 key）
+          const required = dim.key === 'category' ? 1 : 0;
+          const dimId = tags.createDimension(ledger.id, dim.key, dim.name, i, required);
           for (const [tname, color] of dim.tags) {
             tags.createTag(ledger.id, dimId, tname, { color });
           }

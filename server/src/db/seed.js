@@ -15,21 +15,21 @@ export function seedIfEmpty(db) {
     const insLedger = db.prepare('INSERT INTO ledgers (name) VALUES (?)');
     const { lastInsertRowid: ledgerId } = insLedger.run('生活费');
 
-    const insDim = db.prepare('INSERT INTO dimensions (ledger_id, key, name, position) VALUES (?, ?, ?, ?)');
+    const insDim = db.prepare('INSERT INTO dimensions (ledger_id, key, name, position, required) VALUES (?, ?, ?, ?, ?)');
     const insTag = db.prepare(
       'INSERT INTO tags (ledger_id, dimension_id, name, is_unnamed, color, position) VALUES (?, ?, ?, ?, ?, ?)'
     );
 
-    // 品类维度（必填主 tag）
-    const { lastInsertRowid: catDimId } = insDim.run(ledgerId, 'category', '品类', 0);
+    // 品类维度（required=1：主 tag 必填）
+    const { lastInsertRowid: catDimId } = insDim.run(ledgerId, 'category', '品类', 0, 1);
     const categories = [
       ['餐饮', '#ff9f5a'], ['交通', '#5ad7ff'], ['娱乐', '#b48cff'],
       ['居住', '#ff7a9e'], ['日用', '#6fe3a8'], ['学习', '#ffd166'],
     ];
     categories.forEach(([name, color], i) => insTag.run(ledgerId, catDimId, name, 0, color, i));
 
-    // 情境维度（可选主 tag，含特殊默认「未标注」）
-    const { lastInsertRowid: ctxDimId } = insDim.run(ledgerId, 'context', '情境', 1);
+    // 情境维度（required=0 可选主 tag，含特殊默认「未标注」）
+    const { lastInsertRowid: ctxDimId } = insDim.run(ledgerId, 'context', '情境', 1, 0);
     const contexts = [
       ['和朋友', '#5ad7ff'], ['独处', '#9fb8d0'], ['和对象', '#ff9fb0'], ['通勤', '#b48cff'],
     ];
