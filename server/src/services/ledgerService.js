@@ -28,6 +28,14 @@ const DEFAULT_DIMENSIONS = [
   },
 ];
 
+// 可选扩展维度模板：key → 默认显示名。
+// schema key CHECK 白名单（category/context/payment）见 db/schema.js；
+// 账本初始化自动建 category+context，payment 保留给 enableDimension 后期启用。
+const EXTENSIBLE_DIMENSIONS = { payment: '支付方式' };
+
+// schema 允许的全部维度 key（与 db/schema.js CHECK 对齐；未来演进只改两处同步）
+const ALLOWED_DIMENSION_KEYS = ['category', 'context', ...Object.keys(EXTENSIBLE_DIMENSIONS)];
+
 export function createLedgerService(db) {
   const ledgers = createLedgerRepo(db);
   const tags = createTagRepo(db);
@@ -75,6 +83,32 @@ export function createLedgerService(db) {
     describe(id) {
       this.byId(id);
       return { ledger: ledgers.byId(id), dimensions: tags.dimensions(id) };
+    },
+
+    /**
+     * 账本启用扩展维度（如 payment）。单事务：
+     * 建维度 + 自动建该维「未标注」（保证"每笔每维恰一 primary"对新增维度也成立）。
+     * 校验：key 须在 schema 白名单（ALLOWED_DIMENSION_KEYS）→ INVALID_DIMENSION_KEY；
+     * 维度已存在 → DIMENSION_EXISTS。
+     * @param {number} ledgerId
+     * @param {string} key 扩展维度 key（如 'payment'）
+     * @param {string} [name] 显示名（缺省用模板默认名）
+     */
+    enableDimension(ledgerId, key, name) {
+      this.byId(ledgerId);
+      if (!ALLOWED_DIMENSION_KEYS.includes(key)) {
+        throw new BizError(`未知维度 key: ${key}（允许: ${ALLOWED_DIMENSION_KEYS.join(', ')}）`, 'INVALID_DIMENSION_KEY', 400);
+      }
+      if (tags.dimensionByKey(ledgerId, key)) {
+        throw new BizError(`账本已启用维度「${key}」`, 'DIMENSION_EXISTS', 409);
+      }
+      const displayName = name ?? EXTENSIBLE_DIMENSIONS[key] ?? key;
+      return transaction(db, () => {
+        const position = tags.dimensions(ledgerId).length;
+        const dimId = tags.createDimension(ledgerId, key, displayName, position);
+        tags.createTag(ledgerId, dimId, '未标注', { isUnnamed: 1, position: 999 });
+        return tags.dimensionByKey(ledgerId, key);
+      });
     },
   };
 }

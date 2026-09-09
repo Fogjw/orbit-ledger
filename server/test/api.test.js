@@ -212,6 +212,49 @@ describe('API 全流程', () => {
     assert.equal(r.status, 404);
   });
 
+  test('POST dimensions 启用 payment → 记账/统计贯通', async () => {
+    const ledger = svc.ledgers.create('扩展账本');
+    // 启用 payment 维度
+    let r = await fetch(`${base}/api/ledgers/${ledger.id}/dimensions`, {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ key: 'payment', name: '支付方式' }),
+    });
+    assert.equal(r.status, 201);
+    const dim = await j(r);
+    assert.equal(dim.key, 'payment');
+
+    // 维度树含 payment + 未标注
+    r = await fetch(`${base}/api/ledgers/${ledger.id}/dimensions`);
+    const dims = await j(r);
+    const pay = dims.dimensions.find(d => d.key === 'payment');
+    assert.ok(pay.tags.some(t => t.is_unnamed === 1));
+
+    // 记一笔带 payment primary
+    await fetch(`${base}/api/ledgers/${ledger.id}/tags`, {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ dimensionKey: 'payment', name: '微信' }),
+    });
+    r = await fetch(`${base}/api/ledgers/${ledger.id}/expenses`, {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ amountCents: 2000, date: '2026-06-01', primary: { category: '餐饮', payment: '微信' } }),
+    });
+    assert.equal(r.status, 201);
+
+    // 统计含 payment 维度
+    r = await fetch(`${base}/api/ledgers/${ledger.id}/stats`);
+    const stats = await j(r);
+    assert.equal(stats.totals.expense, 2000);
+    const wechat = stats.byDimension.payment.find(t => t.name === '微信');
+    assert.equal(wechat.amount_cents, 2000);
+
+    // 重复启用 → 409
+    r = await fetch(`${base}/api/ledgers/${ledger.id}/dimensions`, {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ key: 'payment' }),
+    });
+    assert.equal(r.status, 409);
+  });
+
   test('错误映射：404 / 400 / 业务错误', async () => {
     let r = await fetch(`${base}/api/nonexistent`);
     assert.equal(r.status, 404);

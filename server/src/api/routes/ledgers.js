@@ -20,6 +20,16 @@ export function ledgersRouter(svc) {
     res.json({ ledger: svc.ledgers.byId(id), dimensions: svc.tags.dimensions(id) });
   });
 
+  /** POST /:id/dimensions —— 启用扩展维度 {key, name?}（自动建「未标注」） */
+  r.post('/:id/dimensions', (req, res) => {
+    const ledgerId = idOf(req.params.id);
+    const body = req.body ?? {};
+    const key = requireStr(body, 'key');
+    const name = optStr(body, 'name');
+    const dim = svc.ledgers.enableDimension(ledgerId, key, name);
+    res.status(201).json(dim);
+  });
+
   r.patch('/:id', (req, res) => {
     const name = requireStr(req.body ?? {}, 'name');
     res.json(svc.ledgers.rename(idOf(req.params.id), name));

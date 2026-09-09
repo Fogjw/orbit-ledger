@@ -299,6 +299,70 @@ describe('tag 维护（S2-1：改名/改色/删除保护）', () => {
   });
 });
 
+describe('维度扩展（S2-2：payment 启用 + 记账/统计贯通）', () => {
+  test('启用 payment 维度：维度树出现 + 自动建「未标注」', () => {
+    const { svc } = setup();
+    const l = svc.ledgers.create('生活费');
+    const dim = svc.ledgers.enableDimension(l.id, 'payment', '支付方式');
+    assert.ok(dim.id > 0);
+    assert.equal(dim.key, 'payment');
+    const dims = svc.tags.dimensions(l.id);
+    assert.deepEqual(dims.map(d => d.key), ['category', 'context', 'payment']);
+    const pay = dims.find(d => d.key === 'payment');
+    assert.equal(pay.name, '支付方式');
+    assert.ok(pay.tags.some(t => t.is_unnamed === 1), '新维度自动建「未标注」');
+  });
+
+  test('重复启用 / 未知 key / 跨账本不受影响', () => {
+    const { svc } = setup();
+    const a = svc.ledgers.create('A');
+    svc.ledgers.enableDimension(a.id, 'payment');
+    // 已启用 → 409
+    assert.throws(() => svc.ledgers.enableDimension(a.id, 'payment'), { code: 'DIMENSION_EXISTS', status: 409 });
+    // 已存在的 category → 409
+    assert.throws(() => svc.ledgers.enableDimension(a.id, 'category'), { code: 'DIMENSION_EXISTS', status: 409 });
+    // 未知 key → 400（白名单前置校验，避免撞 schema CHECK 变 500）
+    assert.throws(() => svc.ledgers.enableDimension(a.id, 'location'), { code: 'INVALID_DIMENSION_KEY', status: 400 });
+    // B 账本无 payment（隔离）
+    const b = svc.ledgers.create('B');
+    assert.equal(svc.tags.dimensions(b.id).some(d => d.key === 'payment'), false);
+  });
+
+  test('启用后记账：缺省 payment → 「未标注」，payment Σ=总额', () => {
+    const { svc } = setup();
+    const l = svc.ledgers.create('生活费');
+    svc.ledgers.enableDimension(l.id, 'payment');
+    const e1 = svc.expenses.add({ ledgerId: l.id, amountCents: 3500, date: '2026-06-05', primary: { category: '餐饮' } });
+    const e2 = svc.expenses.add({ ledgerId: l.id, amountCents: 1200, date: '2026-06-06', primary: { category: '交通', context: '通勤' } });
+    // 每笔 payment primary = 未标注
+    for (const id of [e1.id, e2.id]) {
+      const x = svc.expenses.byId(id);
+      const pay = x.tags.find(t => t.role === 'primary' && t.dim_key === 'payment');
+      assert.equal(pay.is_unnamed, 1, '缺省 payment 落到未标注');
+    }
+    // 统计：payment Σ = 总额
+    const view = svc.reports.windowView(l.id, { type: 'expense' });
+    assert.equal(view.totals.expense, 4700);
+    const paySum = view.byDimension.payment.reduce((s, r) => s + r.amount_cents, 0);
+    assert.equal(paySum, 4700, 'payment Σ=总额（含未标注）');
+  });
+
+  test('启用后自建 payment tag 记账，统计按维度出现且守恒', () => {
+    const { svc } = setup();
+    const l = svc.ledgers.create('生活费');
+    svc.ledgers.enableDimension(l.id, 'payment');
+    svc.tags.create(l.id, { dimensionKey: 'payment', name: '微信', color: '#07c160' });
+    svc.expenses.add({ ledgerId: l.id, amountCents: 2000, date: '2026-06-05', primary: { category: '餐饮', payment: '微信' } });
+    svc.expenses.add({ ledgerId: l.id, amountCents: 800, date: '2026-06-06', primary: { category: '交通' } });
+    const view = svc.reports.windowView(l.id, { type: 'expense' });
+    const pay = view.byDimension.payment;
+    assert.ok(pay, 'byDimension 自动含新维度（report 真实维度化成果）');
+    assert.equal(pay.find(t => t.name === '微信').amount_cents, 2000);
+    const sum = pay.reduce((s, r) => s + r.amount_cents, 0);
+    assert.equal(sum, 2800, 'payment Σ=总额');
+  });
+});
+
 describe('聚合', () => {
   test('月度/每日序列按时间窗过滤', () => {
     const { svc } = setup();
