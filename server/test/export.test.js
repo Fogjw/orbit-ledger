@@ -1,0 +1,89 @@
+// 导出（备份）测试：账本 JSON 快照结构 / 全量 / 隔离 / API
+import { test, describe } from 'node:test';
+import assert from 'node:assert/strict';
+import { openDatabase } from '../src/db/database.js';
+import { migrate } from '../src/db/schema.js';
+import { createLedgerService } from '../src/services/ledgerService.js';
+import { createTagService } from '../src/services/tagService.js';
+import { createExpenseService } from '../src/services/expenseService.js';
+import { createExportService } from '../src/services/exportService.js';
+
+function setup() {
+  const db = openDatabase(':memory:');
+  migrate(db);
+  const svc = {
+    ledgers: createLedgerService(db),
+    tags: createTagService(db),
+    expenses: createExpenseService(db),
+    exports: createExportService(db),
+  };
+  return { db, svc };
+}
+
+describe('导出（S3-3：账本 JSON 全量快照）', () => {
+  test('快照结构：format/version/exportedAt + 五表扁平全量', () => {
+    const { svc } = setup();
+    const l = svc.ledgers.create('生活费');
+    svc.tags.create(l.id, { dimensionKey: 'category', name: '夜宵' });
+    svc.tags.create(l.id, { dimensionKey: 'category', name: '收入·生活费' });
+    svc.expenses.add({ ledgerId: l.id, amountCents: 4560, date: '2026-06-07', note: '撸串', primary: { category: '餐饮', context: '和朋友' }, tags: ['夜宵'] });
+    svc.expenses.add({ ledgerId: l.id, type: 'income', amountCents: 50000, date: '2026-06-01', primary: { category: '收入·生活费' } });
+
+    const snap = svc.exports.ledgerSnapshot(l.id);
+    assert.equal(snap.format, 'orbit-ledger-backup');
+    assert.equal(snap.version, 1);
+    assert.ok(typeof snap.exportedAt === 'string' && snap.exportedAt.length > 0);
+    // 扁平五表 + 账本单行
+    assert.deepEqual(Object.keys(snap).sort(),
+      ['dimensions', 'expense_tag_links', 'expenses', 'exportedAt', 'format', 'ledger', 'tags', 'version']);
+    assert.equal(snap.ledger.id, l.id);
+    assert.equal(snap.ledger.name, '生活费');
+    assert.equal(snap.dimensions.length, 2, '品类+情境两维');
+    // 默认 tags 11（品类6+情境4+未标注）+ 夜宵 + 收入·生活费 = 13
+    assert.equal(snap.tags.length, 13);
+    assert.equal(snap.expenses.length, 2);
+    // links：每笔 category primary + context primary（含未标注）+ 副 tag
+    const e1 = snap.expenses.find(e => e.amount_cents === 4560);
+    const linksOf1 = snap.expense_tag_links.filter(x => x.expense_id === e1.id);
+    assert.equal(linksOf1.filter(x => x.role === 'primary').length, 2, '每维一个 primary');
+    assert.ok(linksOf1.some(x => x.role === 'secondary'), '副 tag link 导出');
+    // 花销不含派生 tags 数组（保持扁平，import 可回插）
+    assert.equal(Array.isArray(e1.tags), false);
+  });
+
+  test('导出数据自洽：快照可重算各维 Σ=总额', () => {
+    const { svc } = setup();
+    const l = svc.ledgers.create('X');
+    svc.expenses.add({ ledgerId: l.id, amountCents: 3500, date: '2026-06-05', primary: { category: '餐饮' } });
+    svc.expenses.add({ ledgerId: l.id, amountCents: 1200, date: '2026-06-06', primary: { category: '交通', context: '通勤' } });
+    const snap = svc.exports.ledgerSnapshot(l.id);
+    const dimKeyOf = (tagId) => snap.dimensions.find(d => d.id === snap.tags.find(t => t.id === tagId)?.dimension_id)?.key;
+    let total = 0;
+    const perDim = {};
+    for (const e of snap.expenses) {
+      total += e.amount_cents;
+      for (const link of snap.expense_tag_links.filter(x => x.expense_id === e.id && x.role === 'primary')) {
+        const k = dimKeyOf(link.tag_id);
+        perDim[k] = (perDim[k] ?? 0) + e.amount_cents;
+      }
+    }
+    assert.equal(total, 4700);
+    for (const k of ['category', 'context']) {
+      assert.equal(perDim[k], total, `快照中 ${k} 维 Σ=总额`);
+    }
+    const unnamed = snap.tags.find(t => t.is_unnamed === 1);
+    assert.equal(unnamed.name, '未标注');
+  });
+
+  test('跨账本导出隔离 + 不存在账本 → null', () => {
+    const { svc } = setup();
+    const a = svc.ledgers.create('A');
+    const b = svc.ledgers.create('B');
+    svc.expenses.add({ ledgerId: a.id, amountCents: 111, date: '2026-06-01', primary: { category: '餐饮' } });
+    svc.expenses.add({ ledgerId: b.id, amountCents: 222, date: '2026-06-01', primary: { category: '餐饮' } });
+    const snapA = svc.exports.ledgerSnapshot(a.id);
+    assert.equal(snapA.expenses.length, 1);
+    assert.equal(snapA.expenses[0].amount_cents, 111);
+    assert.equal(svc.exports.ledgerSnapshot(99999), null);
+  });
+});

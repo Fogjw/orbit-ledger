@@ -7,6 +7,7 @@ import { createLedgerService } from '../src/services/ledgerService.js';
 import { createTagService } from '../src/services/tagService.js';
 import { createExpenseService } from '../src/services/expenseService.js';
 import { createReportService } from '../src/services/reportService.js';
+import { createExportService } from '../src/services/exportService.js';
 
 function setup() {
   const db = openDatabase(':memory:');
@@ -16,6 +17,7 @@ function setup() {
     tags: createTagService(db),
     expenses: createExpenseService(db),
     reports: createReportService(db),
+    exports: createExportService(db),
   };
   return { db, svc };
 }

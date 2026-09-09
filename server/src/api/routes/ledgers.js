@@ -1,6 +1,7 @@
-// 路由：账本 CRUD + 维度/tag 管理
+// 路由：账本 CRUD + 维度/tag 管理 + 导出
 import { Router } from 'express';
 import { idOf, requireStr, optStr } from '../validate.js';
+import { BizError } from '../../services/ledgerService.js';
 
 export function ledgersRouter(svc) {
   const r = Router();
@@ -13,6 +14,13 @@ export function ledgersRouter(svc) {
   });
 
   r.get('/:id', (req, res) => res.json(svc.ledgers.byId(idOf(req.params.id))));
+
+  /** GET /:id/export —— 账本全量 JSON 快照（备份，D-13） */
+  r.get('/:id/export', (req, res) => {
+    const snapshot = svc.exports.ledgerSnapshot(idOf(req.params.id));
+    if (!snapshot) throw new BizError('账本不存在', 'NOT_FOUND', 404);
+    res.json(snapshot);
+  });
 
   // 账本视图：维度 + tag 树（前端录入下拉/图谱数据源）
   r.get('/:id/dimensions', (req, res) => {

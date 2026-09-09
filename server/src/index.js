@@ -7,6 +7,7 @@ import { createLedgerService } from './services/ledgerService.js';
 import { createTagService } from './services/tagService.js';
 import { createExpenseService } from './services/expenseService.js';
 import { createReportService } from './services/reportService.js';
+import { createExportService } from './services/exportService.js';
 import { createApp } from './api/app.js';
 import { config } from './config.js';
 
@@ -22,6 +23,7 @@ const svc = {
   tags: createTagService(db),
   expenses: createExpenseService(db),
   reports: createReportService(db),
+  exports: createExportService(db),
 };
 const app = createApp(svc);
 

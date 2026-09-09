@@ -7,6 +7,7 @@ import { createLedgerService } from '../src/services/ledgerService.js';
 import { createTagService } from '../src/services/tagService.js';
 import { createExpenseService } from '../src/services/expenseService.js';
 import { createReportService } from '../src/services/reportService.js';
+import { createExportService } from '../src/services/exportService.js';
 import { createApp } from '../src/api/app.js';
 
 const db = openDatabase(':memory:');
@@ -16,6 +17,7 @@ const svc = {
   tags: createTagService(db),
   expenses: createExpenseService(db),
   reports: createReportService(db),
+  exports: createExportService(db),
 };
 const app = createApp(svc);
 
@@ -253,6 +255,22 @@ describe('API 全流程', () => {
       body: JSON.stringify({ key: 'payment' }),
     });
     assert.equal(r.status, 409);
+  });
+
+  test('GET /ledgers/:id/export 返回账本全量快照；不存在 404', async () => {
+    const ledger = svc.ledgers.create('导出账本');
+    svc.expenses.add({ ledgerId: ledger.id, amountCents: 1234, date: '2026-06-01', primary: { category: '餐饮' } });
+    let r = await fetch(`${base}/api/ledgers/${ledger.id}/export`);
+    assert.equal(r.status, 200);
+    const snap = await j(r);
+    assert.equal(snap.format, 'orbit-ledger-backup');
+    assert.equal(snap.version, 1);
+    assert.equal(snap.ledger.id, ledger.id);
+    assert.equal(snap.expenses.length, 1);
+    assert.equal(snap.expenses[0].amount_cents, 1234);
+
+    r = await fetch(`${base}/api/ledgers/99999/export`);
+    assert.equal(r.status, 404);
   });
 
   test('错误映射：404 / 400 / 业务错误', async () => {
