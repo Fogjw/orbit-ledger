@@ -2,7 +2,10 @@
  * Orbit 星账 · 真实数据加载层
  * 依赖 window.OrbitAPI（web/api.js），产出前端渲染所需的统一数据结构。
  * 普通 <script>，无 import/export。
+ * 作用域隔离：全部包在 IIFE 内（顶层 const 会与其它 script 共享全局词法环境，
+ * 撞名即 SyntaxError 中断整页），仅暴露 window.OrbitData。
  */
+(function () {
 
 const API = (typeof window !== 'undefined' ? window : globalThis).OrbitAPI;
 if (!API) throw new Error('[OrbitData] 请先加载 web/api.js');
@@ -141,6 +144,21 @@ const Data = {
     }
   },
 
+  // ===== 建账本（建后入列表并选中，含默认维度）=====
+  async createLedger(name) {
+    const l = await API.createLedger(name);
+    this.ledgers.push(l);
+    await this.selectLedger(l.id); // 拉维度/月序列/最新月
+    return l;
+  },
+
+  // ===== 当前账本内建 tag（建后刷新本地维度缓存）=====
+  async createTag(dimensionKey, name, color) {
+    const t = await API.createTag(this.ledgerId, { dimensionKey, name, color });
+    await this._loadDims(); // 重拉维度（含新建 tag）
+    return t;
+  },
+
   // —— 私有方法 ——
 
   async _loadDims() {
@@ -188,5 +206,7 @@ const Data = {
   },
 };
 
-// —— 挂载 ——
+// —— 挂载（唯一对外出口）——
 (typeof window !== 'undefined' ? window : globalThis).OrbitData = Data;
+
+})();

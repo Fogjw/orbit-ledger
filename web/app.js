@@ -837,6 +837,59 @@ rail.addEventListener('pointerup',()=>{railDrag=false;toast('即将支持')});
 
 /* 记账浮层（真实提交：POST → 重拉 → 图谱刷新） */
 const mask=$('#modalMask');
+
+/* ---- 命名浮层（新建账本 / 品类 tag / 情境 tag 共用）---- */
+const nameMask=$('#nameMask');
+let nameAction=null; // {kind:'ledger'} | {kind:'tag',dimKey:'category'|'context'}
+function openNameBox(action){
+  nameAction=action;
+  $('#nameTitle').textContent=
+    action.kind==='ledger'?'新建账本':(action.dimKey==='category'?'新建品类 tag':'新建情境 tag');
+  $('#nameInput').value='';
+  nameMask.hidden=false;
+  setTimeout(()=>$('#nameInput').focus(),60);
+}
+function closeNameBox(){nameMask.hidden=true;nameAction=null}
+$('#nameClose').onclick=closeNameBox;
+$('#nameCancel').onclick=closeNameBox;
+nameMask.addEventListener('click',e=>{if(e.target===nameMask)closeNameBox()});
+$('#nameOk').onclick=async ()=>{
+  const raw=($('#nameInput').value||'').trim();
+  if(!raw){toast('名称不能为空');return}
+  const act=nameAction; closeNameBox();
+  try{
+    if(act.kind==='ledger'){
+      await Data.createLedger(raw);           // 建后自动选中（含默认维度）
+      S.ledgerId=Data.ledgerId;
+      refreshTagArrays();refreshMonths();refreshAmounts();
+      TODAY=Math.max(0,MONTHS.length-1);
+      const ni=MONTHS.findIndex(m=>m.y===Data._currentMonthY&&m.m===Data._currentMonthM);
+      TL.sel={level:'month',idx:ni>=0?ni:TODAY};
+      renderLedgerSeg();
+      buildGraph();syncChrome();
+      toast('账本 · '+raw+' 已创建');
+    }else{
+      await Data.createTag(act.dimKey,raw);   // 当前账本内建 tag，已重拉维度
+      refreshTagArrays();refreshAmounts();
+      // 若记一笔浮层正开着，重渲染 chips 并默认选中新 tag
+      if(!mask.hidden){
+        const target=act.dimKey==='category'?CATS:CTXS;
+        const fresh=target[target.length-1];
+        if(fresh){
+          if(act.dimKey==='category'){renderModalChips();document.querySelectorAll('#mCats .m-chip').forEach((b,i)=>b.classList.toggle('on',b.dataset.tagId===String(fresh.tagId)));}
+          else{renderModalChips();document.querySelectorAll('#mCtx .m-chip').forEach((b,i)=>b.classList.toggle('on',b.dataset.tagId===String(fresh.tagId)));}
+        }
+      }
+      toast('tag · '+raw+' 已创建');
+    }
+  }catch(e){
+    toast('创建失败：'+(e.message||e));
+  }
+};
+$('#btnAddLedger').onclick=()=>openNameBox({kind:'ledger'});
+$('#btnAddCat').onclick=()=>openNameBox({kind:'tag',dimKey:'category'});
+$('#btnAddCtx').onclick=()=>openNameBox({kind:'tag',dimKey:'context'});
+
 let modalIsIncome=false; // 浮层类型：false=支出，true=收入
 // 解析浮层账本 select：默认当前账本，被改则用其值（按 id 或名称匹配）
 function resolveModalLedgerId(){

@@ -45,6 +45,7 @@
       <button class="seg active" data-v="life">生活费</button>
       <button class="seg" data-v="private">私人</button>
     </div>
+    <button class="btn ghost seg-add" id="btnAddLedger" title="新建账本">＋账本</button>
 
     <div class="segment" id="dimSeg">
       <button class="seg active" data-v="category">品类</button>
@@ -108,9 +109,9 @@
         <button class="m-close" id="modalClose">✕</button>
       </div>
       <div class="m-amount"><span>¥</span><input id="mAmount" value="88" inputmode="decimal" /></div>
-      <div class="m-label">品类</div>
+      <div class="m-label">品类 <button class="chip-add" id="btnAddCat" title="新建品类 tag">＋ 新建</button></div>
       <div class="m-chips" id="mCats"></div>
-      <div class="m-label">情境</div>
+      <div class="m-label">情境 <button class="chip-add" id="btnAddCtx" title="新建情境 tag">＋ 新建</button></div>
       <div class="m-chips" id="mCtx"></div>
       <div class="m-row">
         <label>日期 <input type="date" value="2026-06-14" class="m-input" /></label>
@@ -120,6 +121,21 @@
       <div class="m-foot">
         <button class="btn ghost" id="modalCancel">取消</button>
         <button class="btn primary" id="modalSave">保存 · 点亮一颗星</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- 命名浮层（新建账本 / 新建 tag 共用） -->
+  <div class="modal-mask" id="nameMask" hidden>
+    <div class="modal glass n-modal">
+      <div class="m-head">
+        <span class="n-title" id="nameTitle">新建</span>
+        <button class="m-close" id="nameClose">✕</button>
+      </div>
+      <input class="m-input" id="nameInput" placeholder="名称…" maxlength="20" />
+      <div class="m-foot">
+        <button class="btn ghost" id="nameCancel">取消</button>
+        <button class="btn primary" id="nameOk">创建</button>
       </div>
     </div>
   </div>

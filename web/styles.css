@@ -114,6 +114,10 @@ canvas{display:block}
 .m-amount span{font-size:26px;color:#9be9ff;font-weight:800}
 .m-amount input{width:170px;background:transparent;border:0;outline:0;text-align:center;font:800 44px var(--font);color:#fff;font-variant-numeric:tabular-nums;text-shadow:0 0 30px rgba(90,215,255,.4)}
 .m-label{font-size:11px;letter-spacing:2px;color:var(--dim2);margin:12px 0 7px}
+.m-label{display:flex;align-items:center;justify-content:space-between}
+.chip-add{border:1px dashed var(--border2);background:transparent;color:var(--dim);font:600 10.5px var(--font);letter-spacing:1px;border-radius:14px;padding:3px 9px;cursor:pointer;transition:all .18s}
+.chip-add:hover{color:#fff;border-color:rgba(140,190,255,.55);box-shadow:0 0 10px rgba(90,180,255,.2)}
+.seg-add{border-style:dashed;padding:6px 10px;font-size:11px;letter-spacing:1px}
 .m-chips{display:flex;flex-wrap:wrap;gap:8px}
 .m-chip{border:1px solid var(--border2);background:rgba(255,255,255,.03);color:var(--text);font:600 12px var(--font);border-radius:20px;padding:7px 13px;cursor:pointer;transition:all .18s;display:flex;align-items:center;gap:6px}
 .m-chip i{width:8px;height:8px;border-radius:50%;display:inline-block}
@@ -125,6 +129,8 @@ canvas{display:block}
 .m-input:focus{border-color:rgba(140,190,255,.55)}
 .m-remark{margin-top:10px}
 .m-foot{display:flex;justify-content:flex-end;gap:10px;margin-top:16px}
+.n-modal{width:min(320px,calc(100vw - 32px))}
+.n-title{font-weight:800;font-size:14px;letter-spacing:1px}
 
 @media (max-width:1100px){.panel{display:none}}
 @media (max-width:760px){
