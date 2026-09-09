@@ -13,146 +13,65 @@ function shade(hex,k){const[r,g,b]=hexRgb(hex);return`rgb(${Math.round(r*k)},${M
 function mulberry(seed){let a=seed;return function(){a|=0;a=a+0x6D2B79F5|0;let t=Math.imul(a^a>>>15,1|a);t=t+Math.imul(t^t>>>7,61|t)^t;return((t^t>>>14)>>>0)/4294967296}}
 const easeOutBack=x=>{const c=1.70158;return 1+(c+1)*Math.pow(x-1,3)+c*Math.pow(x-1,2)};
 
-/* ---------- 数据（编造） ---------- */
-const CATS=[
- {id:'food', name:'餐饮', color:'#ff9f6b'},
- {id:'trans',name:'交通', color:'#5ad7ff'},
- {id:'fun',  name:'娱乐', color:'#b48cff'},
- {id:'home', name:'居住', color:'#ff7a9e'},
- {id:'daily',name:'日用', color:'#6fe3a8'},
- {id:'study',name:'学习', color:'#ffd166'},
- {id:'trip', name:'旅行', color:'#6b9dff'},
-];
-const CTXS=[
- {id:'fr',  name:'和朋友', color:'#ff9f6b'},
- {id:'solo',name:'独处',   color:'#8ea2c8'},
- {id:'love',name:'和对象', color:'#ff7a9e'},
- {id:'work',name:'通勤',   color:'#5ad7ff'},
- {id:'fam', name:'家庭',   color:'#6fe3a8'},
- {id:'none',name:'未标注', color:'#7a8299', dashed:true},
-];
-const EXP_TPL={
- food:[['海底捞','和朋友',168],['瑞幸咖啡','独处',18],['楼下小馆','和对象',46],['面包房','独处',28],['深夜烧烤','和朋友',96]],
- trans:[['地铁月卡','通勤',120],['打车','和朋友',38],['共享单车','通勤',15],['高铁票','家庭',210]],
- fun:[['电影票','和对象',88],['剧本杀','和朋友',128],['游戏充值','独处',45],['Livehouse','和朋友',180]],
- home:[['房租','未标注',1500],['水电燃气','未标注',160],['物业费','未标注',120]],
- daily:[['超市采购','家庭',132],['洗护用品','独处',58],['咖啡豆','独处',88]],
- study:[['专业书','独处',76],['网课','独处',199],['文具','独处',32]],
- trip:[['机票','和朋友',680],['酒店','和对象',420],['伴手礼','家庭',150]],
-};
-const CTX_TPL={
- fr:[['火锅','餐饮',168],['剧本杀','娱乐',128],['Livehouse','娱乐',180]],
- solo:[['咖啡','餐饮',18],['地铁','交通',40],['买书','学习',76]],
- love:[['电影','娱乐',88],['晚餐','餐饮',156],['酒店','旅行',420]],
- work:[['地铁月卡','交通',120],['打车','交通',38]],
- fam:[['超市','日用',132],['房租分摊','居住',800]],
- none:[['水电','居住',160],['杂费','日用',48]],
-};
-/* 月序列：2024-01 → 2026-06（有记录的第一月起，可前翻） */
-const MONTHS=[];
-(function(){
-  const cw=[['home',.28],['food',.20],['fun',.13],['trans',.10],['daily',.11],['study',.07],['trip',.11]];
-  for(let y=2024;y<=2026;y++){
-    const mEnd=y===2026?6:12;
-    for(let m=1;m<=mEnd;m++){
-      const rnd=mulberry(y*100+m);
-      const seasonal=1+0.25*Math.sin((m-1)/12*Math.PI*2);
-      const total=Math.round((1050+rnd()*950)*seasonal);
-      let tw=rnd(),top='home',acc=0;
-      for(const[id,w]of cw){acc+=w;if(tw<acc){top=id;break}}
-      MONTHS.push({label:m+'月',full:y+'年'+m+'月',total,top,y,m});
-    }
-  }
-})();
-const TODAY=MONTHS.length-1;
-const YEARS=[2024,2025,2026].map(y=>{
-  const ms=MONTHS.filter(m=>m.y===y);
-  const total=ms.reduce((a,m)=>a+m.total,0);
-  const cnt={};ms.forEach(m=>cnt[m.top]=(cnt[m.top]||0)+1);
-  return{label:y+'年',total,top:Object.keys(cnt).sort((a,b)=>cnt[b]-cnt[a])[0]};
-});
-/* 日序列：2024-01-01 → 2026-06-30（全量，可一路前翻），品类/情境双口径 */
-const DAYS=[];
-(function(){
-  const cw={food:.22,trans:.10,fun:.13,home:.28,daily:.11,study:.06,trip:.10};
-  const xw={fr:.24,solo:.26,love:.12,work:.14,fam:.12,none:.12};
-  let i=0;
-  for(let d=new Date(2024,0,1);d<=new Date(2026,5,30);d=new Date(d.getTime()+864e5),i++){
-    const rnd=mulberry(i*7919+11), wd=d.getDay();
-    let total=Math.round(34+rnd()*66+((wd===0||wd===6)?24+rnd()*30:0));
-    if(rnd()<0.06)total+=Math.round(140+rnd()*260);
-    const splitW=(w)=>{const o={};let s=0;for(const k in w){o[k]=w[k]*(0.6+rnd()*0.8);s+=o[k]}return{o,s}};
-    const a=splitW(cw), b=splitW(xw), cats={}, ctxs={};
-    let top='home',tv=0;
-    for(const k in a.o){cats[k]=Math.round(total*a.o[k]/a.s);if(cats[k]>tv){tv=cats[k];top=k}}
-    for(const k in b.o)ctxs[k]=Math.round(total*b.o[k]/b.s);
-    DAYS.push({label:(d.getMonth()+1)+'月'+d.getDate()+'日',total,top,cats,ctxs,
-      monthIdx:(d.getFullYear()-2024)*12+d.getMonth()});
-  }
-})();
-const DAY_TODAY=DAYS.length-1;
+/* ---- 真实数据接线（OrbitData）---- */
+const API=(typeof window!=='undefined'?window:globalThis).OrbitAPI;
+const Data=(typeof window!=='undefined'?window:globalThis).OrbitData;
+/* 渲染用数组（id:'t'+tag_id 字符串，金额查表用数字 tagId） */
+let CATS=[], CTXS=[];
+let MONTHS=[];
+let TODAY=0;
+const DAYS=[]; // 本任务只做月视图，日序列留空即不画
+const YEARS=[]; // 年视图留空
+const DAY_TODAY=0;
+const tagAmountMap={category:{},context:{}};
+function refreshTagArrays(){
+  if(!Data)return;
+  CATS=(Data.cats||[]).map(t=>({id:'t'+t.id,name:t.name,color:t.color,is_unnamed:t.is_unnamed,tagId:t.id}));
+  CTXS=(Data.ctxs||[]).map(t=>({id:'t'+t.id,name:t.name,color:t.color,is_unnamed:t.is_unnamed,tagId:t.id}));
+}
+function refreshAmounts(){
+  if(!Data)return;
+  tagAmountMap.category={...(Data.monthAmountsByDim.category||{})};
+  tagAmountMap.context={...(Data.monthAmountsByDim.context||{})};
+}
+function refreshMonths(){
+  if(!Data)return;
+  MONTHS=(Data.months||[]).map(m=>({label:m.label,full:m.full,total:m.total,y:m.y,m:m.m,topColor:m.topColor||''}));
+  TODAY=Math.max(0,MONTHS.length-1);
+}
 
 /* ---------- 状态 ---------- */
-const S={dim:'category',ledger:'life',view:'l1',focus:null,hover:null,hoverKind:null};
-const TL={z:1,scroll:1,sel:{level:'month',idx:TODAY}};
-const ledgerFactor=()=>S.ledger==='life'?1:0.62;
+const S={dim:'category',ledgerId:null,view:'l1',focus:null,hover:null,hoverKind:null};
+const TL={z:1,scroll:1,sel:{level:'month',idx:0}};
 const catList=()=>S.dim==='category'?CATS:CTXS;
-const ctxByName=n=>CTXS.find(c=>c.name===n)||CTXS[5];
-/* 下钻外环另一端：品类维度下是情境，情境维度下是品类——按名跨表解析 */
-const tagByName=n=>CATS.find(c=>c.name===n)||CTXS.find(c=>c.name===n)||CTXS[5];
+const ctxByName=n=>CTXS.find(c=>c.name===n)||CTXS[0]||{name:n||'未标注',color:'#7a8299'};
+/* 下钻外环另一端：按名跨表解析（真实 tag 名） */
+const tagByName=n=>CATS.find(c=>c.name===n)||CTXS.find(c=>c.name===n)||CTXS[0]||{name:n||'未标注',color:'#7a8299'};
 
-/* 月口径金额（品类/情境通用） */
-function amountsFor(mi){
-  const m=MONTHS[mi],items=catList(),out={};let acc=0;
-  const topW=0.42+hash01(m.label+S.dim)*0.14;
-  const topId=(m.top&&items.some(c=>c.id===m.top))?m.top:items[0].id;
-  items.forEach((c,i)=>{
-    const last=i===items.length-1;
-    let v=c.id===topId?Math.round(m.total*ledgerFactor()*topW)
-      :(last?Math.round(m.total*ledgerFactor())-acc
-      :Math.round(m.total*ledgerFactor()*(1-topW)/(items.length-1)*(0.7+hash01(c.id+m.label)*0.6)));
-    if(last)v=Math.round(m.total*ledgerFactor())-acc;
-    out[c.id]=Math.max(18,v);acc+=out[c.id];
-  });
+/* 当前维度各 tag 金额（渲染id → 元），只含金额>0 */
+function amountsForTime(){
+  const key=S.dim==='category'?'category':'context';
+  const out={};
+  for(const t of (key==='category'?CATS:CTXS)){
+    const yuan=tagAmountMap[key][t.tagId]||0;
+    if(yuan>0)out[t.id]=yuan;
+  }
   return out;
 }
-function avgWeights(){
-  const items=catList(),w={};items.forEach(c=>w[c.id]=0);
-  MONTHS.forEach((m,mi)=>{const a=amountsFor(mi);items.forEach(c=>w[c.id]+=a[c.id]/(m.total*ledgerFactor()))});
-  items.forEach(c=>w[c.id]/=MONTHS.length);return w;
-}
-/* 当前时间选择对应的各 tag 金额 */
-function amountsForTime(){
-  const f=ledgerFactor(),items=catList(),out={};
-  if(TL.sel.level==='day'){const d=DAYS[TL.sel.idx],src=S.dim==='category'?d.cats:d.ctxs;
-    for(const c of items)out[c.id]=Math.max(2,Math.round((src[c.id]||0)*f));return out}
-  if(TL.sel.level==='year'){const y=YEARS[TL.sel.idx],w=avgWeights();let acc=0;
-    items.forEach((c,i)=>{const last=i===items.length-1;
-      let v=last?Math.round(y.total*f)-acc:Math.round(y.total*f*(w[c.id]||0));
-      out[c.id]=Math.max(20,v);acc+=out[c.id]});return out}
-  return amountsFor(TL.sel.idx);
-}
 function selTotal(){
-  const f=ledgerFactor();
-  if(TL.sel.level==='day')return Math.round(DAYS[TL.sel.idx].total*f);
-  if(TL.sel.level==='year')return Math.round(YEARS[TL.sel.idx].total*f);
-  return Math.round(MONTHS[TL.sel.idx].total*f);
+  return (Data&&typeof Data.monthTotal==='number')?Data.monthTotal:0;
 }
 function selLabel(){
-  if(TL.sel.level==='day')return DAYS[TL.sel.idx].label;
-  if(TL.sel.level==='year')return YEARS[TL.sel.idx].label;
-  return MONTHS[TL.sel.idx].full;
+  if(Data&&Data._currentMonthY&&Data._currentMonthM)return Data._currentMonthY+'年'+Data._currentMonthM+'月';
+  const m=MONTHS[TL.sel.idx];
+  return m?m.full:'';
 }
 function prevTotal(){
-  if(TL.sel.level==='day')return TL.sel.idx>0?Math.round(DAYS[TL.sel.idx-1].total*ledgerFactor()):Math.round(selTotal()*0.92);
-  if(TL.sel.level==='year')return TL.sel.idx>0?Math.round(YEARS[TL.sel.idx-1].total*ledgerFactor()):Math.round(selTotal()*0.88);
-  return TL.sel.idx>0?Math.round(MONTHS[TL.sel.idx-1].total*ledgerFactor()):Math.round(selTotal()*0.9);
+  if(Data&&typeof Data.prevMonthTotal==='number'&&Data.prevMonthTotal>0)return Data.prevMonthTotal;
+  return selTotal()*0.9;
 }
-function expensesFor(catId,catAmount){
-  const tpl=(S.dim==='category'?EXP_TPL[catId]:CTX_TPL[catId])||EXP_TPL.food;
-  const sum=tpl.reduce((a,t)=>a+t[2],0);
-  return tpl.map((t,i)=>({id:catId+'-e'+i,name:t[0],ctx:t[1],amount:Math.max(6,Math.round(t[2]/sum*catAmount))}));
-}
+/* 下钻相关 T4 再补：此处给空桩，保证不崩 */
+function expensesFor(catId,catAmount){return []}
 
 /* ---------- Canvas ---------- */
 const bgC=$('#bg'),gC=$('#graph'),oC=$('#orbit');
@@ -226,24 +145,38 @@ function drawBg(t,dt,mx,my){
 }
 
 /* ---------- 图谱：星座节点 + 真漂浮 ---------- */
-/* L1 锚点（归一化，北斗式 sweeping 曲线） */
-const ANCHOR={trip:[.50,.14],fun:[.72,.28],food:[.80,.56],trans:[.62,.80],home:[.36,.76],daily:[.17,.52],study:[.24,.24],
- fr:[.74,.52],solo:[.58,.78],love:[.34,.72],work:[.24,.42],fam:[.42,.22],none:[.66,.24]};
+/* L1 锚点：金额驱动自动摆位（北斗弧线），任意品类数量都好看 */
 let nodes=[],links=[],poly=[],enterT=9;
 const tagR=a=>Math.min(24,5.5+Math.sqrt(a)*0.55);
 const expR=a=>2.4+Math.sqrt(a)*0.12;
 const ctxR=()=>9;
 
 function buildGraph(){
-  nodes=[];links=[];poly=[];enterT=0;S.hover=null;S.hoverKind=null;tip.hidden=true;
+  // 本任务只做 L1：任何 detail 请求静默回到 L1
+  if(S.view!=='l1'){S.view='l1';S.focus=null;const bb=$('#btnBack');if(bb)bb.hidden=true}
+  nodes=[];links=[];poly=[];enterT=0;S.hover=null;S.hoverKind=null;if(typeof tip!=='undefined'&&tip)tip.hidden=true;
   const amts=amountsForTime(),items=catList();
   const X0=gx0(),X1=gx1(),Y0=gy0(),Y1=gy1();
   const P=(nx,ny)=>({x:X0+nx*(X1-X0),y:Y0+ny*(Y1-Y0)});
   if(S.view==='l1'){
-    items.forEach((c,i)=>{
-      const a=ANCHOR[c.id]||[.5,.5], p=P(a[0],a[1]), R=tagR(amts[c.id]||60);
+    // 金额降序，沿北斗弧线均匀排布；无支出时显示小星
+    const sorted=[...items].sort((a,b)=>((amts[b.id]||0)-(amts[a.id]||0)));
+    const n=sorted.length;
+    sorted.forEach((c,i)=>{
+      const amt=amts[c.id]||0;
+      const R=amt>0?tagR(amt):6;
+      // x 均布，y 正弦起伏；金额最大者靠视觉中心偏上
+      let nx,ny;
+      if(n===1){nx=.5;ny=.45}
+      else{
+        nx=0.14+0.72*(i/(n-1));
+        ny=0.5+0.32*Math.sin(i*1.2+0.6);
+        if(i===0){nx=.5;ny=.34}
+        nx=clamp(nx,0.08,0.92);ny=clamp(ny,0.1,0.9);
+      }
+      const p=P(nx,ny);
       const va=hash01(c.id+'v')*6.28;
-      nodes.push({kind:'cat',id:c.id,ref:c,amount:amts[c.id]||60,R,tr:R,
+      nodes.push({kind:'cat',id:c.id,ref:c,amount:amt,R,tr:R,
         x:p.x+(hash01(c.id)-.5)*60,y:p.y+(hash01(c.id+'y')-.5)*44,
         vx:Math.cos(va)*.5,vy:Math.sin(va)*.5,ax:p.x,ay:p.y,k:0.0011,
         seed:hash01(c.id)*7,idx:i,
@@ -254,7 +187,10 @@ function buildGraph(){
     poly.forEach(()=>{});
     for(let i=0;i<poly.length-1;i++)links.push({s:poly[i],t:poly[i+1],w:.9,ph:Math.random(),sp:.25});
   }else{
+    // detail 已禁用：永不进入（静默降级）
+    return;
     const f=items.find(c=>c.id===S.focus)||items[0];
+    if(!f){return}
     S.focus=f.id;
     const c0=P(.5,.5);
     const fR=tagR(amts[f.id]||100)*1.3;
@@ -488,8 +424,14 @@ function drawGraph(t){
 /* ---------- 星轨：日/月/年连续变焦 + 左右拖拽 ---------- */
 function smooth(a,b,x){const t=clamp((x-a)/(b-a),0,1);return t*t*(3-2*t)}
 function levelW(){const z=TL.z;const wd=1-smooth(.35,.65,z),wy=smooth(1.35,1.65,z);return{d:wd,m:1-wd-wy,y:wy}}
-function domLevel(){const w=levelW();return w.d>=w.m&&w.d>=w.y?'day':(w.y>=w.m?'year':'month')}
-function tlMonthColor(mi){return(CATS.find(c=>c.id===MONTHS[mi].top)||CATS[0]).color}
+function domLevel(){ return 'month'; } // 本版只支持月视图
+function tlMonthColor(mi){
+  const m=MONTHS[mi];
+  if(m&&m.topColor)return m.topColor;
+  const all=[...CATS,...CTXS];
+  if(all.length)return all[mi%all.length].color;
+  return '#9be9ff';
+}
 function drawOrbit(t){
   const r=oC.getBoundingClientRect();if(r.width<10)return;
   const w=r.width,h=r.height;
@@ -601,7 +543,7 @@ function drawOrbitDay(w,h,t,al){
     const d=DAYS[i], age=(DAYS.length-1-i)/(DAYS.length-1);
     const y=dayY(h,i);
     const R=clamp(2.5+Math.sqrt(d.total)*.32,3,7.5)+(i===DAY_TODAY?2:0);
-    const col=(CATS.find(c=>c.id===d.top)||CATS[0]).color;
+    const col=(((CATS.find(c=>c.id===d.top)||CATS[0])||CTXS[0])||{color:'#9be9ff'}).color;
     const hov=S.hoverKind==='day'&&TL.sel.level==='day'&&S.hover===i;
     const foc=TL.sel.level==='day'&&TL.sel.idx===i;
     oc.save();oc.globalAlpha=al*(1-.5*age);
@@ -629,7 +571,7 @@ function drawOrbitYear(w,h,t,al){
   YEARS.forEach((y,i)=>{
     const x=w*(.22+.28*i), yy=yearY(h,i);
     const R=clamp(6+Math.sqrt(y.total)*.09,9,15);
-    const col=(CATS.find(c=>c.id===y.top)||CATS[0]).color;
+    const col=((CATS.find(c=>c.id===y.top)||CATS[0])||{color:'#9be9ff'}).color;
     const hov=S.hoverKind==='year'&&TL.sel.level==='year'&&S.hover===i;
     const foc=TL.sel.level==='year'&&TL.sel.idx===i;
     oc.save();oc.globalAlpha=al;
@@ -645,53 +587,37 @@ function drawOrbitYear(w,h,t,al){
     oc.save();oc.globalAlpha=al;oc.fillStyle='#dfe7fa';oc.font='700 12px Inter,"PingFang SC",sans-serif';oc.textAlign='center';
     oc.fillText(y.label+(i===YEARS.length-1?' · 今':''),x,yy+R+17);
     oc.font='10.5px Inter,sans-serif';oc.fillStyle='rgba(150,165,195,.85)';
-    oc.fillText('¥'+Math.round(y.total*ledgerFactor()).toLocaleString(),x,yy+R+31);
+    oc.fillText('¥'+Math.round(y.total).toLocaleString(),x,yy+R+31);
     oc.restore();
   });
 }
 function orbitHit(x,y){
-  const r=oC.getBoundingClientRect(),w=r.width,h=r.height,lv=domLevel();
-  if(lv==='day'){
-    let best=null,bd=1e9;
-    for(let i=0;i<DAYS.length;i++){const dx=dayX(w,i)-x;if(Math.abs(dx)>30)continue;
-      const yy=dayY(h,i),d=Math.hypot(dx,yy-y);if(d<16&&d<bd){best=i;bd=d}}
-    return best!=null?{kind:'day',id:best}:null;
-  }
-  if(lv==='year'){
-    for(let i=0;i<YEARS.length;i++){const px=w*(.22+.28*i),py=yearY(h,i);
-      if(Math.hypot(px-x,py-y)<24)return{kind:'year',id:i}}
-    return null;
-  }
+  const r=oC.getBoundingClientRect(),w=r.width,h=r.height;
+  // 本版只支持月视图
   for(let i=0;i<MONTHS.length;i++){const p=monthXY(w,h,i);
     if(Math.hypot(p.x-x,p.y-y)<18)return{kind:'month',id:i}}
   return null;
 }
 
-/* ---------- 时间选择 ---------- */
+/* ---------- 时间选择（本版只支持月视图） ---------- */
 function applyZoomSnap(){
-  const lv=domLevel();
-  if(lv===TL.sel.level)return;
-  if(lv==='month'){
-    if(TL.sel.level==='day')TL.sel={level:'month',idx:DAYS[TL.sel.idx].monthIdx};
-    else TL.sel={level:'month',idx:TL.sel.idx===0?5:(TL.sel.idx===1?17:TODAY)};
-  }else if(lv==='day'){
-    if(TL.sel.level==='month'){
-      const mi=TL.sel.idx;let di=DAY_TODAY;
-      for(let i=DAYS.length-1;i>=0;i--)if(DAYS[i].monthIdx===mi){di=i;break}
-      if(!DAYS.some(d=>d.monthIdx===mi))di=DAY_TODAY;
-      TL.sel={level:'day',idx:di};
-    }else TL.sel={level:'day',idx:DAY_TODAY};
-    TL.scroll=1;
-  }else{
-    if(TL.sel.level==='month')TL.sel={level:'year',idx:TL.sel.idx<12?0:(TL.sel.idx<24?1:2)};
-    else TL.sel={level:'year',idx:2};
-  }
+  // 任何非 month 选择都弹回 month
+  if(TL.sel.level!=='month'){TL.sel={level:'month',idx:TODAY}}
+  TL.z=1;syncRail&&syncRail();
   buildGraph();syncChrome();
 }
-function selectTime(kind,id){
-  TL.sel={level:kind,idx:id};
-  if(kind==='day'){const vw=oC.getBoundingClientRect().width-80,cw=dayContent(vw);
-    if(cw>vw){const x=40+id*DAY_GAP-vw/2;TL.scroll=clamp(x/(cw-vw),0,1)}}
+async function selectTime(kind,id){
+  if(kind!=='month'){toast('即将支持');return}
+  if(!MONTHS[id])return;
+  TL.sel={level:'month',idx:id};
+  try{
+    await Data.selectMonth({year:MONTHS[id].y,month:MONTHS[id].m});
+    refreshMonths();refreshAmounts();
+    // selectMonth 可能补列导致下标漂移，按年月重新定位
+    const ni=MONTHS.findIndex(m=>m.y===Data._currentMonthY&&m.m===Data._currentMonthM);
+    if(ni>=0)TL.sel.idx=ni;
+    TODAY=Math.max(0,MONTHS.length-1);
+  }catch(e){toast('切换月份失败：'+(e.message||e))}
   buildGraph();syncChrome();
   burst(W/2,H-190,'#9be9ff',14);
 }
@@ -699,8 +625,16 @@ function setZoom(z,quiet){
   z=clamp(z,0,2);
   const before=domLevel();
   TL.z=z;syncRail();
-  const after=domLevel();
-  if(before!==after){applyZoomSnap();if(!quiet)toast(after==='day'?'星轨 · 日视图（左右可拖）':after==='month'?'星轨 · 月视图':'星轨 · 年视图')}
+  const after=levelW();
+  // 若试图进入日/年（z 偏离 1），立即弹回月视图
+  const wantDay=1-(after.d||0), wantYear=after.y||0;
+  if(z<0.65||z>1.35){
+    TL.z=1;syncRail();
+    if(!quiet)toast('即将支持');
+    if(before!=='month'||TL.sel.level!=='month'){TL.sel={level:'month',idx:TODAY};buildGraph();syncChrome()}
+    return;
+  }
+  if(before!==domLevel()){applyZoomSnap();if(!quiet)toast('星轨 · 月视图')}
 }
 
 /* ---------- 交互 ---------- */
@@ -712,17 +646,17 @@ function setHover(h){
   if(h.kind==='cat'||h.kind==='exp'||h.kind==='ctx'){
     const n=byId(h.id);if(!n){tip.hidden=true;return}
     const sub=n.kind==='cat'
-      ?(S.view==='detail'?'专属视图中心 · 点击空白处返回':`${n.amount.toLocaleString()} 元 · 点击进入专属星图`)
-      :n.kind==='exp'?`${n.amount} 元 · ${n.ref.ctx}`:`${n.amount.toLocaleString()} 元 · 关联标签`;
-    tip.innerHTML=`<b>${n.ref.name}</b><div class="tt-amt">¥${n.amount.toLocaleString()}</div><div style="color:#8b96b5">${sub}</div>`;
-    tip.hidden=false;gC.style.cursor='pointer';
+      ?`${Number(n.amount||0).toLocaleString()} 元`
+      :n.kind==='exp'?`${n.amount} 元 · ${n.ref.ctx}`:`${Number(n.amount||0).toLocaleString()} 元 · 关联标签`;
+    tip.innerHTML=`<b>${n.ref.name}</b><div class="tt-amt">¥${Number(n.amount||0).toLocaleString()}</div><div style="color:#8b96b5">${sub}</div>`;
+    tip.hidden=false;gC.style.cursor='default';
     const cid=n.kind==='cat'?n.id:(n.kind==='exp'?n.cat:null);
     document.querySelectorAll('.top-row').forEach(e=>e.classList.toggle('hot',e.dataset.id===cid));
   }else{
     let html='';
-    if(h.kind==='day'){const d=DAYS[h.id];html=`<b>${d.label}</b><div class="tt-amt">¥${Math.round(d.total*ledgerFactor()).toLocaleString()}</div>`}
-    else if(h.kind==='year'){const y=YEARS[h.id];html=`<b>${y.label}</b><div class="tt-amt">¥${Math.round(y.total*ledgerFactor()).toLocaleString()}</div>`}
-    else{const m=MONTHS[h.id];html=`<b>${m.label}</b><div class="tt-amt">¥${Math.round(m.total*ledgerFactor()).toLocaleString()}</div>`}
+    const m=MONTHS[h.id];
+    if(m)html=`<b>${m.full||m.label}</b><div class="tt-amt">¥${Math.round(m.total).toLocaleString()}</div>`;
+    else html='<b>暂无数据</b>';
     tip.innerHTML=html;tip.hidden=false;
   }
 }
@@ -756,12 +690,12 @@ gC.addEventListener('pointerup',e=>{
       if(n.kind!=='cat')continue;
       if(d<=n.R+12&&d<bd){best=n;bd=d}
     }
-    if(best&&S.view==='l1')enterDetail(best.id);
-    else if(!any&&S.view==='detail')goBack(); // 下钻态点空白处返回
+    if(best&&S.view==='l1'){/* 下钻暂不做：保持 L1 */toast('下钻即将支持');}
+    else if(!any&&S.view==='detail')goBack(); // 兼容：detail 已禁用
   }
 });
 gC.addEventListener('pointerleave',()=>{setHover(null);dragN=null});
-gC.addEventListener('wheel',e=>{e.preventDefault();setZoom(TL.z+e.deltaY*0.0012)},{passive:false});
+gC.addEventListener('wheel',e=>{e.preventDefault();toast('即将支持')},{passive:false});
 
 /* 星轨：左右拖拽看时间，点击选中 */
 let oDrag=null;
@@ -796,9 +730,9 @@ oC.addEventListener('pointerup',e=>{
 oC.addEventListener('pointerleave',()=>{oDrag=null;setHover(null)});
 
 function enterDetail(id){
-  S.view='detail';S.focus=id;buildGraph();syncChrome();
-  $('#btnBack').hidden=false;
-  const n=byId(id);if(n)burst(n.x,n.y,n.ref.color,34);
+  // 本任务暂不做下钻：点品类不进 detail，保持 L1
+  toast('下钻即将支持');
+  return;
 }
 function goBack(){
   if(S.view!=='detail')return;
@@ -818,23 +752,28 @@ function animateNum(el,to,fmt){
 }
 function syncChrome(){
   const tot=selTotal();
-  const nExp=S.view==='detail'
-    ?expensesFor(S.focus,amountsForTime()[S.focus]||100).length
-    :Math.max(1,Math.round(tot/(TL.sel.level==='day'?9:58)));
+  // 笔数：Data.days 为有支出的天数，笔数保守估算；总额必须真实
+  let nExp=1;
+  try{
+    if(Data&&Data.days&&Data.days.length)nExp=Math.max(Data.days.length,1);
+    else nExp=Math.max(1,Math.round(tot/58));
+  }catch(e){nExp=Math.max(1,Math.round(tot/58))}
   $('#mtLabel').textContent=`${selLabel()} · 共 ${nExp} 笔`;
   animateNum($('#mtValue'),tot,v=>'¥'+Math.round(v).toLocaleString());
   animateNum($('#pNum'),tot,v=>'¥'+Math.round(v).toLocaleString());
-  $('#pCount').textContent=`${nExp} 笔${TL.sel.level==='month'?' · 日均 ¥'+Math.round(tot/30):''}`;
-  const pv=prevTotal(),d=(tot-pv)/pv*100;
+  $('#pCount').textContent=`${nExp} 笔 · 日均 ¥${Math.round(tot/30)}`;
+  const pv=prevTotal(),d=pv>0?(tot-pv)/pv*100:0;
   $('#pDelta').textContent=`${d>=0?'▲':'▼'} ${Math.abs(d).toFixed(1)}% vs 上期`;
-  const lv=domLevel(),ln=lv==='day'?'日':lv==='month'?'月':'年';
-  $('#tlTip').textContent=S.view==='detail'
-    ?`正在下钻 · ${byId(S.focus)?.ref.name||''} · 花销×标签二部图（拖拽感受斥力）`
-    :`星轨 · ${ln}视图${lv==='day'?'（左右拖动看时间）':'（点击星星切换时间）'}`;
+  $('#tlTip').textContent='星轨 · 月视图（点击星星切换月份）';
   renderTop();
 }
 function renderTop(){
   const amts=amountsForTime(),items=[...catList()].sort((a,b)=>(amts[b.id]||0)-(amts[a.id]||0)).slice(0,5);
+  if(!items.length){
+    $('#topList').innerHTML='<div style="color:#8b96b5;font-size:12px">本月暂无支出</div>';
+    $('#insightBox').innerHTML='✨ 本月暂无支出，快去点亮第一颗星。';
+    return;
+  }
   const max=amts[items[0].id]||1;
   $('#topList').innerHTML=items.map(c=>`
     <div class="top-row" data-id="${c.id}">
@@ -846,32 +785,55 @@ function renderTop(){
   document.querySelectorAll('.top-row').forEach(el=>{
     el.onmouseenter=()=>setHover({kind:'cat',id:el.dataset.id});
     el.onmouseleave=()=>setHover(null);
-    el.onclick=()=>{if(S.view==='l1')enterDetail(el.dataset.id);else{S.focus=el.dataset.id;buildGraph();syncChrome()}};
+    el.onclick=()=>{toast('下钻即将支持')};
   });
-  const insCtx='✨ <b>和朋友</b> 的共享花销横跨餐饮×娱乐×旅行，是最亮的交叉线。';
-  const ins={
-    food:'✨ <b>和朋友</b> 的聚餐占餐饮 <b>62%</b>，娱乐多与朋友同行。',
-    home:'✨ <b>居住</b> 占本期 <b>55%</b>，是星系中最亮的那颗星。',
-    fun:'✨ <b>娱乐</b> 本月爆发，多为 <b>和朋友</b> 的共享花销。',
-  };
-  $('#insightBox').innerHTML=S.dim==='category'?(ins[MONTHS[TL.sel.level==='month'?TL.sel.idx:TODAY].top]||ins.food):insCtx;
+  const topName=items[0]?items[0].name:'—';
+  $('#insightBox').innerHTML=`✨ 本月 <b>${topName}</b> 是最大支出星系`;
 }
 function seg(id,fn){$(id).querySelectorAll('.seg').forEach(b=>b.onclick=()=>{
   $(id).querySelectorAll('.seg').forEach(x=>x.classList.remove('active'));b.classList.add('active');fn(b.dataset.v)})}
-seg('#ledgerSeg',v=>{S.ledger=v;buildGraph();syncChrome();toast(v==='life'?'账本 · 生活费':'账本 · 私人')});
-seg('#dimSeg',v=>{S.dim=v;S.view='l1';S.focus=null;$('#btnBack').hidden=true;buildGraph();syncChrome();
+function renderLedgerSeg(){
+  const box=$('#ledgerSeg');
+  if(!box||!Data||!Data.ledgers)return;
+  box.innerHTML=Data.ledgers.map(l=>`<button class="seg${String(l.id)===String(S.ledgerId)?' active':''}" data-v="${l.id}">${l.name}</button>`).join('');
+  box.querySelectorAll('.seg').forEach(b=>b.onclick=async ()=>{
+    box.querySelectorAll('.seg').forEach(x=>x.classList.remove('active'));b.classList.add('active');
+    const id=isNaN(Number(b.dataset.v))?b.dataset.v:Number(b.dataset.v);
+    S.ledgerId=id;
+    try{
+      await Data.selectLedger(id);
+      refreshTagArrays();refreshMonths();refreshAmounts();
+      TODAY=Math.max(0,MONTHS.length-1);
+      TL.sel={level:'month',idx:TODAY};TL.scroll=1;
+    }catch(e){toast('切换账本失败：'+(e.message||e))}
+    buildGraph();syncChrome();
+    const cur=(Data.ledgers||[]).find(l=>String(l.id)===String(S.ledgerId));
+    toast('账本 · '+(cur?cur.name:''));
+  });
+}
+seg('#dimSeg',v=>{S.dim=v;S.view='l1';S.focus=null;$('#btnBack').hidden=true;refreshAmounts();buildGraph();syncChrome();
   toast(v==='category'?'维度 · 品类（这是什么钱）':'维度 · 情境（和谁 / 什么场景）')});
-$('#btnToday').onclick=()=>{TL.z=1;syncRail();TL.sel={level:'month',idx:TODAY};buildGraph();syncChrome()};
+$('#btnToday').onclick=async ()=>{
+  try{
+    await Data.gotoToday();
+    refreshMonths();refreshAmounts();
+    TODAY=Math.max(0,MONTHS.length-1);
+    const ni=MONTHS.findIndex(m=>m.y===Data._currentMonthY&&m.m===Data._currentMonthM);
+    TL.sel={level:'month',idx:ni>=0?ni:TODAY};
+  }catch(e){toast('回到今天失败：'+(e.message||e))}
+  TL.z=1;syncRail();buildGraph();syncChrome();
+};
 
-/* 粒度轨 → 星轨变焦（上=日 下=年） */
+/* 粒度轨已隐藏（本版只支持月视图）：保留函数防崩 */
 const rail=$('#rail'),handle=$('#railHandle');
-function syncRail(){handle.style.top=(12+TL.z/2*76)+'%'}
+function syncRail(){if(!handle)return;handle.style.top=(12+TL.z/2*76)+'%'}
 let railDrag=false;
-function railSet(e){const r=rail.getBoundingClientRect();
-  setZoom(clamp((e.clientY-r.top)/r.height*2,0,2),true)}
+function railSet(e){toast('即将支持')}
+if(rail){
 rail.addEventListener('pointerdown',e=>{railDrag=true;rail.setPointerCapture(e.pointerId);railSet(e)});
 rail.addEventListener('pointermove',e=>{if(railDrag)railSet(e)});
-rail.addEventListener('pointerup',()=>{railDrag=false;toast(domLevel()==='day'?'星轨 · 日视图':domLevel()==='month'?'星轨 · 月视图':'星轨 · 年视图')});
+rail.addEventListener('pointerup',()=>{railDrag=false;toast('即将支持')});
+}
 
 /* 记账浮层（装饰） */
 const mask=$('#modalMask');
@@ -900,7 +862,30 @@ function frame(now){
   requestAnimationFrame(frame);
 }
 
-/* 启动 */
-resize();syncChrome();syncRail();
-requestAnimationFrame(frame);
-setTimeout(()=>toast('欢迎来到 Orbit 星账 · 拖拽星体试试'),900);
+/* 启动（真实数据） */
+async function boot(){
+  resize();
+  try{
+    await Data.init();
+  }catch(e){
+    toast('数据加载失败：'+(e.message||e)+'（确认 server 已启动）');
+    requestAnimationFrame(frame);
+    return;
+  }
+  S.ledgerId=Data.ledgerId;
+  refreshTagArrays();refreshMonths();refreshAmounts();
+  const last=Data.months[Data.months.length-1];
+  if(last){
+    try{await Data.selectMonth({year:last.y,month:last.m});}catch(e){}
+    refreshMonths();refreshAmounts();
+  }
+  TODAY=Math.max(0,MONTHS.length-1);
+  const ni=MONTHS.findIndex(m=>m.y===Data._currentMonthY&&m.m===Data._currentMonthM);
+  TL.sel={level:'month',idx:ni>=0?ni:TODAY};
+  TL.z=1;TL.scroll=1;
+  renderLedgerSeg();
+  buildGraph();syncChrome();syncRail&&syncRail();
+  requestAnimationFrame(frame);
+  toast('欢迎来到 Orbit 星账 · 真实数据已加载');
+}
+boot();

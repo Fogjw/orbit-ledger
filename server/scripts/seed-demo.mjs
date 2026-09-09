@@ -58,7 +58,9 @@ const SEED = [
   ['2026-06-01', 250000, { category: '收入·生活费' }, []],
 ];
 for (const [date, amountCents, primary, tags] of SEED) {
-  const r = await call('POST', '/ledgers/1/expenses', { type: 'expense', amountCents, date, primary, tags });
+  // 收入行主 tag 是「收入·生活费」→ 记 income，其余记 expense
+  const type = primary.category === '收入·生活费' ? 'income' : 'expense';
+  const r = await call('POST', '/ledgers/1/expenses', { type, amountCents, date, primary, tags });
   if (!ok(r)) console.log('WARN', date, r.status, JSON.stringify(r.data));
 }
 // 验证 6 月统计
