@@ -30,7 +30,7 @@ export function ledgersRouter(svc) {
     res.status(204).end();
   });
 
-  // ---- tag 管理（建 tag；删除/重命名留后续） ----
+  // ---- tag 管理（建/改名改色/删） ----
   r.post('/:id/tags', (req, res) => {
     const ledgerId = idOf(req.params.id);
     const body = req.body ?? {};
@@ -39,6 +39,26 @@ export function ledgersRouter(svc) {
     const color = optStr(body, 'color') ?? null;
     const tag = svc.tags.create(ledgerId, { dimensionKey, name, color });
     res.status(201).json(tag);
+  });
+
+  /** PATCH /:id/tags/:tagId —— 改名/改色（{name?, color?}；color: null 清除覆盖色） */
+  r.patch('/:id/tags/:tagId', (req, res) => {
+    const ledgerId = idOf(req.params.id);
+    const tagId = idOf(req.params.tagId, 'tagId');
+    const body = req.body ?? {};
+    // 显式区分「未提供」(undefined) 与「清空」(null)：color 支持传 null
+    const patch = {};
+    if (body.name !== undefined) patch.name = String(body.name);
+    if (body.color !== undefined) patch.color = body.color === null ? null : String(body.color);
+    res.json(svc.tags.update(ledgerId, tagId, patch));
+  });
+
+  /** DELETE /:id/tags/:tagId —— 删除（「未标注」与被引用 tag 受保护） */
+  r.delete('/:id/tags/:tagId', (req, res) => {
+    const ledgerId = idOf(req.params.id);
+    const tagId = idOf(req.params.tagId, 'tagId');
+    svc.tags.remove(ledgerId, tagId);
+    res.status(204).end();
   });
 
   return r;

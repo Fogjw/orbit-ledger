@@ -62,6 +62,7 @@ Base: `http://localhost:5310/api`（端口 env `ORBIT_PORT` 覆盖）。CORS 放
 | GET | `/ledgers/:id/dimensions` | 维度+tag 树（录入下拉/图谱源） |
 | PATCH/DELETE | `/ledgers/:id` | 改名 `{name}` / 删除 |
 | POST | `/ledgers/:id/tags` | 建 tag `{dimensionKey,name,color}` |
+| PATCH/DELETE | `/ledgers/:id/tags/:tagId` | 改名/改色 `{name?,color?}`（同维唯一，未标注锁定） / 删除（未标注与被引用 tag 409 保护） |
 | POST | `/ledgers/:id/expenses` | 记一笔（见下） |
 | GET | `/ledgers/:id/expenses?from&to&type` | 时间窗列表（含 tag 明细） |
 | GET/PUT/DELETE | `/ledgers/:id/expenses/:eid` | 单笔 / 编辑 / 删除（单笔操作账本内校验，跨账本 404） |
@@ -90,7 +91,7 @@ Base: `http://localhost:5310/api`（端口 env `ORBIT_PORT` 覆盖）。CORS 放
 
 ## 质量
 
-- 测试：`npm test`（node:test 19 项：Σ 守恒/隔离/回滚/校验/编辑全量替换/聚合/API 全流程/错误映射）。
+- 测试：`npm test`（node:test 26 项：Σ 守恒/隔离/回滚/校验/编辑全量替换/tag 维护保护/聚合/API 全流程/错误映射）。
 - 金额守恒是记账正确性生死线，回归必查。
 
 ## 技术要点与取舍

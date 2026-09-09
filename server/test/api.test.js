@@ -147,6 +147,71 @@ describe('API 全流程', () => {
     assert.equal(r.status, 400);
   });
 
+  test('tag PATCH 改名/改色 + DELETE 删除保护（409/404）', async () => {
+    const ledger = svc.ledgers.create('tag 账本');
+    // 建一个 tag
+    let r = await fetch(`${base}/api/ledgers/${ledger.id}/tags`, {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ dimensionKey: 'category', name: '夜宵', color: '#ffb066' }),
+    });
+    assert.equal(r.status, 201);
+    const tag = await j(r);
+
+    // PATCH 改名
+    r = await fetch(`${base}/api/ledgers/${ledger.id}/tags/${tag.id}`, {
+      method: 'PATCH', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ name: '夜宵摊', color: '#aa0000' }),
+    });
+    assert.equal(r.status, 200);
+    const updated = await j(r);
+    assert.equal(updated.name, '夜宵摊');
+    assert.equal(updated.color, '#aa0000');
+
+    // PATCH 改名同维冲突 → 409
+    r = await fetch(`${base}/api/ledgers/${ledger.id}/tags/${tag.id}`, {
+      method: 'PATCH', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ name: '餐饮' }),
+    });
+    assert.equal(r.status, 409);
+    assert.equal((await j(r)).error, 'TAG_EXISTS');
+
+    // 「未标注」锁定 → 409（取情境维未标注 id）
+    const dims = await (await fetch(`${base}/api/ledgers/${ledger.id}/dimensions`)).json();
+    const ctxDim = dims.dimensions.find(d => d.key === 'context');
+    const unnamed = ctxDim.tags.find(t => t.is_unnamed === 1);
+    r = await fetch(`${base}/api/ledgers/${ledger.id}/tags/${unnamed.id}`, {
+      method: 'PATCH', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ name: '改了' }),
+    });
+    assert.equal(r.status, 409);
+    assert.equal((await j(r)).error, 'UNNAMED_TAG_LOCKED');
+
+    // 记一笔引用「夜宵摊」→ DELETE → 409 TAG_IN_USE
+    await fetch(`${base}/api/ledgers/${ledger.id}/expenses`, {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ amountCents: 100, date: '2026-06-01', primary: { category: '餐饮' }, tags: ['夜宵摊'] }),
+    });
+    r = await fetch(`${base}/api/ledgers/${ledger.id}/tags/${tag.id}`, { method: 'DELETE' });
+    assert.equal(r.status, 409);
+    assert.equal((await j(r)).error, 'TAG_IN_USE');
+
+    // 未引用 tag 可删
+    const idleTag = await (await fetch(`${base}/api/ledgers/${ledger.id}/tags`, {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ dimensionKey: 'category', name: '临时' }),
+    })).json();
+    r = await fetch(`${base}/api/ledgers/${ledger.id}/tags/${idleTag.id}`, { method: 'DELETE' });
+    assert.equal(r.status, 204);
+
+    // 跨账本操作 → 404
+    const other = svc.ledgers.create('其他账本');
+    r = await fetch(`${base}/api/ledgers/${other.id}/tags/${tag.id}`, {
+      method: 'PATCH', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ name: 'x' }),
+    });
+    assert.equal(r.status, 404);
+  });
+
   test('错误映射：404 / 400 / 业务错误', async () => {
     let r = await fetch(`${base}/api/nonexistent`);
     assert.equal(r.status, 404);

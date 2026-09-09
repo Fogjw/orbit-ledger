@@ -216,6 +216,89 @@ describe('花销编辑（S1：PUT 全量替换，单事务）', () => {
   });
 });
 
+describe('tag 维护（S2-1：改名/改色/删除保护）', () => {
+  test('改名生效且不破坏历史关联（link 按 tag_id）', () => {
+    const { svc } = setup();
+    const l = svc.ledgers.create('生活费');
+    const e = svc.expenses.add({ ledgerId: l.id, amountCents: 1000, date: '2026-06-01', primary: { category: '餐饮' } });
+    const catDim = svc.tags.dimensions(l.id).find(d => d.key === 'category');
+    const food = catDim.tags.find(t => t.name === '餐饮');
+    svc.tags.update(l.id, food.id, { name: '外卖' });
+    // 历史花销显示新名（关联按 tag_id 未断）
+    const after = svc.expenses.byId(e.id);
+    const prim = after.tags.find(t => t.role === 'primary' && t.dim_key === 'category');
+    assert.equal(prim.name, '外卖');
+    // 维度树同步
+    const dims = svc.tags.dimensions(l.id);
+    assert.equal(dims.find(d => d.key === 'category').tags.some(t => t.name === '外卖'), true);
+    assert.equal(dims.find(d => d.key === 'category').tags.some(t => t.name === '餐饮'), false);
+  });
+
+  test('改色生效', () => {
+    const { svc } = setup();
+    const l = svc.ledgers.create('X');
+    const catDim = svc.tags.dimensions(l.id).find(d => d.key === 'category');
+    const food = catDim.tags.find(t => t.name === '餐饮');
+    const updated = svc.tags.update(l.id, food.id, { color: '#123456' });
+    assert.equal(updated.color, '#123456');
+  });
+
+  test('改名同维重名 → TAG_EXISTS；跨账本 → 404', () => {
+    const { svc } = setup();
+    const a = svc.ledgers.create('A');
+    const b = svc.ledgers.create('B');
+    const aCat = svc.tags.dimensions(a.id).find(d => d.key === 'category');
+    const food = aCat.tags.find(t => t.name === '餐饮');
+    // A 内改成已存在的「交通」→ 冲突
+    assert.throws(() => svc.tags.update(a.id, food.id, { name: '交通' }), { code: 'TAG_EXISTS', status: 409 });
+    // B 改 A 的 tag → 404
+    assert.throws(() => svc.tags.update(b.id, food.id, { name: '外卖' }), { code: 'NOT_FOUND', status: 404 });
+    // 空名 → 400
+    assert.throws(() => svc.tags.update(a.id, food.id, { name: '  ' }), { code: 'MISSING_FIELD' });
+  });
+
+  test('「未标注」锁定：不可改名/改色/删除', () => {
+    const { svc } = setup();
+    const l = svc.ledgers.create('X');
+    const ctx = svc.tags.dimensions(l.id).find(d => d.key === 'context');
+    const unnamed = ctx.tags.find(t => t.is_unnamed === 1);
+    assert.throws(() => svc.tags.update(l.id, unnamed.id, { name: '随便' }), { code: 'UNNAMED_TAG_LOCKED', status: 409 });
+    assert.throws(() => svc.tags.update(l.id, unnamed.id, { color: '#ff0000' }), { code: 'UNNAMED_TAG_LOCKED', status: 409 });
+    assert.throws(() => svc.tags.remove(l.id, unnamed.id), { code: 'UNNAMED_TAG_LOCKED', status: 409 });
+  });
+
+  test('被引用 tag 删除 → TAG_IN_USE 拒绝（防级联破坏 Σ）', () => {
+    const { svc } = setup();
+    const l = svc.ledgers.create('X');
+    // primary 引用
+    svc.expenses.add({ ledgerId: l.id, amountCents: 1000, date: '2026-06-01', primary: { category: '餐饮' } });
+    const catDim = svc.tags.dimensions(l.id).find(d => d.key === 'category');
+    const food = catDim.tags.find(t => t.name === '餐饮');
+    assert.throws(() => svc.tags.remove(l.id, food.id), { code: 'TAG_IN_USE', status: 409 });
+    // 数据完好（拒绝发生在 DELETE 之前）
+    const view = svc.reports.windowView(l.id, { type: 'expense' });
+    assert.equal(view.totals.expense, 1000);
+    const cnt = svc.expenses.listByWindow(l.id)[0].tags.filter(t => t.name === '餐饮').length;
+    assert.equal(cnt, 1, '餐饮 primary link 未被级联删除');
+  });
+
+  test('副 tag 引用也拒删；未引用 tag 可删且维度树移除', () => {
+    const { svc } = setup();
+    const l = svc.ledgers.create('X');
+    svc.tags.create(l.id, { dimensionKey: 'category', name: '夜宵' });
+    svc.expenses.add({ ledgerId: l.id, amountCents: 1000, date: '2026-06-01', primary: { category: '餐饮' }, tags: ['夜宵'] });
+    const catDim = svc.tags.dimensions(l.id).find(d => d.key === 'category');
+    const snack = catDim.tags.find(t => t.name === '夜宵');
+    assert.throws(() => svc.tags.remove(l.id, snack.id), { code: 'TAG_IN_USE', status: 409 });
+
+    // 建一个未引用的 tag 并删除
+    const fresh = svc.tags.create(l.id, { dimensionKey: 'category', name: '临时' });
+    svc.tags.remove(l.id, fresh.id);
+    const dims = svc.tags.dimensions(l.id);
+    assert.equal(dims.find(d => d.key === 'category').tags.some(t => t.name === '临时'), false);
+  });
+});
+
 describe('聚合', () => {
   test('月度/每日序列按时间窗过滤', () => {
     const { svc } = setup();

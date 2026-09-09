@@ -73,5 +73,36 @@ export function createTagRepo(db) {
       ).run(ledgerId, dimensionId, name, isUnnamed ? 1 : 0, color, position);
       return Number(lastInsertRowid);
     },
+
+    /**
+     * 改 tag 名/色（部分更新）。undefined = 不改；color: null = 显式清除覆盖色。
+     * @param {number} id
+     * @param {{name?: string, color?: string|null}} fields
+     */
+    updateTag(id, { name, color } = {}) {
+      if (name !== undefined) db.prepare('UPDATE tags SET name = ? WHERE id = ?').run(name, id);
+      if (color !== undefined) db.prepare('UPDATE tags SET color = ? WHERE id = ?').run(color, id);
+    },
+
+    /** 删 tag（仅未引用 tag 可删；service 层先做 TAG_IN_USE/锁定校验） */
+    removeTag(id) {
+      db.prepare('DELETE FROM tags WHERE id = ?').run(id);
+    },
+
+    /** tag 被花销引用数（primary/secondary 合计）——删除保护依据 */
+    referenceCount(tagId) {
+      const r = db.prepare(
+        'SELECT COUNT(*) AS n FROM expense_tag_links WHERE tag_id = ?'
+      ).get(tagId);
+      return Number(r.n);
+    },
+
+    /** 同维度内是否已存在同名 tag（改名查重用，排除自身） */
+    nameExistsInDimension(dimensionId, name, exceptTagId = null) {
+      const r = exceptTagId === null
+        ? db.prepare('SELECT COUNT(*) AS n FROM tags WHERE dimension_id = ? AND name = ?').get(dimensionId, name)
+        : db.prepare('SELECT COUNT(*) AS n FROM tags WHERE dimension_id = ? AND name = ? AND id != ?').get(dimensionId, name, exceptTagId);
+      return Number(r.n) > 0;
+    },
   };
 }
