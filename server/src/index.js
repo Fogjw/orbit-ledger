@@ -25,10 +25,11 @@ const svc = {
   reports: createReportService(db),
   exports: createExportService(db),
 };
-const app = createApp(svc);
+const app = createApp(svc, { webDir: config.webDir });
 
 const server = app.listen(config.port, () => {
   console.log(`[server] Orbit 业务服务 → http://localhost:${config.port}  (db: ${config.dbPath})`);
+  console.log(`[server] 前端 → http://localhost:${config.port}/ （web/；API → /api；MCP → /mcp）`);
 });
 
 // 优雅退出（未来 Electron 由主进程统一管理生命周期）

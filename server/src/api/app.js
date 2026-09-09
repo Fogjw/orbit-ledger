@@ -1,4 +1,4 @@
-// Express 应用组装：CORS(localhost 放开) + json + 路由 + MCP + 404 + 错误映射
+// Express 应用组装：CORS(localhost 放开) + json + 路由 + MCP + 静态(可选) + 404 + 错误映射
 import express from 'express';
 import { BizError } from '../services/ledgerService.js';
 import { ledgersRouter } from './routes/ledgers.js';
@@ -9,8 +9,9 @@ import { createMcpMiddleware } from '../mcp/index.js';
 /**
  * 组装应用。services 由外部注入（便于测试替换）。
  * @param {{ ledgers, expenses, tags, reports, exports }} svc
+ * @param {{ webDir?: string }} [opts] webDir 给定时托管前端静态（localhost 直开）
  */
-export function createApp(svc) {
+export function createApp(svc, opts = {}) {
   const app = express();
   app.disable('x-powered-by');
 
@@ -33,6 +34,12 @@ export function createApp(svc) {
   // MCP（2026-07-28 stateless）——同进程同端口，复用同一 services
   const mcp = createMcpMiddleware(svc);
   app.post('/mcp', (req, res) => mcp(req, res, req.body));
+
+  // 前端静态托管（仅当 webDir 注入；置于 404 之前）
+  if (opts.webDir) {
+    app.use(express.static(opts.webDir));
+    app.get('/', (req, res) => res.sendFile('index.html', { root: opts.webDir }));
+  }
 
   // 404
   app.use((req, res) => res.status(404).json({ error: 'NOT_FOUND', message: `无此端点: ${req.method} ${req.path}` }));
