@@ -132,6 +132,8 @@ canvas{display:block}
 .dd-sep{height:1px;background:var(--border);margin:5px 8px}
 .dd-new{display:flex;align-items:center;gap:8px;width:100%;padding:9px 11px;border:1px dashed var(--border2);background:transparent;color:var(--dim);font:600 12px var(--font);border-radius:10px;cursor:pointer;text-align:left}
 .dd-new:hover{color:#fff;border-color:rgba(140,190,255,.5)}
+.dd-danger{display:flex;align-items:center;gap:8px;width:100%;padding:8px 11px;border:0;background:transparent;color:#c97b90;font:600 12px var(--font);border-radius:10px;cursor:pointer;text-align:left;margin-top:2px}
+.dd-danger:hover{color:#ff9db4;background:rgba(255,80,120,.1)}
 .m-chips{display:flex;flex-wrap:wrap;gap:8px}
 .m-chip{border:1px solid var(--border2);background:rgba(255,255,255,.03);color:var(--text);font:600 12px var(--font);border-radius:20px;padding:7px 13px;cursor:pointer;transition:all .18s;display:flex;align-items:center;gap:6px}
 .m-chip i{width:8px;height:8px;border-radius:50%;display:inline-block}

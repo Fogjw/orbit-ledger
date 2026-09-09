@@ -898,7 +898,8 @@ function renderLedgerDD(){
       ${String(l.id)===String(S.ledgerId)?'<span class="dd-check">✦</span>':''}
     </button>`).join('')+`
     <div class="dd-sep"></div>
-    <button class="dd-new" id="ddNewLedger">＋ 新建账本</button>`;
+    <button class="dd-new" id="ddNewLedger">＋ 新建账本</button>
+    <button class="dd-danger" id="ddDelLedger">🗑 删除当前账本</button>`;
   menu.querySelectorAll('.dd-item').forEach(b=>b.onclick=async ()=>{
     const id=isNaN(Number(b.dataset.id))?b.dataset.id:Number(b.dataset.id);
     menu.hidden=true;
@@ -906,6 +907,25 @@ function renderLedgerDD(){
   });
   const nb=menu.querySelector('#ddNewLedger');
   if(nb)nb.onclick=()=>{menu.hidden=true;openNameBox({kind:'ledger'})};
+  const db=menu.querySelector('#ddDelLedger');
+  if(db)db.onclick=async ()=>{
+    const name=cur?cur.name:'';
+    menu.hidden=true;
+    if(!cur)return;
+    if(!confirm(`删除账本「${name}」？\n其中全部花销、标签、维度将被永久删除，无法撤销。`))return;
+    try{
+      await OrbitAPI.deleteLedger(cur.id);
+      // 从本地列表移除；若删空则新建默认账本，否则切到第一个
+      Data.ledgers=Data.ledgers.filter(l=>String(l.id)!==String(cur.id));
+      if(!Data.ledgers.length){
+        const nl=await OrbitAPI.createLedger('我的账本');
+        Data.ledgers=[nl];
+      }
+      await switchLedger(Data.ledgers[0].id);
+      renderLedgerDD();
+      toast('账本「'+name+'」已删除');
+    }catch(err){toast('删除失败：'+(err.message||err))}
+  };
 }
 
 // 下拉开关：点按钮展开，点外部/Esc 收起

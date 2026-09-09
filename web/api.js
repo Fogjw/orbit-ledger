@@ -36,6 +36,9 @@ const API = {
   // 创建账本
   createLedger: (name) => request('/ledgers', { method: 'POST', body: { name } }),
 
+  // 删除账本（连带该账本全部花销/维度/tag）
+  deleteLedger: (id) => request(`/ledgers/${id}`, { method: 'DELETE' }),
+
   // 获取单个账本
   getLedger: (id) => request(`/ledgers/${id}`),
 
