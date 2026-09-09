@@ -73,7 +73,22 @@ const Data = {
     if (this.months.length) {
       const last = this.months[this.months.length - 1];
       await this.selectMonth({ year: last.y, month: last.m });
+    } else {
+      // 无数据账本：复位当月视图，避免残留上一账本统计
+      this._resetMonthView();
     }
+  },
+
+  /** 复位"当前选中月"的全部统计（空账本/切账本兜底用） */
+  _resetMonthView() {
+    this.monthRange = { from: null, to: null };
+    this._currentMonthY = null;
+    this._currentMonthM = null;
+    this.monthTotal = 0;
+    this.prevMonthTotal = 0;
+    this.monthAmountsByDim = { category: {}, context: {} };
+    this.monthAmounts = {};
+    this.days = [];
   },
 
   // ===== 月选择 =====

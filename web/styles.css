@@ -102,6 +102,10 @@ canvas{display:block}
 /* 记账浮层 */
 .modal-mask{position:fixed;inset:0;z-index:100;display:grid;place-items:center;background:rgba(2,4,10,.6);backdrop-filter:blur(6px)}
 .modal-mask[hidden]{display:none}
+/* 浮层层级：记一笔(115) 与 命名(120) 需盖过 明细(110)，命名最顶 */
+#expMask{z-index:110}
+#modalMask{z-index:115}
+#nameMask{z-index:120}
 .modal{width:min(430px,calc(100vw - 32px));border-radius:22px;padding:20px;animation:pop .35s cubic-bezier(.2,.9,.3,1.2)}
 @keyframes pop{from{opacity:0;transform:scale(.94) translateY(10px)}}
 .m-head{display:flex;align-items:center;gap:12px;margin-bottom:6px}
