@@ -835,20 +835,118 @@ rail.addEventListener('pointermove',e=>{if(railDrag)railSet(e)});
 rail.addEventListener('pointerup',()=>{railDrag=false;toast('即将支持')});
 }
 
-/* 记账浮层（装饰） */
+/* 记账浮层（真实提交：POST → 重拉 → 图谱刷新） */
 const mask=$('#modalMask');
+let modalIsIncome=false; // 浮层类型：false=支出，true=收入
+// 解析浮层账本 select：默认当前账本，被改则用其值（按 id 或名称匹配）
+function resolveModalLedgerId(){
+  const sel=document.querySelector('.m-row select');
+  const raw=sel?String(sel.value||'').trim():'';
+  if(raw&&Data&&Data.ledgers){
+    const hit=Data.ledgers.find(l=>String(l.id)===raw||l.name===raw);
+    if(hit)return hit.id;
+  }
+  return S.ledgerId;
+}
+// 打开浮层时同步账本下拉（value 用真实 id，选中当前账本）
+function syncModalLedgerOptions(){
+  const sel=document.querySelector('.m-row select');
+  if(!sel||!Data||!Data.ledgers||!Data.ledgers.length)return;
+  sel.innerHTML=Data.ledgers.map(l=>`<option value="${l.id}">${l.name}</option>`).join('');
+  sel.value=String(S.ledgerId);
+  if(!sel.value)sel.selectedIndex=0;
+}
 function renderModalChips(){
-  $('#mCats').innerHTML=CATS.map((c,i)=>`<button class="m-chip${i===0?' on':''}"><i style="background:${c.color}"></i>${c.name}</button>`).join('');
-  $('#mCtx').innerHTML=CTXS.map((c,i)=>`<button class="m-chip${i===1?' on':''}">${c.name}</button>`).join('');
-  document.querySelectorAll('.m-chip').forEach(b=>b.onclick=e=>{e.preventDefault();
+  // 收入时品类候选只留名字含「收入」的 tag
+  const catList0=modalIsIncome?CATS.filter(c=>c.name.includes('收入')):CATS;
+  if(!catList0.length){
+    $('#mCats').innerHTML='<div style="color:#8b96b5;font-size:12px">暂无收入类目，请先在品类维新建「收入·…」tag</div>';
+  }else{
+    $('#mCats').innerHTML=catList0.map((c,i)=>`<button class="m-chip${i===0?' on':''}" data-tag-id="${c.tagId}"><i style="background:${c.color}"></i>${c.name}</button>`).join('');
+  }
+  $('#mCtx').innerHTML=CTXS.map((c,i)=>`<button class="m-chip${i===1?' on':''}" data-tag-id="${c.tagId}">${c.name}</button>`).join('');
+  document.querySelectorAll('#mCats .m-chip,#mCtx .m-chip').forEach(b=>b.onclick=e=>{e.preventDefault();
     [...b.parentElement.children].forEach(x=>x.classList.remove('on'));b.classList.add('on')});
   document.querySelectorAll('.m-tab').forEach(b=>b.onclick=()=>{
-    document.querySelectorAll('.m-tab').forEach(x=>x.classList.remove('active'));b.classList.add('active')});
+    document.querySelectorAll('.m-tab').forEach(x=>x.classList.remove('active'));b.classList.add('active');
+    // 收入 tab 联动品类重渲染
+    modalIsIncome=b.textContent.trim()==='收入';
+    renderModalChips();
+  });
 }
-$('#btnAdd').onclick=()=>{mask.hidden=false;renderModalChips()};
+$('#btnAdd').onclick=()=>{
+  mask.hidden=false;
+  // 打开时回到当前账本的真实 tags 与默认类型
+  modalIsIncome=document.querySelector('.m-tab.active')?.textContent.trim()==='收入';
+  syncModalLedgerOptions();
+  const di=document.querySelector('.m-row input[type=date]');
+  if(di&&!di.value)di.value=new Date().toISOString().slice(0,10);
+  renderModalChips();
+};
 $('#modalClose').onclick=$('#modalCancel').onclick=()=>mask.hidden=true;
 mask.addEventListener('click',e=>{if(e.target===mask)mask.hidden=true});
-$('#modalSave').onclick=()=>{mask.hidden=true;burst(W/2,H/2-40,'#9be9ff',40);toast('已点亮一颗新星（演示暂不持久化）')};
+$('#modalSave').onclick=async ()=>{
+  const isIncome=document.querySelector('.m-tab.active')?.textContent.trim()==='收入';
+  // 金额：元 → 分
+  const yuan=parseFloat($('#mAmount').value);
+  if(!isFinite(yuan)||yuan<=0){toast('请输入有效金额');return}
+  const amountCents=Math.round(yuan*100);
+  // 类型/日期
+  const type=isIncome?'income':'expense';
+  const dateInput=document.querySelector('.m-row input[type=date]');
+  const date=dateInput?dateInput.value:'';
+  if(!/^\d{4}-\d{2}-\d{2}$/.test(date)){toast('日期无效');return}
+  // 账本：默认当前账本，浮层 select 被改则用其值
+  const ledgerId=resolveModalLedgerId();
+  // 品类（必填）：优先用数字 tag id
+  const catChip=document.querySelector('#mCats .m-chip.on');
+  const category=catChip?(catChip.dataset.tagId?Number(catChip.dataset.tagId):catChip.textContent.trim()):'';
+  if(!category){toast(isIncome?'暂无收入类目，请先新建「收入·…」tag':'请选择品类');return}
+  // 情境（可选）：「未标注」不传，后端自动落未标注
+  const ctxChip=document.querySelector('#mCtx .m-chip.on');
+  const ctxName=ctxChip?ctxChip.textContent.trim():'';
+  const context=(ctxChip&&ctxName&&ctxName!=='未标注')?(ctxChip.dataset.tagId?Number(ctxChip.dataset.tagId):ctxName):undefined;
+  // 备注
+  const note=document.querySelector('.m-remark')?.value.trim()||undefined;
+  const payload={type,amountCents,date,note,primary:{category},tags:[]};
+  if(context!==undefined)payload.primary.context=context;
+  if(isIncome){
+    // 收入时品类必须用「收入·…」tag
+    const nm=catChip?catChip.textContent.trim():'';
+    if(!nm.includes('收入')){toast('收入请选择「收入·生活费」类目（可先在品类维建收入 tag）');return}
+  }
+  try{
+    const created=await OrbitAPI.addExpense(ledgerId,payload);
+    mask.hidden=true;
+    // 若记到别的账本：先切账本再刷新；否则重拉当前月统计与月序列
+    if(String(ledgerId)!==String(Data.ledgerId)){
+      S.ledgerId=ledgerId;
+      await Data.selectLedger(ledgerId);
+      refreshTagArrays();refreshMonths();refreshAmounts();
+      renderLedgerSeg();
+    }else{
+      await Data.afterChange();
+      refreshMonths();refreshAmounts();
+    }
+    // 若刚记的月份不在当前显示月，跳到该月（按 created.date 的 YYYY-MM）
+    if(created&&created.date&&/^\d{4}-\d{2}-\d{2}$/.test(created.date)){
+      const cy=Number(created.date.slice(0,4)),cm=Number(created.date.slice(5,7));
+      if(!(Data._currentMonthY===cy&&Data._currentMonthM===cm)){
+        await Data.selectMonth({year:cy,month:cm});
+        refreshMonths();refreshAmounts();
+      }
+    }
+    // 同步星轨选中到该月并重建图谱
+    const mi=MONTHS.findIndex(m=>m.y===Data._currentMonthY&&m.m===Data._currentMonthM);
+    if(mi>=0)TL.sel={level:'month',idx:mi};
+    TODAY=Math.max(0,MONTHS.length-1);
+    buildGraph();syncChrome();
+    burst(W/2,H-190,'#9be9ff',30);
+    toast('已记一笔 · ¥'+yuan.toLocaleString());
+  }catch(e){
+    toast('记账失败：'+(e.message||e));
+  }
+};
 addEventListener('keydown',e=>{if(e.key==='Escape'){mask.hidden=true;goBack()}});
 
 /* ---------- 主循环 ---------- */
