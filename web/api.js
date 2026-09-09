@@ -1,7 +1,10 @@
 /**
  * Orbit 星账 · web/ REST 客户端
  * 零依赖、普通 <script> 可用的全局对象 window.OrbitAPI
+ * 作用域隔离：包在 IIFE 内（顶层 const 与其它 script 共享全局词法环境，
+ * 撞名即 SyntaxError 中断整页），仅暴露 window.OrbitAPI。
  */
+(function () {
 
 const BASE = ((typeof window !== 'undefined' ? window : globalThis).ORBIT_API_BASE) || 'http://localhost:5310/api';
 
@@ -112,3 +115,5 @@ const API = {
 
 // 挂载到全局对象（兼容浏览器和 Node.js）
 (typeof window !== 'undefined' ? window : globalThis).OrbitAPI = API;
+
+})();

@@ -690,7 +690,7 @@ gC.addEventListener('pointerup',e=>{
       if(n.kind!=='cat')continue;
       if(d<=n.R+12&&d<bd){best=n;bd=d}
     }
-    if(best&&S.view==='l1'){/* 下钻暂不做：保持 L1 */toast('下钻即将支持');}
+    if(best&&S.view==='l1'){enterDetail(best.id);}
     else if(!any&&S.view==='detail')goBack(); // 兼容：detail 已禁用
   }
 });
@@ -729,16 +729,89 @@ oC.addEventListener('pointerup',e=>{
 });
 oC.addEventListener('pointerleave',()=>{oDrag=null;setHover(null)});
 
-function enterDetail(id){
-  // 本任务暂不做下钻：点品类不进 detail，保持 L1
-  toast('下钻即将支持');
-  return;
+/** 打开花销明细浮层：某品类/情境 tag 在当月的逐笔花销 + 删除能力 */
+async function enterDetail(id){
+  const tag=(CATS.concat(CTXS)).find(c=>c.id===id);
+  if(!tag)return;
+  await openExpenseList(tag);
 }
 function goBack(){
   if(S.view!=='detail')return;
   S.view='l1';S.focus=null;$('#btnBack').hidden=true;buildGraph();syncChrome();
 }
 $('#btnBack').onclick=goBack;
+
+/* ===== 花销明细浮层（删花销 / 删 tag） ===== */
+const expMask=$('#expMask');
+let expCtx=null; // {tagId, dimKey, name}
+async function openExpenseList(tag){
+  expCtx={tagId:tag.tagId, dimKey:S.dim, name:tag.name};
+  $('#expTitle').textContent=S.dim==='category'?'品类 · '+tag.name:tag.name;
+  $('#expDelTag').textContent='删除「'+tag.name+'」tag';
+  expMask.hidden=false;
+  await refreshExpList();
+}
+/** 拉当前月该 tag 的 expense（primary 匹配）+ 该 tag 副标（其它维被标注的 tag 也在 primary 或 secondary 中出现时如何处理？只列 primary=该tag 的）*/
+async function refreshExpList(){
+  const box=$('#expList');
+  if(!expCtx)return;
+  const {from,to}=Data.monthRange;
+  $('#expSub').textContent=(from&&to)?(from.slice(0,7).replace('-','年')+'月 · '+expCtx.name):expCtx.name;
+  box.innerHTML='<div class="e-empty">加载中…</div>';
+  try{
+    const {items=[]}=await OrbitAPI.listExpenses(Data.ledgerId,{from,to});
+    // 匹配：该 tag 作为 primary（category 维按 primary；context 同）——也包含副 tag 提及？只列 primary
+    const mine=items.filter(e=>e.tags.some(t=>t.role==='primary'&&t.tag_id===expCtx.tagId));
+    if(!mine.length){box.innerHTML='<div class="e-empty">本月该'+ (S.dim==='category'?'品类':'情境') +'暂无花销</div>';return}
+    box.innerHTML=mine.map(e=>{
+      const d=e.date.slice(5).replace('-','/');
+      const amt=(e.amount_cents/100);
+      const ctxTag=e.tags.find(t=>t.role==='primary'&&t.dim_key!=='category')?.name;
+      return `<div class="e-row" data-id="${e.id}">
+        <span class="e-date">${d}</span>
+        <span class="e-note">${(e.note||'')}${ctxTag?' · '+ctxTag:''}</span>
+        <span class="e-amt">¥${amt.toLocaleString()}</span>
+        <button class="e-del" title="删除这笔">✕</button>
+      </div>`;
+    }).join('');
+    box.querySelectorAll('.e-row').forEach(row=>{
+      row.querySelector('.e-del').onclick=async (ev)=>{
+        ev.stopPropagation();
+        const eid=Number(row.dataset.id);
+        const amtText=row.querySelector('.e-amt').textContent;
+        if(!confirm('删除这笔花销 '+amtText+' ？'))return;
+        try{
+          await OrbitAPI.deleteExpense(Data.ledgerId,eid);
+          await Data.afterChange();refreshMonths();refreshAmounts();
+          buildGraph();syncChrome();
+          await refreshExpList();
+          toast('已删除一笔');
+        }catch(err){toast('删除失败：'+(err.message||err))}
+      };
+    });
+  }catch(err){
+    box.innerHTML='<div class="e-empty">加载失败：'+(err.message||err)+'</div>';
+  }
+}
+$('#expClose').onclick=()=>expMask.hidden=true;
+$('#expDone').onclick=()=>expMask.hidden=true;
+expMask.addEventListener('click',e=>{if(e.target===expMask)expMask.hidden=true});
+// 删除整个 tag（后端保护：被引用则 409 提示先删花销；未标注锁定）
+$('#expDelTag').onclick=async ()=>{
+  if(!expCtx)return;
+  if(!confirm('删除 tag「'+expCtx.name+'」？\n（若仍有花销使用会被拒绝，需先删除或转移）'))return;
+  try{
+    await OrbitAPI.deleteTag(Data.ledgerId,expCtx.tagId);
+    expMask.hidden=true;
+    await Data.selectLedger(Data.ledgerId); // 重拉维度/统计
+    refreshTagArrays();refreshMonths();refreshAmounts();
+    buildGraph();syncChrome();
+    toast('tag 已删除');
+  }catch(err){
+    toast('删除失败：'+(err.message||err)+'（请先删除使用它的花销）');
+  }
+};
+
 
 /* ---------- 顶栏/面板 ---------- */
 function toast(msg,ms=2200){
@@ -785,32 +858,61 @@ function renderTop(){
   document.querySelectorAll('.top-row').forEach(el=>{
     el.onmouseenter=()=>setHover({kind:'cat',id:el.dataset.id});
     el.onmouseleave=()=>setHover(null);
-    el.onclick=()=>{toast('下钻即将支持')};
+    el.onclick=()=>{const tag=(CATS.concat(CTXS)).find(c=>c.id===el.dataset.id);if(tag)openExpenseList(tag)};
   });
   const topName=items[0]?items[0].name:'—';
   $('#insightBox').innerHTML=`✨ 本月 <b>${topName}</b> 是最大支出星系`;
 }
 function seg(id,fn){$(id).querySelectorAll('.seg').forEach(b=>b.onclick=()=>{
   $(id).querySelectorAll('.seg').forEach(x=>x.classList.remove('active'));b.classList.add('active');fn(b.dataset.v)})}
-function renderLedgerSeg(){
-  const box=$('#ledgerSeg');
-  if(!box||!Data||!Data.ledgers)return;
-  box.innerHTML=Data.ledgers.map(l=>`<button class="seg${String(l.id)===String(S.ledgerId)?' active':''}" data-v="${l.id}">${l.name}</button>`).join('');
-  box.querySelectorAll('.seg').forEach(b=>b.onclick=async ()=>{
-    box.querySelectorAll('.seg').forEach(x=>x.classList.remove('active'));b.classList.add('active');
-    const id=isNaN(Number(b.dataset.v))?b.dataset.v:Number(b.dataset.v);
-    S.ledgerId=id;
-    try{
-      await Data.selectLedger(id);
-      refreshTagArrays();refreshMonths();refreshAmounts();
-      TODAY=Math.max(0,MONTHS.length-1);
-      TL.sel={level:'month',idx:TODAY};TL.scroll=1;
-    }catch(e){toast('切换账本失败：'+(e.message||e))}
-    buildGraph();syncChrome();
-    const cur=(Data.ledgers||[]).find(l=>String(l.id)===String(S.ledgerId));
-    toast('账本 · '+(cur?cur.name:''));
-  });
+
+/** 切换账本（下拉项 / 新建后共用）：重拉数据并整链刷新 */
+async function switchLedger(id){
+  if(String(id)===String(S.ledgerId)&&Data.cats.length)return;
+  S.ledgerId=id;
+  try{
+    await Data.selectLedger(id);
+    refreshTagArrays();refreshMonths();refreshAmounts();
+    TODAY=Math.max(0,MONTHS.length-1);
+    const ni=MONTHS.findIndex(m=>m.y===Data._currentMonthY&&m.m===Data._currentMonthM);
+    TL.sel={level:'month',idx:ni>=0?ni:TODAY};TL.scroll=1;
+  }catch(e){toast('切换账本失败：'+(e.message||e))}
+  renderLedgerDD();
+  buildGraph();syncChrome();
+  const cur=(Data.ledgers||[]).find(l=>String(l.id)===String(S.ledgerId));
+  toast('账本 · '+(cur?cur.name:''));
 }
+
+/** 渲染账本下拉菜单 + 按钮当前名 */
+function renderLedgerDD(){
+  const btn=$('#ledgerBtn'),menu=$('#ledgerMenu');
+  if(!btn||!menu||!Data||!Data.ledgers)return;
+  const cur=(Data.ledgers||[]).find(l=>String(l.id)===String(S.ledgerId));
+  btn.innerHTML=`<span class="led-name">${cur?cur.name:'选择账本'}</span> ▾`;
+  // 每账本取稳定色点（名称哈希）
+  const dotColor=n=>{const p=['#5ad7ff','#b48cff','#ff9f6b','#6fe3a8','#ff7a9e','#ffd166','#6b9dff','#f06292'];let h=0;for(const c of n)h=(h*31+c.charCodeAt(0))>>>0;return p[h%p.length]};
+  menu.innerHTML=Data.ledgers.map(l=>`
+    <button class="dd-item${String(l.id)===String(S.ledgerId)?' active':''}" data-id="${l.id}">
+      <span class="dd-dot" style="color:${dotColor(l.name)};background:${dotColor(l.name)}"></span>
+      <span class="dd-name">${l.name}</span>
+      ${String(l.id)===String(S.ledgerId)?'<span class="dd-check">✦</span>':''}
+    </button>`).join('')+`
+    <div class="dd-sep"></div>
+    <button class="dd-new" id="ddNewLedger">＋ 新建账本</button>`;
+  menu.querySelectorAll('.dd-item').forEach(b=>b.onclick=async ()=>{
+    const id=isNaN(Number(b.dataset.id))?b.dataset.id:Number(b.dataset.id);
+    menu.hidden=true;
+    await switchLedger(id);
+  });
+  const nb=menu.querySelector('#ddNewLedger');
+  if(nb)nb.onclick=()=>{menu.hidden=true;openNameBox({kind:'ledger'})};
+}
+
+// 下拉开关：点按钮展开，点外部/Esc 收起
+$('#ledgerBtn').onclick=(e)=>{e.stopPropagation();const m=$('#ledgerMenu');m.hidden=!m.hidden;if(!m.hidden)renderLedgerDD()};
+document.addEventListener('click',()=>{const m=$('#ledgerMenu');if(m)m.hidden=true});
+addEventListener('keydown',e=>{if(e.key==='Escape'){const m=$('#ledgerMenu');if(m)m.hidden=true}});
+
 seg('#dimSeg',v=>{S.dim=v;S.view='l1';S.focus=null;$('#btnBack').hidden=true;refreshAmounts();buildGraph();syncChrome();
   toast(v==='category'?'维度 · 品类（这是什么钱）':'维度 · 情境（和谁 / 什么场景）')});
 $('#btnToday').onclick=async ()=>{
@@ -865,7 +967,7 @@ $('#nameOk').onclick=async ()=>{
       TODAY=Math.max(0,MONTHS.length-1);
       const ni=MONTHS.findIndex(m=>m.y===Data._currentMonthY&&m.m===Data._currentMonthM);
       TL.sel={level:'month',idx:ni>=0?ni:TODAY};
-      renderLedgerSeg();
+      renderLedgerDD();
       buildGraph();syncChrome();
       toast('账本 · '+raw+' 已创建');
     }else{
@@ -976,7 +1078,7 @@ $('#modalSave').onclick=async ()=>{
       S.ledgerId=ledgerId;
       await Data.selectLedger(ledgerId);
       refreshTagArrays();refreshMonths();refreshAmounts();
-      renderLedgerSeg();
+      renderLedgerDD();
     }else{
       await Data.afterChange();
       refreshMonths();refreshAmounts();
@@ -1034,7 +1136,7 @@ async function boot(){
   const ni=MONTHS.findIndex(m=>m.y===Data._currentMonthY&&m.m===Data._currentMonthM);
   TL.sel={level:'month',idx:ni>=0?ni:TODAY};
   TL.z=1;TL.scroll=1;
-  renderLedgerSeg();
+  renderLedgerDD();
   buildGraph();syncChrome();syncRail&&syncRail();
   requestAnimationFrame(frame);
   toast('欢迎来到 Orbit 星账 · 真实数据已加载');

@@ -41,9 +41,9 @@
       <span class="badge">DEMO</span>
     </div>
 
-    <div class="segment" id="ledgerSeg">
-      <button class="seg active" data-v="life">生活费</button>
-      <button class="seg" data-v="private">私人</button>
+    <div class="ledger-dd">
+      <button class="btn ghost led-btn" id="ledgerBtn" title="切换账本">◈ 生活费 ▾</button>
+      <div class="dd-menu glass" id="ledgerMenu" hidden></div>
     </div>
     <button class="btn ghost seg-add" id="btnAddLedger" title="新建账本">＋账本</button>
 
@@ -136,6 +136,23 @@
       <div class="m-foot">
         <button class="btn ghost" id="nameCancel">取消</button>
         <button class="btn primary" id="nameOk">创建</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- 花销明细浮层（点品类主星：本月该品类逐笔 + 删除） -->
+  <div class="modal-mask" id="expMask" hidden>
+    <div class="modal glass e-modal">
+      <div class="m-head">
+        <span class="n-title" id="expTitle">花销明细</span>
+        <button class="m-close" id="expClose">✕</button>
+      </div>
+      <div class="e-sub" id="expSub"></div>
+      <div class="e-list" id="expList"></div>
+      <div class="m-foot e-foot">
+        <button class="btn danger" id="expDelTag">删除此 tag</button>
+        <div class="spacer"></div>
+        <button class="btn primary" id="expDone">完成</button>
       </div>
     </div>
   </div>
