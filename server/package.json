@@ -1,0 +1,18 @@
+{
+  "name": "orbit-server",
+  "private": true,
+  "version": "0.1.0",
+  "type": "module",
+  "description": "Orbit 星账 · 业务逻辑层（本地 SQLite + Express API，未来嵌 Electron 主进程 / MCP）",
+  "scripts": {
+    "dev": "node src/index.js",
+    "start": "node src/index.js",
+    "test": "node test/services.test.js && node test/api.test.js"
+  },
+  "engines": {
+    "node": ">=22.5.0"
+  },
+  "dependencies": {
+    "express": "^4.21.2"
+  }
+}
