@@ -257,26 +257,56 @@ function buildGraph(){
       const er=expR(yuan);
       nodes.push({kind:'exp',id:'e'+e.id,ref:e,cat:detailTag.id,subIds,amount:yuan,R:er,tr:er,
         x:ax,y:ay,vx:0,vy:0,ax,ay,k:0.0026,seed:i*1.7+1,idx:subs.length+i*0.25,ctxColor:'#cdd8f2'});
+      // 边一：账单 ↔ 其所属细分 —— **全部实线**（这是归属关系）
       for(const id of subIds){
-        const meta=subById.get(id);
-        if(!meta)continue;
-        const shared=meta.count>1;   // 多笔共享同一细分 → 共享线（虚线）
-        links.push({s:'e'+e.id,t:'s'+id,w:shared?0.85:1.05,shared,ph:Math.random(),sp:.35});
+        if(!subById.has(id))continue;
+        links.push({s:'e'+e.id,t:'s'+id,w:1.0,ph:Math.random(),sp:.35});
       }
     });
+
+    // 边二：副 tag ↔ 副 tag 的**共享线（虚线）**——
+    // 一笔账单同时挂了两个细分，这两个细分就被这笔账单"共享"。
+    // 这是《需求基线》L2「共享线（多对多投影）」的直接落地：
+    // hover 共享线时，两端细分与共享它的账单一起高亮。
+    const pairMap=new Map();   // 'a:b' → {a,b,exps[]}
+    for(const {e,subIds} of rows){
+      const ids=[...new Set(subIds)].filter(id=>subById.has(id)).sort((x,y)=>x-y);
+      for(let i=0;i<ids.length;i++)for(let j=i+1;j<ids.length;j++){
+        const key=ids[i]+':'+ids[j];
+        if(!pairMap.has(key))pairMap.set(key,{a:ids[i],b:ids[j],exps:[]});
+        pairMap.get(key).exps.push(e.id);
+      }
+    }
+    for(const {a,b,exps} of pairMap.values()){
+      links.push({
+        id:'share:'+a+':'+b,s:'s'+a,t:'s'+b,shared:true,a,b,exps,
+        w:1.6,ph:Math.random(),sp:.2,   // 只作视觉连接，不参与物理（见 tickDetail）
+      });
+    }
   }
 }
 const byId=id=>nodes.find(n=>n.id===id);
+/* focus+context 的关联判定：hover 某节点或**共享线**时，其余无关元素降透明度。
+   下钻图里「花销 ↔ 细分」由 subIds 决定；细分之间无直接关系（互相变暗）。 */
+let hoverShare=null;   // 当前 hover 的共享线对象（含 a/b/exps），供 related 判定
 function related(a,b){
   if(!a||!b||a===b)return true;
+  const n=byId(b)||byId(a);
+  // hover 共享线：只亮两端细分 + 共享它的那些账单（《需求基线》L2 的 hover 语义）
+  if(hoverShare){
+    if(!n)return false;
+    if(n.kind==='sub')return n.tagId===hoverShare.a||n.tagId===hoverShare.b;
+    if(n.kind==='exp')return (hoverShare.exps||[]).includes(n.ref.id);
+    return false;
+  }
   const A=byId(a),B=byId(b);if(!A||!B)return false;
   const exp=A.kind==='exp'?A:(B.kind==='exp'?B:null);
   if(exp){
     const other=A.kind==='exp'?B:A;
     if(other.kind==='sub')return (exp.subIds||[]).includes(other.tagId);
-    return true;   // 花销与中心分类节点天然相关
+    return true;
   }
-  if(A.kind==='sub'&&B.kind==='sub')return false;   // 细分之间无直接关系，互相变暗
+  // 细分之间只有在「被同一笔共享」时才相关（由末尾的 links.some 判定）
   return links.some(l=>(l.s===a&&l.t===b)||(l.s===b&&l.t===a));
 }
 /* L1：锚点系留真漂浮（星座构图稳定）；下钻：真·力导向（斥力+弹簧+质心引力） */
@@ -326,8 +356,9 @@ function tickDetail(dt){
       if(!b.pin){b.vx+=ux*F/fMass(b)*f;b.vy+=uy*F/fMass(b)*f}
     }
   }
-  // 连线弹簧
+  // 连线弹簧（共享线不参与：它只表达"两个细分被同一笔共享"，若参与会拽乱外环均布）
   for(const l of links){
+    if(l.shared)continue;
     const s=byId(l.s),t=byId(l.t);if(!s||!t)continue;
     const rest=l.rest||130;
     const dx=t.x-s.x,dy=t.y-s.y,d=Math.hypot(dx,dy)||1;
@@ -400,9 +431,11 @@ function drawGraph(t){
   // 星座连线 / 二部图边
   for(const l of links){
     const s=byId(l.s),t2=byId(l.t);if(!s||!t2)continue;
-    const on=hovG&&(related(hovG,s.id)||related(hovG,t2.id));
+    const selfHot=(S.hoverKind==='link'&&S.hover===l.id);
+    const on=selfHot||(hovG&&(related(hovG,s.id)||related(hovG,t2.id)));
     let a=(l.w>1?.30:.20);
     if(hovG)a=on?.7:.04;
+    if(selfHot)a=1;   // 被 hover 的共享线本身最亮
     a*=clamp(enterT,0,1);
     if(a<=.01)continue;
     const c1=s.kind==='exp'?'#cdd8f2':s.ref.color;
@@ -410,7 +443,7 @@ function drawGraph(t){
     const gr=g.createLinearGradient(s.x,s.y,t2.x,t2.y);
     gr.addColorStop(0,rgba(c1.startsWith('#')?c1:'#9fb4d8',a));
     gr.addColorStop(1,rgba(c2.startsWith('#')?c2:'#9fb4d8',a));
-    g.strokeStyle=gr;g.lineWidth=on?1.8:1.1;
+    g.strokeStyle=gr;g.lineWidth=selfHot?2.4:(on?1.8:1.1);
     // 共享线（多笔共享同一细分）用虚线；专属归属用实线
     if(l.shared)g.setLineDash([3,5]);
     g.beginPath();g.moveTo(s.x,s.y);g.lineTo(t2.x,t2.y);g.stroke();
@@ -704,9 +737,38 @@ function setZoom(z,quiet){
 /* ---------- 交互 ---------- */
 const tip=$('#tooltip');
 let mouse={x:.5,y:.5},dragN=null,downPos=null,downT=0;
+/** 点到线段的距离（共享线 hover 命中判定用） */
+function distToSeg(px,py,x1,y1,x2,y2){
+  const dx=x2-x1,dy=y2-y1,L2=dx*dx+dy*dy;
+  let t=L2?((px-x1)*dx+(py-y1)*dy)/L2:0;
+  t=clamp(t,0,1);
+  return Math.hypot(px-(x1+t*dx),py-(y1+t*dy));
+}
+/** 命中共享线。只让共享线可 hover —— 归属线太密，纳入命中会频繁误触 */
+function pickShareLink(x,y){
+  let best=null,bd=8;
+  for(const l of links){
+    if(!l.shared)continue;
+    const s=byId(l.s),t=byId(l.t);if(!s||!t)continue;
+    const d=distToSeg(x,y,s.x,s.y,t.x,t.y);
+    if(d<bd){best=l;bd=d}
+  }
+  return best;
+}
 function setHover(h){
   S.hover=h?h.id:null;S.hoverKind=h?h.kind:null;
+  hoverShare=null;
   if(!h){tip.hidden=true;gC.style.cursor='default';document.querySelectorAll('.top-row').forEach(e=>e.classList.remove('hot'));return}
+  if(h.kind==='link'){
+    const l=links.find(x=>x.id===h.id);
+    if(!l){tip.hidden=true;return}
+    hoverShare=l;   // 让 related 知道当前高亮的是哪条共享线
+    const A=byId(l.s),B=byId(l.t);
+    tip.innerHTML=`<b>共享线</b><div style="color:#8b96b5">${A?A.ref.name:''} ↔ ${B?B.ref.name:''}</div><div style="color:#8b96b5">${(l.exps||[]).length} 笔共享</div>`;
+    tip.hidden=false;gC.style.cursor='pointer';
+    document.querySelectorAll('.top-row').forEach(e=>e.classList.remove('hot'));
+    return;
+  }
   if(h.kind==='cat'||h.kind==='exp'||h.kind==='sub'){
     const n=byId(h.id);if(!n){tip.hidden=true;return}
     const title=n.kind==='exp'?(n.ref.note||'一笔花销'):n.ref.name;
@@ -740,7 +802,12 @@ gC.addEventListener('pointermove',e=>{
   const r=gC.getBoundingClientRect(),x=e.clientX-r.left,y=e.clientY-r.top;
   let best=null,bd=1e9;
   for(const n of nodes){const d=Math.hypot(n.x-x,n.y-y);if(d<=n.R+9&&d<bd){best=n;bd=d}}
-  setHover(best?{kind:best.kind,id:best.id}:null);
+  if(best){
+    setHover({kind:best.kind,id:best.id});
+  }else{
+    const l=pickShareLink(x,y);   // 没命中节点时，再看是否压在共享线上
+    setHover(l?{kind:'link',id:l.id}:null);
+  }
 });
 gC.addEventListener('pointerdown',e=>{
   const r=gC.getBoundingClientRect(),x=e.clientX-r.left,y=e.clientY-r.top;
