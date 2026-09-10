@@ -54,12 +54,15 @@ describe('API 全流程', () => {
     const dims = await j(r);
     assert.equal(dims.dimensions.length, 2);
 
-    // 建副 tag（品类维）
+    // 建副 tag：必须挂在主 tag 下（v3）——夜宵 → 餐饮
+    const food = dims.dimensions.find(d => d.key === 'category').tags.find(t => t.name === '餐饮');
+    assert.ok(food, '品类维含「餐饮」主 tag');
     r = await fetch(`${base}/api/ledgers/${ledger.id}/tags`, {
       method: 'POST', headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ dimensionKey: 'category', name: '夜宵', color: '#ffb066' }),
+      body: JSON.stringify({ dimensionKey: 'category', name: '夜宵', color: '#ffb066', parentTagId: food.id }),
     });
     assert.equal(r.status, 201);
+    assert.equal((await j(r)).parent_tag_id, food.id, '副 tag 记录父引用');
 
     // 记一笔（含副 tag 用名称）
     r = await fetch(`${base}/api/ledgers/${ledger.id}/expenses`, {
@@ -94,10 +97,11 @@ describe('API 全流程', () => {
 
   test('PUT 编辑花销：全量替换 + 统计守恒 + 404 隔离', async () => {
     const ledger = svc.ledgers.create('编辑账本');
-    // 建副 tag（供记账引用）
+    // 建副 tag（供记账引用）：挂在「餐饮」下
+    const foodTag = svc.tags.dimensions(ledger.id).find(d => d.key === 'category').tags.find(t => t.name === '餐饮');
     await fetch(`${base}/api/ledgers/${ledger.id}/tags`, {
       method: 'POST', headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ dimensionKey: 'category', name: '夜宵' }),
+      body: JSON.stringify({ dimensionKey: 'category', name: '夜宵', parentTagId: foodTag.id }),
     });
     // 记一笔
     let r = await fetch(`${base}/api/ledgers/${ledger.id}/expenses`, {
@@ -151,15 +155,22 @@ describe('API 全流程', () => {
 
   test('tag PATCH 改名/改色 + DELETE 删除保护（409/404）', async () => {
     const ledger = svc.ledgers.create('tag 账本');
-    // 建一个 tag
+    // 建副 tag（须挂在主 tag 下，v3）：夜宵 + 同父的「午餐」
+    const catOf = (name) => svc.tags.dimensions(ledger.id).find(d => d.key === 'category').tags.find(t => t.name === name);
+    const foodTag = catOf('餐饮');
     let r = await fetch(`${base}/api/ledgers/${ledger.id}/tags`, {
       method: 'POST', headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ dimensionKey: 'category', name: '夜宵', color: '#ffb066' }),
+      body: JSON.stringify({ dimensionKey: 'category', name: '夜宵', color: '#ffb066', parentTagId: foodTag.id }),
     });
     assert.equal(r.status, 201);
     const tag = await j(r);
+    assert.equal(tag.parent_tag_id, foodTag.id, '副 tag 记录父引用');
+    await fetch(`${base}/api/ledgers/${ledger.id}/tags`, {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ dimensionKey: 'category', name: '午餐', parentTagId: foodTag.id }),
+    });
 
-    // PATCH 改名
+    // PATCH 改名/改色
     r = await fetch(`${base}/api/ledgers/${ledger.id}/tags/${tag.id}`, {
       method: 'PATCH', headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ name: '夜宵摊', color: '#aa0000' }),
@@ -169,13 +180,29 @@ describe('API 全流程', () => {
     assert.equal(updated.name, '夜宵摊');
     assert.equal(updated.color, '#aa0000');
 
-    // PATCH 改名同维冲突 → 409
+    // PATCH 改名同父冲突 → 409
     r = await fetch(`${base}/api/ledgers/${ledger.id}/tags/${tag.id}`, {
       method: 'PATCH', headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ name: '餐饮' }),
+      body: JSON.stringify({ name: '午餐' }),
     });
     assert.equal(r.status, 409);
     assert.equal((await j(r)).error, 'TAG_EXISTS');
+
+    // 跨父同名允许：在「交通」下建同名「午餐」→ 201
+    r = await fetch(`${base}/api/ledgers/${ledger.id}/tags`, {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ dimensionKey: 'category', name: '午餐', parentTagId: catOf('交通').id }),
+    });
+    assert.equal(r.status, 201, '不同主 tag 下允许同名副 tag');
+
+    // 副 tag 不能跨维度挂：父属于情境维却按品类维提交 → 400
+    const ctxOf = svc.tags.dimensions(ledger.id).find(d => d.key === 'context').tags.find(t => t.name === '和朋友');
+    r = await fetch(`${base}/api/ledgers/${ledger.id}/tags`, {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ dimensionKey: 'category', name: '错维子标签', parentTagId: ctxOf.id }),
+    });
+    assert.equal(r.status, 400);
+    assert.equal((await j(r)).error, 'PARENT_DIMENSION_MISMATCH');
 
     // 「未标注」锁定 → 409（取情境维未标注 id）
     const dims = await (await fetch(`${base}/api/ledgers/${ledger.id}/dimensions`)).json();

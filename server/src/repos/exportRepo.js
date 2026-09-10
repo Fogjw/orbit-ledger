@@ -20,7 +20,7 @@ export function createExportRepo(db) {
         'SELECT id, ledger_id, key, name, position, required FROM dimensions WHERE ledger_id = ? ORDER BY position, id'
       ).all(ledgerId));
       const tags = plainAll(db.prepare(
-        'SELECT id, ledger_id, dimension_id, name, is_unnamed, color, position FROM tags WHERE ledger_id = ? ORDER BY position, id'
+        'SELECT id, ledger_id, dimension_id, name, is_unnamed, color, position, parent_tag_id FROM tags WHERE ledger_id = ? ORDER BY position, id'
       ).all(ledgerId));
       const expenses = plainAll(db.prepare(
         'SELECT id, ledger_id, type, amount_cents, date, note, created_at FROM expenses WHERE ledger_id = ? ORDER BY date, id'

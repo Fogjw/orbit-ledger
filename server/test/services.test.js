@@ -22,6 +22,14 @@ function setup() {
   return { db, svc };
 }
 
+/** 取账本某维度下主 tag 的 id（副 tag 须挂在其下，测试辅助） */
+function mainTagId(svc, ledgerId, dimKey, name) {
+  const dim = svc.tags.dimensions(ledgerId).find(d => d.key === dimKey);
+  const tag = dim.tags.find(t => t.name === name);
+  assert.ok(tag, `维度 ${dimKey} 下应存在主 tag「${name}」`);
+  return tag.id;
+}
+
 describe('账本', () => {
   test('建账本自动生成默认维度与「未标注」', () => {
     const { svc } = setup();
@@ -121,7 +129,7 @@ describe('花销编辑（S1：PUT 全量替换，单事务）', () => {
   test('编辑金额/日期/备注/主副 tag 全部生效（旧关联清空重写）', () => {
     const { svc } = setup();
     const l = svc.ledgers.create('生活费');
-    svc.tags.create(l.id, { dimensionKey: 'category', name: '夜宵', color: '#ffb066' });
+    svc.tags.create(l.id, { dimensionKey: 'category', name: '夜宵', color: '#ffb066', parentTagId: mainTagId(svc, l.id, 'category', '餐饮') });
     const e = svc.expenses.add({
       ledgerId: l.id, amountCents: 4560, date: '2026-06-07', note: '撸串',
       primary: { category: '餐饮', context: '和朋友' }, tags: ['夜宵'],
@@ -159,7 +167,7 @@ describe('花销编辑（S1：PUT 全量替换，单事务）', () => {
   test('编辑失败 → 整体回滚，原值原关联不变', () => {
     const { db, svc } = setup();
     const l = svc.ledgers.create('X');
-    svc.tags.create(l.id, { dimensionKey: 'category', name: '夜宵' });
+    svc.tags.create(l.id, { dimensionKey: 'category', name: '夜宵', parentTagId: mainTagId(svc, l.id, 'category', '餐饮') });
     const e = svc.expenses.add({ ledgerId: l.id, amountCents: 4560, date: '2026-06-07', primary: { category: '餐饮' }, tags: ['夜宵'] });
     // 副 tag 不存在 → 抛错回滚
     assert.throws(
@@ -287,7 +295,7 @@ describe('tag 维护（S2-1：改名/改色/删除保护）', () => {
   test('副 tag 引用也拒删；未引用 tag 可删且维度树移除', () => {
     const { svc } = setup();
     const l = svc.ledgers.create('X');
-    svc.tags.create(l.id, { dimensionKey: 'category', name: '夜宵' });
+    svc.tags.create(l.id, { dimensionKey: 'category', name: '夜宵', parentTagId: mainTagId(svc, l.id, 'category', '餐饮') });
     svc.expenses.add({ ledgerId: l.id, amountCents: 1000, date: '2026-06-01', primary: { category: '餐饮' }, tags: ['夜宵'] });
     const catDim = svc.tags.dimensions(l.id).find(d => d.key === 'category');
     const snack = catDim.tags.find(t => t.name === '夜宵');
@@ -380,3 +388,190 @@ describe('聚合', () => {
     assert.equal(view.daily.length, 2);
   });
 });
+
+// S6-v3：tag 两级化（主 tag → 副 tag）。核心规则：一笔账单的副 tag 只能取自它自己的主 tag，
+// 因此「交通通勤」下挂不了「午餐」；维度之间因每维恰一 primary 而天然互不串位。
+describe('副 tag 绑定主 tag（两级结构 + 归属校验）', () => {
+  /** 在指定维度主 tag 下建副 tag */
+  const addSub = (svc, l, dimKey, parentName, name) =>
+    svc.tags.create(l.id, { dimensionKey: dimKey, name, parentTagId: mainTagId(svc, l.id, dimKey, parentName) });
+
+  test('同维另一主 tag 下的副 tag 被拒（交通通勤 × 午餐）', () => {
+    const { db, svc } = setup();
+    const l = svc.ledgers.create('生活费');
+    addSub(svc, l, 'category', '餐饮', '午餐');
+    addSub(svc, l, 'category', '交通', '地铁');
+
+    // 合法：餐饮 + 午餐
+    svc.expenses.add({ ledgerId: l.id, amountCents: 2000, date: '2026-06-01', primary: { category: '餐饮' }, tags: ['午餐'] });
+    // 越界：主 tag 取「交通」，副 tag 却是挂在「餐饮」下的「午餐」
+    assert.throws(
+      () => svc.expenses.add({ ledgerId: l.id, amountCents: 500, date: '2026-06-01', primary: { category: '交通' }, tags: ['午餐'] }),
+      { code: 'SUBTAG_NOT_UNDER_PRIMARY', status: 400 },
+      '交通通勤下不能挂餐饮的副 tag'
+    );
+    // 失败整体回滚，无残留
+    assert.equal(db.prepare('SELECT COUNT(*) n FROM expenses').get().n, 1);
+    assert.equal(db.prepare('SELECT COUNT(*) n FROM expense_tag_links').get().n, 3, '成功笔 3 条 link（2 primary + 1 secondary）');
+  });
+
+  test('各维度副 tag 各归其主：品类与情境互不串位', () => {
+    const { svc } = setup();
+    const l = svc.ledgers.create('X');
+    addSub(svc, l, 'category', '餐饮', '午餐');
+    addSub(svc, l, 'context', '和朋友', '聚餐');
+
+    // 两个维度的副 tag 挂同一笔：各挂各的主 tag，都合法
+    const e = svc.expenses.add({
+      ledgerId: l.id, amountCents: 3000, date: '2026-06-01',
+      primary: { category: '餐饮', context: '和朋友' }, tags: ['午餐', '聚餐'],
+    });
+    const subs = e.tags.filter(t => t.role === 'secondary').map(t => t.name);
+    assert.equal(subs.length, 2);
+    assert.deepEqual(new Set(subs), new Set(['午餐', '聚餐']));
+
+    // 本笔情境主 tag 换成「通勤」→ 情境维副 tag「聚餐」不再属于本笔 → 拒
+    assert.throws(
+      () => svc.expenses.add({
+        ledgerId: l.id, amountCents: 100, date: '2026-06-02',
+        primary: { category: '餐饮', context: '通勤' }, tags: ['聚餐'],
+      }),
+      { code: 'SUBTAG_NOT_UNDER_PRIMARY', status: 400 }
+    );
+  });
+
+  test('主 tag 与副 tag 不可互相冒充', () => {
+    const { svc } = setup();
+    const l = svc.ledgers.create('X');
+    const food = mainTagId(svc, l.id, 'category', '餐饮');
+    const lunch = addSub(svc, l, 'category', '餐饮', '午餐');
+
+    // 主 tag 当副 tag → NOT_A_SUBTAG
+    assert.throws(
+      () => svc.expenses.add({ ledgerId: l.id, amountCents: 100, date: '2026-06-01', primary: { category: '餐饮' }, tags: [food] }),
+      { code: 'NOT_A_SUBTAG', status: 400 }
+    );
+    // 副 tag 当主 tag（数字 id 路径）→ NOT_A_PRIMARY_TAG
+    assert.throws(
+      () => svc.expenses.add({ ledgerId: l.id, amountCents: 100, date: '2026-06-01', primary: { category: lunch.id } }),
+      { code: 'NOT_A_PRIMARY_TAG', status: 400 }
+    );
+    // 副 tag 当主 tag（名称路径）→ 按名解析只认主 tag，故为找不到
+    assert.throws(
+      () => svc.expenses.add({ ledgerId: l.id, amountCents: 100, date: '2026-06-01', primary: { category: '午餐' } }),
+      { code: 'TAG_NOT_FOUND', status: 404 }
+    );
+  });
+
+  test('建 tag 校验：同父重名拒 / 跨父同名允 / 不超两级 / 父须同维度 / 未标注不可为父', () => {
+    const { svc } = setup();
+    const l = svc.ledgers.create('X');
+    const food = mainTagId(svc, l.id, 'category', '餐饮');
+    const traffic = mainTagId(svc, l.id, 'category', '交通');
+    const friend = mainTagId(svc, l.id, 'context', '和朋友');
+
+    const lunch = addSub(svc, l, 'category', '餐饮', '午餐');
+    // 同父重名 → 409
+    assert.throws(() => addSub(svc, l, 'category', '餐饮', '午餐'), { code: 'TAG_EXISTS', status: 409 });
+    // 跨父同名 → 允许（餐饮→午餐 与 交通→午餐 共存）
+    const lunchOnTraffic = addSub(svc, l, 'category', '交通', '午餐');
+    assert.ok(lunchOnTraffic.id > 0 && lunchOnTraffic.id !== lunch.id);
+    // 三级 → 400
+    assert.throws(
+      () => svc.tags.create(l.id, { dimensionKey: 'category', name: '工作日', parentTagId: lunch.id }),
+      { code: 'SUBTAG_DEPTH_EXCEEDED', status: 400 }
+    );
+    // 父属于别的维度 → 400
+    assert.throws(
+      () => svc.tags.create(l.id, { dimensionKey: 'category', name: '错位', parentTagId: friend }),
+      { code: 'PARENT_DIMENSION_MISMATCH', status: 400 }
+    );
+    // 父不存在 / 跨账本 id → 404
+    assert.throws(
+      () => svc.tags.create(l.id, { dimensionKey: 'category', name: 'X', parentTagId: 999999 }),
+      { code: 'NOT_FOUND', status: 404 }
+    );
+    // 「未标注」不能作为父
+    assert.throws(
+      () => svc.tags.create(l.id, { dimensionKey: 'context', name: '子', parentTagId: mainTagId(svc, l.id, 'context', '未标注') }),
+      { code: 'UNNAMED_TAG_LOCKED', status: 409 }
+    );
+    assert.ok(food > 0 && traffic > 0);
+  });
+
+  test('维度树返回 parent_tag_id，前端可组树', () => {
+    const { svc } = setup();
+    const l = svc.ledgers.create('X');
+    const food = mainTagId(svc, l.id, 'category', '餐饮');
+    addSub(svc, l, 'category', '餐饮', '午餐');
+
+    const catDim = svc.tags.dimensions(l.id).find(d => d.key === 'category');
+    assert.equal(catDim.tags.find(t => t.name === '午餐').parent_tag_id, food, '副 tag 带父引用');
+    assert.equal(catDim.tags.find(t => t.name === '餐饮').parent_tag_id, null, '主 tag 无父');
+    assert.equal(catDim.tags.find(t => t.name === '交通').parent_tag_id, null);
+  });
+
+  test('删除保护：副 tag 被引用时，其父主 tag 也不可删', () => {
+    const { db, svc } = setup();
+    const l = svc.ledgers.create('X');
+    const food = mainTagId(svc, l.id, 'category', '餐饮');
+    addSub(svc, l, 'category', '餐饮', '午餐');
+    svc.expenses.add({ ledgerId: l.id, amountCents: 1000, date: '2026-06-01', primary: { category: '餐饮' }, tags: ['午餐'] });
+    // 父自身被 primary 引用 → 拒
+    assert.throws(() => svc.tags.remove(l.id, food), { code: 'TAG_IN_USE', status: 409 });
+    assert.equal(db.prepare('SELECT COUNT(*) n FROM expense_tag_links').get().n, 3, '拒绝发生在删除之前，关联完好');
+
+    // 造「父零引用、子被引用」态：记账路径必然同时引用父，故直接写 link 专测该保护
+    const traffic = mainTagId(svc, l.id, 'category', '交通');
+    const bus = addSub(svc, l, 'category', '交通', '公交');
+    const host = svc.expenses.add({ ledgerId: l.id, amountCents: 100, date: '2026-06-03', primary: { category: '餐饮' } });
+    db.prepare("INSERT INTO expense_tag_links (expense_id, tag_id, role) VALUES (?, ?, 'secondary')").run(host.id, bus.id);
+    assert.throws(
+      () => svc.tags.remove(l.id, traffic),
+      { code: 'TAG_IN_USE', status: 409 },
+      '删父会级联删子，故子被引用时父不可删'
+    );
+    // 子 tag 自身被引用同样拒删
+    assert.throws(() => svc.tags.remove(l.id, bus.id), { code: 'TAG_IN_USE', status: 409 });
+    // 父子都无引用时可删（子随父级联删除）
+    const idle = addSub(svc, l, 'category', '交通', '临时子');
+    assert.ok(idle.id > 0);
+    svc.tags.remove(l.id, idle.id);
+    assert.equal(svc.tags.dimensions(l.id).find(d => d.key === 'category').tags.some(t => t.id === idle.id), false);
+  });
+
+  test('编辑花销时归属校验同样生效（PUT 全量替换）', () => {
+    const { svc } = setup();
+    const l = svc.ledgers.create('X');
+    addSub(svc, l, 'category', '餐饮', '午餐');
+    addSub(svc, l, 'category', '交通', '地铁');
+    const e = svc.expenses.add({ ledgerId: l.id, amountCents: 2000, date: '2026-06-01', primary: { category: '餐饮' }, tags: ['午餐'] });
+
+    // 主 tag 换成交通，却仍带着餐饮的副 tag → 拒
+    assert.throws(
+      () => svc.expenses.update(l.id, e.id, { amountCents: 2000, date: '2026-06-01', primary: { category: '交通' }, tags: ['午餐'] }),
+      { code: 'SUBTAG_NOT_UNDER_PRIMARY', status: 400 }
+    );
+    // 改成交通 + 地铁（同主 tag 下）→ 通过
+    const ok = svc.expenses.update(l.id, e.id, { amountCents: 2000, date: '2026-06-01', primary: { category: '交通' }, tags: ['地铁'] });
+    assert.deepEqual(ok.tags.filter(t => t.role === 'secondary').map(t => t.name), ['地铁']);
+  });
+
+  test('副 tag 不参与维度求和（Σ 守恒仍只按 primary 计）', () => {
+    const { svc } = setup();
+    const l = svc.ledgers.create('X');
+    addSub(svc, l, 'category', '餐饮', '午餐');
+    addSub(svc, l, 'category', '餐饮', '晚餐');
+    // 一笔挂两个副 tag，另一笔不挂
+    svc.expenses.add({ ledgerId: l.id, amountCents: 3000, date: '2026-06-01', primary: { category: '餐饮' }, tags: ['午餐', '晚餐'] });
+    svc.expenses.add({ ledgerId: l.id, amountCents: 1200, date: '2026-06-02', primary: { category: '交通', context: '通勤' } });
+
+    const view = svc.reports.windowView(l.id, { type: 'expense' });
+    const sumBy = (rows) => rows.reduce((s, r) => s + r.amount_cents, 0);
+    assert.equal(view.totals.expense, 4200);
+    assert.equal(sumBy(view.byDimension.category), 4200, '品类 Σ=总额（副 tag 不重复计数）');
+    assert.equal(sumBy(view.byDimension.context), 4200, '情境 Σ=总额');
+    assert.equal(view.byDimension.category.find(t => t.name === '餐饮').amount_cents, 3000, '餐饮只算一次');
+  });
+});
+

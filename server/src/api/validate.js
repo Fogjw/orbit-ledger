@@ -49,6 +49,17 @@ export function requireStr(body, name, { trim = true } = {}) {
   return trim ? String(v).trim() : String(v);
 }
 
+/** 可选整数（undefined/null/空串 → undefined；给了就必须是合法整数） */
+export function optInt(body, name, { min = null } = {}) {
+  const v = body[name];
+  if (v === undefined || v === null || v === '') return undefined;
+  const n = Number(v);
+  if (!Number.isInteger(n) || (min !== null && n < min)) {
+    throw new BizError(`字段 ${name} 须为整数${min !== null ? `（≥${min}）` : ''}`, 'INVALID_FIELD');
+  }
+  return n;
+}
+
 /** 可选字符串 */
 export function optStr(body, name) {
   const v = body[name];

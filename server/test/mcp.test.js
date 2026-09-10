@@ -134,10 +134,13 @@ describe('MCP 服务（2026-07-28 stateless over HTTP）', () => {
       assert.equal(dims.length, 2);
       assert.ok(dims.find(x => x.key === 'context').tags.some(t => t.is_unnamed === 1), '情境维含未标注');
 
-      // 建副 tag + 用其记账
-      const ct = await client.callTool({ name: 'create_tag', arguments: { ledgerId: ledger.id, dimensionKey: 'category', name: '夜宵' } });
+      // 建副 tag（须挂在主 tag 下，v3）+ 用其记账
+      const food = dims.find(x => x.key === 'category').tags.find(t => t.name === '餐饮');
+      assert.ok(food, '品类维含「餐饮」主 tag');
+      const ct = await client.callTool({ name: 'create_tag', arguments: { ledgerId: ledger.id, dimensionKey: 'category', name: '夜宵', parentTagId: food.id } });
       const tag = JSON.parse(ct.content[0].text);
       assert.ok(tag.id > 0);
+      assert.equal(tag.parent_tag_id, food.id, 'MCP 建副 tag 记录父引用');
       await client.callTool({ name: 'add_expense', arguments: { ledgerId: ledger.id, amountCents: 500, date: '2026-06-01', category: '餐饮', tags: ['夜宵'] } });
 
       // 导出快照含该笔

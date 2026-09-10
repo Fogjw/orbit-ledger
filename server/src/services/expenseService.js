@@ -25,13 +25,22 @@ export function createExpenseService(db) {
     }
     const tag = typeof ref === 'number'
       ? tags.tagById(ledgerId, ref)
-      : tags.tagByName(ledgerId, dimKey, String(ref));
+      : tags.rootTagByName(ledgerId, dimKey, String(ref));
     if (!tag) throw new BizError(`tag 不存在或不属于该账本: ${ref}（维度 ${dimName}）`, 'TAG_NOT_FOUND', 404);
+    // 主 tag 必须是根级：副 tag（主 tag 的细分）不能充当维度的主取值
+    if (tag.parent_tag_id !== null && tag.parent_tag_id !== undefined) {
+      throw new BizError(`「${tag.name}」是副 tag，不能作为维度「${dimName}」的主 tag`, 'NOT_A_PRIMARY_TAG', 400);
+    }
     return tag;
   }
 
-  /** 解析副 tag 引用列表（名称歧义时要求用 id） */
-  function resolveSecondary(ledgerId, refs = []) {
+  /**
+   * 解析副 tag 引用列表并校验归属（S6-v3 规则）。
+   * 规则：副 tag 必须挂在**本笔某个维度的主 tag** 下 —— 一笔账单的副 tag 只能取自它自己的主 tag，
+   * 因此「交通通勤」下无法挂「午餐」（午餐挂在「餐饮」下）；维度之间也因此天然互不串味。
+   * @param {Set<number>} primaryTagIds 本笔已确定的主 tag id 集合
+   */
+  function resolveSecondary(ledgerId, refs = [], primaryTagIds = new Set()) {
     const out = [];
     for (const ref of refs) {
       let tag;
@@ -39,10 +48,20 @@ export function createExpenseService(db) {
         tag = tags.tagById(ledgerId, ref);
       } else {
         const matches = tags.findByName(ledgerId, String(ref));
-        if (matches.length > 1) throw new BizError(`副 tag「${ref}」跨维度重名，请改用 tag id`, 'TAG_AMBIGUOUS');
+        if (matches.length > 1) throw new BizError(`副 tag「${ref}」重名（不同主 tag 下存在同名），请改用 tag id`, 'TAG_AMBIGUOUS');
         tag = matches[0] ?? null;
       }
       if (!tag) throw new BizError(`副 tag 不存在或不属于该账本: ${ref}`, 'TAG_NOT_FOUND', 404);
+      if (tag.parent_tag_id === null || tag.parent_tag_id === undefined) {
+        throw new BizError(`「${tag.name}」是主 tag，不能作为副 tag`, 'NOT_A_SUBTAG', 400);
+      }
+      if (!primaryTagIds.has(tag.parent_tag_id)) {
+        throw new BizError(
+          `副 tag「${tag.name}」不属于本笔的主 tag（副 tag 只能挂在本笔同维主 tag 下）`,
+          'SUBTAG_NOT_UNDER_PRIMARY',
+          400
+        );
+      }
       out.push(tag);
     }
     return out;
@@ -72,7 +91,9 @@ export function createExpenseService(db) {
       const tag = resolvePrimary(ledgerId, dim.key, ref, dim.name);
       links.push({ tagId: tag.id, role: 'primary' });
     }
-    for (const t of resolveSecondary(ledgerId, input.tags)) {
+    // 副 tag：归属校验的基准 = 上面刚定下的主 tag 集合（每维恰一个）
+    const primaryTagIds = new Set(links.map(l => l.tagId));
+    for (const t of resolveSecondary(ledgerId, input.tags, primaryTagIds)) {
       links.push({ tagId: t.id, role: 'secondary' });
     }
 

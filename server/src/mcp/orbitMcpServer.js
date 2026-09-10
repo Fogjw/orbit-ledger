@@ -18,6 +18,7 @@ const schemas = {
     dimensionKey: z.enum(['category', 'context', 'payment']),
     name: z.string().min(1),
     color: z.string().optional(),
+    parentTagId: z.number().int().positive().optional().describe('父主 tag id；给定则在它下面建副 tag（两级结构）'),
   },
   addExpense: {
     ledgerId: z.number().int().positive(),
@@ -76,9 +77,9 @@ export function createOrbitMcpServerFactory(svc) {
       } catch (err) { return fail(err); }
     });
 
-    s.registerTool('create_tag', { title: '建 tag', description: '维度内建 tag（名称唯一）', inputSchema: z.object($.createTag) }, ({ ledgerId, dimensionKey, name, color }) => {
+    s.registerTool('create_tag', { title: '建 tag', description: '建 tag：不传 parentTagId 建主 tag，传则在它下面建副 tag（同层级名称唯一）', inputSchema: z.object($.createTag) }, ({ ledgerId, dimensionKey, name, color, parentTagId }) => {
       try {
-        const t = svc.tags.create(ledgerId, { dimensionKey, name, color: color ?? null });
+        const t = svc.tags.create(ledgerId, { dimensionKey, name, color: color ?? null, parentTagId: parentTagId ?? null });
         return { content: [{ type: 'text', text: JSON.stringify(t) }] };
       } catch (err) { return fail(err); }
     });

@@ -24,7 +24,9 @@ describe('导出（S3-3：账本 JSON 全量快照）', () => {
   test('快照结构：format/version/exportedAt + 五表扁平全量', () => {
     const { svc } = setup();
     const l = svc.ledgers.create('生活费');
-    svc.tags.create(l.id, { dimensionKey: 'category', name: '夜宵' });
+    // 副 tag 须挂在主 tag 下（v3）：夜宵 → 餐饮
+    const food = svc.tags.dimensions(l.id).find(d => d.key === 'category').tags.find(t => t.name === '餐饮');
+    svc.tags.create(l.id, { dimensionKey: 'category', name: '夜宵', parentTagId: food.id });
     svc.tags.create(l.id, { dimensionKey: 'category', name: '收入·生活费' });
     svc.expenses.add({ ledgerId: l.id, amountCents: 4560, date: '2026-06-07', note: '撸串', primary: { category: '餐饮', context: '和朋友' }, tags: ['夜宵'] });
     svc.expenses.add({ ledgerId: l.id, type: 'income', amountCents: 50000, date: '2026-06-01', primary: { category: '收入·生活费' } });
@@ -41,6 +43,10 @@ describe('导出（S3-3：账本 JSON 全量快照）', () => {
     assert.equal(snap.dimensions.length, 2, '品类+情境两维');
     // 默认 tags 11（品类6+情境4+未标注）+ 夜宵 + 收入·生活费 = 13
     assert.equal(snap.tags.length, 13);
+    // 副 tag 的父子关系随快照导出（import 可回插）
+    const snackRow = snap.tags.find(t => t.name === '夜宵');
+    assert.equal(snackRow.parent_tag_id, food.id, '副 tag 带父引用导出');
+    assert.equal(snap.tags.find(t => t.name === '餐饮').parent_tag_id, null, '主 tag 无父');
     assert.equal(snap.expenses.length, 2);
     // links：每笔 category primary + context primary（含未标注）+ 副 tag
     const e1 = snap.expenses.find(e => e.amount_cents === 4560);

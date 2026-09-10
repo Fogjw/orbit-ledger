@@ -54,9 +54,43 @@ CREATE INDEX IF NOT EXISTS idx_links_tag ON expense_tag_links(tag_id);
 CREATE INDEX IF NOT EXISTS idx_links_expense ON expense_tag_links(expense_id);
 `;
 
+// v3：tags 两级化——副 tag 绑定主 tag（parent_tag_id 自引用，NULL = 主 tag）
+// 业务规则（对齐需求基线 §4 L3「分类内 花销×标签 二部图」）：
+//  - 主 tag = 维度取值（餐饮 / 交通通勤），每笔每维恰一个 primary
+//  - 副 tag = 主 tag 的下级细分（餐饮 → 早餐/午餐/晚餐），只能挂在本笔同维主 tag 下
+//  - 维度之间完全独立：品类维的主/副 tag 与情境维互不相干
+// 为何重建表：原表级约束 UNIQUE (dimension_id, name) 会阻止「餐饮→其他」与「交通→其他」共存，
+// 而 SQLite 无法直接删除表级约束，须走官方「建新表 → 拷贝 → 删旧表 → 改名」流程。
+// 自引用外键写新表名 tags_v3，RENAME 时 SQLite 会自动改写为 tags(id)。
+// 注：本迁移须在 PRAGMA foreign_keys=OFF 下执行（见 MIGRATIONS.foreignKeysOff），
+// 否则 DROP TABLE tags 会经 ON DELETE CASCADE 连带清空 expense_tag_links。
+const DDL_V3 = `
+CREATE TABLE tags_v3 (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  ledger_id INTEGER NOT NULL REFERENCES ledgers(id) ON DELETE CASCADE,
+  dimension_id INTEGER NOT NULL REFERENCES dimensions(id) ON DELETE CASCADE,
+  name TEXT NOT NULL,
+  is_unnamed INTEGER NOT NULL DEFAULT 0 CHECK (is_unnamed IN (0,1)),
+  color TEXT,
+  position INTEGER NOT NULL DEFAULT 0,
+  parent_tag_id INTEGER REFERENCES tags_v3(id) ON DELETE CASCADE
+);
+
+INSERT INTO tags_v3 (id, ledger_id, dimension_id, name, is_unnamed, color, position, parent_tag_id)
+  SELECT id, ledger_id, dimension_id, name, is_unnamed, color, position, NULL FROM tags;
+
+DROP TABLE tags;
+ALTER TABLE tags_v3 RENAME TO tags;
+
+-- 同父下名称唯一（取代原「同维度内唯一」）：不同主 tag 下允许同名子 tag
+CREATE UNIQUE INDEX IF NOT EXISTS ux_tags_parent_name
+  ON tags(dimension_id, IFNULL(parent_tag_id, -1), name);
+`;
+
 /**
  * 迁移序列（只追加、不改已发布项）。version 唯一且递增。
- * @type {{version:number, name:string, up:(db:import('node:sqlite').DatabaseSync)=>void}[]}
+ * foreignKeysOff: true 表示该迁移需临时关闭外键（表重建类迁移专用）。
+ * @type {{version:number, name:string, up:(db:import('node:sqlite').DatabaseSync)=>void, foreignKeysOff?:boolean}[]}
  */
 export const MIGRATIONS = [
   {
@@ -70,6 +104,19 @@ export const MIGRATIONS = [
     up(db) {
       db.exec("ALTER TABLE dimensions ADD COLUMN required INTEGER NOT NULL DEFAULT 0");
       db.exec("UPDATE dimensions SET required = 1 WHERE key = 'category'");
+    },
+  },
+  {
+    version: 3,
+    name: 'tags 两级化：副 tag 绑定主 tag（parent_tag_id 自引用 + 同父唯一）',
+    foreignKeysOff: true,
+    up(db) {
+      db.exec(DDL_V3);
+      // 重建后校验：任一外键悬空即中止本迁移（事务回滚，库保持原样）
+      const dangling = db.prepare('PRAGMA foreign_key_check').all();
+      if (dangling.length > 0) {
+        throw new Error(`v3 迁移外键校验失败：${JSON.stringify(dangling)}`);
+      }
     },
   },
 ];
@@ -98,9 +145,15 @@ export function migrate(db) {
 
   for (const m of MIGRATIONS) {
     if (m.version <= current) continue;
-    transaction(db, () => {
-      m.up(db);
-      db.prepare('INSERT INTO schema_version (version, name) VALUES (?, ?)').run(m.version, m.name);
-    });
+    // 表重建类迁移需临时关闭外键：PRAGMA foreign_keys 在事务内是 no-op，只能在事务外切换
+    if (m.foreignKeysOff) db.exec('PRAGMA foreign_keys = OFF;');
+    try {
+      transaction(db, () => {
+        m.up(db);
+        db.prepare('INSERT INTO schema_version (version, name) VALUES (?, ?)').run(m.version, m.name);
+      });
+    } finally {
+      if (m.foreignKeysOff) db.exec('PRAGMA foreign_keys = ON;');
+    }
   }
 }

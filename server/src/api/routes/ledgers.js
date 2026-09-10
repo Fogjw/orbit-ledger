@@ -1,6 +1,6 @@
 // 路由：账本 CRUD + 维度/tag 管理 + 导出
 import { Router } from 'express';
-import { idOf, requireStr, optStr } from '../validate.js';
+import { idOf, requireStr, optStr, optInt } from '../validate.js';
 import { BizError } from '../../services/ledgerService.js';
 
 export function ledgersRouter(svc) {
@@ -49,13 +49,15 @@ export function ledgersRouter(svc) {
   });
 
   // ---- tag 管理（建/改名改色/删） ----
+  /** POST /:id/tags —— 建 tag；带 parentTagId 则在其下建副 tag（两级结构，S6-v3） */
   r.post('/:id/tags', (req, res) => {
     const ledgerId = idOf(req.params.id);
     const body = req.body ?? {};
     const dimensionKey = requireStr(body, 'dimensionKey');
     const name = requireStr(body, 'name');
     const color = optStr(body, 'color') ?? null;
-    const tag = svc.tags.create(ledgerId, { dimensionKey, name, color });
+    const parentTagId = optInt(body, 'parentTagId', { min: 1 }) ?? null;
+    const tag = svc.tags.create(ledgerId, { dimensionKey, name, color, parentTagId });
     res.status(201).json(tag);
   });
 
