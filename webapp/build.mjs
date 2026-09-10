@@ -31,7 +31,7 @@ async function main() {
   });
 
   // 2) 界面脚本与静态资源：原样复制，保证与桌面端是同一份代码
-  for (const f of ['app.js', 'data.js', 'styles.css', 'logo.svg']) {
+  for (const f of ['app.js', 'data.js', 'styles.css', 'logo.svg', 'favicon.svg']) {
     await cp(join(root, 'web', f), join(out, f));
   }
 
