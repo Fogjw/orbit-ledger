@@ -271,8 +271,10 @@ function buildGraph(){
     // 收入节点：底部独立一排，四角尖星（需求基线 §5.3：「收入为独立样式节点，
     // 不混入花销节点」）。只显示本期有收入的类目，按金额降序排 —— 与支出同序
     const inc=INCOMES.filter(c=>c.amount>0).sort((a,b)=>b.amount-a.amount);
+    // 间距适中：单个节点占视口宽的比例设上限（类目少时不会拉得很开），整排居中
+    const incGap=0.13, incSpan=Math.min(0.74,Math.max(0,(inc.length-1)*incGap));
     inc.forEach((c,i)=>{
-      const nx=inc.length===1?0.5:(0.18+0.64*(i/(inc.length-1)));
+      const nx=inc.length===1?0.5:(0.5-incSpan/2+incSpan*(i/(inc.length-1)));
       const p=P(nx,0.95);
       const R=Math.max(7,Math.min(16,tagR(c.amount)*0.8));
       nodes.push({kind:'inc',id:c.id,ref:c,amount:c.amount,R,tr:R,
