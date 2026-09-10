@@ -8,9 +8,11 @@
 
 ```
 orbit-ledger/
-├─ server/       ★ 业务逻辑层（本仓库后端）：数据 + 业务规则 + REST API
-├─ web/          前端（消费本仓库 REST）：零依赖 Canvas2D 星图 + 记账 / 统计 / tag 管理
-├─ electron/     桌面壳层：主进程内嵌本地服务（bootstrap）+ 窗口
+├─ core/         ★ 共享业务层：业务规则 + SQL（纯 JS，Node 与浏览器共用同一份）
+├─ server/       服务端：HTTP + MCP + node:sqlite 驱动（引用 core/）
+├─ webapp/       纯前端版：浏览器里跑 SQLite（sql.js）+ 本地数据存储，构建成静态站点
+├─ web/          界面：零依赖 Canvas2D 星图 + 记账 / 统计 / tag 管理（数据来源由注入的 OrbitAPI 决定）
+├─ electron/     桌面壳层：主进程内嵌本地服务（bootstrap）+ 窗口 + 安装包配置
 └─ docs/
    └─ architecture.md（本文档）
 ```

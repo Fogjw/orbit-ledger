@@ -32,8 +32,10 @@
 
 | 目录 | 归属 | 说明 |
 |---|---|---|
-| `server/` | 业务逻辑层 | SQLite 数据层 + 业务规则 + REST + MCP（node:sqlite / Express / node:test）。**详见 [docs/architecture.md](docs/architecture.md)** |
-| `web/` | 前端 | 零依赖 Canvas2D 星图 + 星轨 + 玻璃 UI；消费 `server/` 的 REST（同端口静态托管） |
+| `core/` | 共享业务层 | 业务规则 + SQL（纯 JS，不依赖 Node）—— **桌面端与纯前端版共用同一份** |
+| `server/` | 服务端 | HTTP + MCP + node:sqlite 驱动，引用 `core/`。**详见 [docs/architecture.md](docs/architecture.md)** |
+| `web/` | 界面 | 零依赖 Canvas2D 星图 + 星轨 + 玻璃 UI；数据来源由注入的 `OrbitAPI` 决定 |
+| `webapp/` | 纯前端版 | 浏览器里跑 SQLite + 本地数据存储，构建成静态站点 |
 | `electron/` | 桌面壳层 | 主进程内嵌同一个本地服务 + 窗口；仓库根 `package.json` 是应用清单（`npm start` / `npm run dist`） |
 | `docs/` | 文档 | `architecture.md`（REST/MCP 契约权威） |
 
@@ -64,6 +66,26 @@ npm start          # 起窗口：主进程内嵌同一个本地服务，与浏�
 
 **关窗 ≠ 退出**：关掉窗口后进程继续驻留托盘，内嵌服务仍在监听（浏览器直连与 MCP 照常可用）；
 右键托盘图标可以「显示主窗口」或「退出 Orbit 星账」——只有后者才真正结束进程。
+
+## 纯前端版（浏览器直连本地数据）
+
+不装任何东西、也不用在本地跑服务：打开一个网址就能记账，**数据存在访问它的那台设备上**。
+网页只负责业务规则与呈现（SQLite 跑在浏览器里），服务端不留任何账目。
+
+```bash
+npm run build:web    # 产出纯静态站点到 webapp/dist/（可直接托管）
+npm run verify:web   # 端到端验证：起静态服务 + 用 Electron 当浏览器跑一遍并截图
+```
+
+- **数据存哪**：首次打开会让你选一个目录，账本写成该目录里的 `orbit.db` —— 真实文件，
+  可备份、可拷到别的设备；句柄记在浏览器里，下次不用重选。
+- **浏览器支持**：直接读写本地文件依赖 File System Access API，目前只有 Chrome / Edge 支持；
+  其他浏览器自动降级为浏览器内部存储（IndexedDB），**清站点数据会丢**，所以要定期导出备份。
+- **两种形态的关系**：业务规则（`core/`）与界面（`web/`）完全共用，差别只在数据来源 ——
+  桌面端走本地服务（带 MCP），纯前端版直接跑在浏览器里（无服务端、无 MCP）。
+- **部署**：产物是纯静态的，GitHub Pages（`.github/workflows/pages.yml`）、Cloudflare Pages、
+  Vercel 或任意静态服务器都能托管。用 Pages 时注意它挂在 `/<仓库名>/` 子路径下 ——
+  构建产物里的引用全是相对的，所以子路径部署不需要改任何配置。
 
 ## 打包成安装包（Windows）
 

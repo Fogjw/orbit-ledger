@@ -39,3 +39,7 @@ server/data/
 
 # npm 本地缓存（受限网络下的 --cache 目录）
 .npm-cache/
+
+# 纯前端版：源码入库，构建产物与验证截图不入库
+webapp/dist/
+webapp/verify-shot.png
