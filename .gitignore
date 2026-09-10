@@ -30,6 +30,9 @@ coverage/
 # 计划/会话临时文件（不入库，git 跟踪规范）
 PLAN.md
 AGENTS.md
+docs/HANDOFF.md
+docs/opencode-t*.md
+docs/web-frontend-task.md
 
 # 数据文件（sqlite 本地账本）
 server/data/
