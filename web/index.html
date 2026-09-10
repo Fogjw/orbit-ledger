@@ -140,7 +140,7 @@
         <label>日期 <input type="date" value="2026-06-14" class="m-input" /></label>
         <label>账本 <select class="m-input"><option>生活费</option><option>私人</option></select></label>
       </div>
-      <input class="m-input m-remark" placeholder="备注…（例如：和朋友吃火锅）" />
+      <textarea class="m-input m-remark" id="mNote" rows="3" placeholder="备注…（可写多行；Ctrl/Cmd+Enter 保存）"></textarea>
       <div class="m-foot">
         <button class="btn ghost" id="modalCancel">取消</button>
         <button class="btn primary" id="modalSave">保存 · 点亮一颗星</button>
@@ -168,6 +168,32 @@
       <div class="m-foot">
         <button class="btn ghost" id="nameCancel">取消</button>
         <button class="btn primary" id="nameOk">创建</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- 账单详情（显示视图）：只读，看金额/日期/账本/关联标签/备注；编辑才进完整浮层 -->
+  <div class="modal-mask" id="viewMask" hidden>
+    <div class="modal glass v-modal">
+      <div class="m-head">
+        <span class="n-title">账单详情</span>
+        <button class="m-close" id="viewClose">✕</button>
+      </div>
+      <div class="v-amount" id="viewAmount">¥0</div>
+      <div class="v-rows">
+        <div class="v-row"><span>日期</span><b id="viewDate"></b></div>
+        <div class="v-row"><span>账本</span><b id="viewLedger"></b></div>
+        <div class="v-row"><span>类型</span><b id="viewType"></b></div>
+      </div>
+      <div class="v-sec">关联标签</div>
+      <div class="v-tags" id="viewTags"></div>
+      <div class="v-sec">备注</div>
+      <div class="v-note" id="viewNote"></div>
+      <div class="m-foot">
+        <button class="btn danger" id="viewDel">删除</button>
+        <div class="spacer"></div>
+        <button class="btn ghost" id="viewClose2">关闭</button>
+        <button class="btn primary" id="viewEdit">编辑</button>
       </div>
     </div>
   </div>

@@ -387,12 +387,15 @@ const byId=id=>nodes.find(n=>n.id===id);
    共享线彼此孤立：hover 一条共享线不会点亮别的共享线。
    集合为 null 表示当前无 hover（一切正常显示）。 */
 let hotNodes=null, hotLinks=null;
+/** 持久高亮：点击细分节点切换。用来回答「这个细分连接了哪些账单」。 */
+let pinnedId=null;
 const linkKey=l=>l.id||(l.s+'|'+l.t);
 function computeHot(){
   hotNodes=null;hotLinks=null;
-  if(!S.hover)return;
+  const anchor=S.hover||pinnedId;      // hover 优先；没 hover 时看持久选中
+  if(!anchor)return;
   hotNodes=new Set();hotLinks=new Set();
-  const n=byId(S.hover);
+  const n=byId(anchor);
   if(n){
     hotNodes.add(n.id);
     for(const l of links){
@@ -403,7 +406,7 @@ function computeHot(){
     }
     return;
   }
-  const l=links.find(x=>linkKey(x)===S.hover);
+  const l=links.find(x=>linkKey(x)===anchor);
   if(!l)return;
   hotLinks.add(linkKey(l));
   hotNodes.add(l.s);hotNodes.add(l.t);
@@ -622,8 +625,12 @@ function drawGraph(t){
     const isExp=n.kind==='exp';
     const showLb=isExp?(!!hotNodes&&hotNodes.has(n.id)):true;
     if(showLb){
-      const lbText=isExp?((n.ref.date||'').slice(5)||'一笔'):n.ref.name;
-      label(lbText,'¥'+n.amount.toLocaleString(),n.x,n.y+n.R*sc+16,a*(hot?1:.6),hovG===n.id);
+      if(isExp){
+        // 账单节点只显示金额，不带名字/日期 —— 具体内容点开详情看
+        label('¥'+n.amount.toLocaleString(),'',n.x,n.y+n.R*sc+16,a*(hot?1:.6),hovG===n.id);
+      }else{
+        label(n.ref.name,'¥'+n.amount.toLocaleString(),n.x,n.y+n.R*sc+16,a*(hot?1:.6),hovG===n.id);
+      }
     }
   }
   // 主星
@@ -1061,7 +1068,7 @@ function wheelZoom(dy){
 
 /* ---------- 交互 ---------- */
 const tip=$('#tooltip');
-let mouse={x:.5,y:.5},dragN=null,panDrag=null,downPos=null,downT=0;
+let mouse={x:.5,y:.5},dragN=null,panDrag=null,downPos=null,downT=0,lastSubClick=0;
 /** 点到线段的距离（共享线 hover 命中判定用） */
 function distToSeg(px,py,x1,y1,x2,y2){
   const dx=x2-x1,dy=y2-y1,L2=dx*dx+dy*dy;
@@ -1204,15 +1211,28 @@ gC.addEventListener('pointerup',e=>{
       if(d<=n.R+9&&d<bd){best=n;bd=d}
     }
     if(!best){
-      if(S.view==='detail')goBack();               // 点空白 → 回主视图
+      // 点空白：先清掉「细分持久高亮」，已经清了才返回主视图（一次点击只做一件事）
+      if(pinnedId){pinnedId=null;computeHot();}
+      else if(S.view==='detail')goBack();
     }else if(S.view==='l1'){
       // L1：支出品类与收入类目都能下钻（结构完全一致，差别只在节点样式）
       if(best.kind==='cat'||best.kind==='inc')enterDetail(best.id);
     }else{
-      // L3 下钻内：花销→编辑该笔；细分→该细分明细；类目→本类明细
-      if(best.kind==='exp')openExpenseEditor(best.ref);
-      else if(best.kind==='sub')openExpenseList({tagId:best.tagId,name:best.ref.name});
-      else if(best.kind==='cat'||best.kind==='inc')openExpenseList(best.ref);
+      if(best.kind==='exp'){
+        openExpenseView(best.ref);                 // 账单节点 → 先看详情（显示视图）
+      }else if(best.kind==='sub'){
+        // 细分节点：单击＝持久高亮（看清它连接了哪些账单），双击＝明细/管理浮层
+        const now=performance.now();
+        if(pinnedId===best.id&&now-lastSubClick<420){
+          openExpenseList({tagId:best.tagId,name:best.ref.name});
+        }else{
+          pinnedId=(pinnedId===best.id)?null:best.id;
+          computeHot();
+        }
+        lastSubClick=now;
+      }else if(best.kind==='cat'||best.kind==='inc'){
+        openExpenseList(best.ref);
+      }
     }
   }
 });
@@ -1270,6 +1290,7 @@ async function enterDetail(id){
   }
   detailTag=tag;
   S.view='detail';S.focus=id;
+  pinnedId=null;     // 换视图清掉持久高亮
   resetView();   // 换视图：视角归位，平移状态不跨视图沿用
   // 分类上下文放在返回按钮上（画布中央刻意不画主 tag，避免冗余节点）
   const tot=detailExpenses.reduce((s,e)=>s+e.amount_cents,0);
@@ -1280,7 +1301,7 @@ async function enterDetail(id){
 }
 function goBack(){
   if(S.view!=='detail')return;
-  S.view='l1';S.focus=null;detailExpenses=[];detailTag=null;
+  S.view='l1';S.focus=null;detailExpenses=[];detailTag=null;pinnedId=null;
   resetView();
   $('#btnBack').textContent='← 主视图';
   $('#btnBack').hidden=true;buildGraph();syncChrome();
@@ -1928,6 +1949,60 @@ function renderModalChips(){
 }
 let editingExpense=null; // 编辑中的花销（含 amount_cents/date/note/tags 原始数据；选中态见 modalSel）
 /** 打开编辑模式（从花销明细行进入） */
+/* ---------- 账单详情（显示视图）----------
+   与「编辑视图」分离：这里只读，把「这笔是什么」讲清楚 —— 金额、日期、账本、
+   实际关联的 tag（没关联的不列）、以及给足空间的备注。
+   要增减 tag / 改金额，才从这里的「编辑」进完整浮层。 */
+const viewMask=$('#viewMask');
+let viewingExpense=null;
+const DIM_LABEL={category:'品类',context:'情境',payment:'支付方式'};
+function openExpenseView(exp){
+  viewingExpense=exp;
+  const isIncome=exp.type==='income';
+  const amt=$('#viewAmount');
+  amt.textContent='¥'+(exp.amount_cents/100).toLocaleString();
+  amt.classList.toggle('income',isIncome);
+  $('#viewDate').textContent=exp.date;
+  const led=(Data.ledgers||[]).find(l=>String(l.id)===String(exp.ledger_id));
+  $('#viewLedger').textContent=led?led.name:('#'+exp.ledger_id);
+  $('#viewType').textContent=isIncome?'收入':'支出';
+  // 只列这笔实际挂着的 tag（primary + secondary）
+  const tags=(exp.tags||[]);
+  $('#viewTags').innerHTML=tags.length
+    ?tags.map(t=>{
+      const dim=DIM_LABEL[t.dim_key]||t.dim_key;
+      const role=t.role==='primary'?'主':'副';
+      return `<span class="v-tag${t.role==='primary'?' primary':''}${t.is_unnamed?' unnamed':''}">${t.name}<i>${dim}·${role}</i></span>`;
+    }).join('')
+    :'<span class="v-empty">无</span>';
+  const note=(exp.note||'').trim();
+  const noteEl=$('#viewNote');
+  noteEl.textContent=note||'（无备注）';
+  noteEl.classList.toggle('empty',!note);
+  viewMask.hidden=false;
+}
+function closeExpenseView(){viewMask.hidden=true;viewingExpense=null}
+$('#viewClose').onclick=$('#viewClose2').onclick=closeExpenseView;
+viewMask.addEventListener('click',e=>{if(e.target===viewMask)closeExpenseView()});
+$('#viewEdit').onclick=()=>{
+  const exp=viewingExpense;if(!exp)return;
+  closeExpenseView();          // 编辑浮层在显示视图之上会更乱，先收起
+  openExpenseEditor(exp);
+};
+$('#viewDel').onclick=async ()=>{
+  const exp=viewingExpense;if(!exp)return;
+  const what=exp.type==='income'?'收入':'花销';
+  if(!confirm(`删除这笔${what} ¥${(exp.amount_cents/100).toLocaleString()} ？`))return;
+  try{
+    await OrbitAPI.deleteExpense(exp.ledger_id,exp.id);
+    closeExpenseView();
+    await Data.afterChange();refreshMonths();refreshAmounts();
+    if(S.view==='detail')await reloadDetailExpenses();
+    buildGraph();syncChrome();
+    toast('已删除一笔');
+  }catch(e){toast('删除失败：'+(e.message||e))}
+};
+
 function openExpenseEditor(exp){
   editingExpense=exp;
   const tags=exp.tags||[];
@@ -1950,7 +2025,7 @@ function openExpenseEditor(exp){
   $('#modalMode').textContent='编辑';
   $('#mAmount').value=(exp.amount_cents/100).toFixed(0);
   const di=document.querySelector('.m-row input[type=date]');if(di)di.value=exp.date;
-  const rm=document.querySelector('.m-remark');if(rm)rm.value=exp.note||'';
+  const rm=$('#mNote');if(rm)rm.value=exp.note||'';
   // 账本 select 锁定为该笔所属账本（不支持跨账本迁移）
   syncModalLedgerOptions();
   const sel=document.querySelector('.m-row select');
@@ -1969,7 +2044,7 @@ $('#btnAdd').onclick=()=>{
   const sel=document.querySelector('.m-row select');if(sel)sel.disabled=false;
   const di=document.querySelector('.m-row input[type=date]');
   if(di){di.value=new Date().toISOString().slice(0,10)}
-  const rm=document.querySelector('.m-remark');if(rm)rm.value='';
+  const rm=$('#mNote');if(rm)rm.value='';
   $('#mAmount').value='88';
   resetModalSel();
   renderModalChips();
@@ -1996,7 +2071,7 @@ $('#modalSave').onclick=async ()=>{
   // 副 tag：两维选中的合并传（后端按 parent 校验归属；没选的维度会自动补「未分类」）
   const tags=[...modalSel.category.subs,...modalSel.context.subs];
   // 备注
-  const note=document.querySelector('.m-remark')?.value.trim()||undefined;
+  const note=$('#mNote')?.value.trim()||undefined;
   const payload={type,amountCents,date,note,primary,tags};
   try{
     if(editingExpense){
@@ -2052,7 +2127,15 @@ $('#modalSave').onclick=async ()=>{
     toast('记账失败：'+(e.message||e));
   }
 };
-addEventListener('keydown',e=>{if(e.key==='Escape'){mask.hidden=true;goBack()}});
+addEventListener('keydown',e=>{
+  if(e.key!=='Escape')return;
+  if(!viewMask.hidden){closeExpenseView();return}   // 详情开着先关详情
+  mask.hidden=true;goBack();
+});
+// 备注是多行文本域，回车换行；保存用 Ctrl/Cmd+Enter
+$('#mNote').addEventListener('keydown',e=>{
+  if((e.ctrlKey||e.metaKey)&&e.key==='Enter'){e.preventDefault();$('#modalSave').click()}
+});
 
 /* ---------- 主循环 ---------- */
 let last=performance.now();
