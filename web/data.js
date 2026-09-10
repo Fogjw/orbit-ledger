@@ -48,6 +48,8 @@ const Data = {
   monthAmounts: {},
   monthAmountsByDim: {}, // {category: {tagId: 元}, context: {tagId: 元}} 两份维度口径，渲染层按需取
   monthTotal: 0,
+  incomeTotal: 0,      // 当前窗口的收入合计（星图收入节点 / 汇总展示）
+  incomeRows: [],      // 当前窗口各收入类目 [{tagId,name,amount}]
   prevMonthTotal: 0,
   monthRange: { from: null, to: null },
 
@@ -88,6 +90,8 @@ const Data = {
     this._currentMonthM = null;
     this._window = null;
     this.monthTotal = 0;
+    this.incomeTotal = 0;
+    this.incomeRows = [];
     this.prevMonthTotal = 0;
     this.monthAmountsByDim = { category: {}, context: {} };
     this.monthAmounts = {};
@@ -105,12 +109,20 @@ const Data = {
    */
   async _loadWindow(from, to) {
     this.monthRange = { from, to };
-    const [periodStats, dailyStats] = await Promise.all([
+    const [periodStats, dailyStats, incomeStats] = await Promise.all([
       API.getStats(this.ledgerId, { from, to, type: 'expense' }),
-      API.getStats(this.ledgerId, {}),
+      API.getStats(this.ledgerId, {}),                              // 日序列取全量：星轨要能拖到任意时间
+      API.getStats(this.ledgerId, { from, to, type: 'income' }),    // 收入：星图里的独立样式节点（需求基线 §5.3）
     ]);
 
     this.monthTotal = centsToYuan(periodStats.totals.expense || 0);
+    // 收入：总额 + 各收入类目（"收入·生活费 / 工资 / 红包"）
+    this.incomeTotal = centsToYuan(incomeStats.totals.income || 0);
+    this.incomeRows = (incomeStats.byDimension?.category || []).map(r => ({
+      tagId: r.tag_id,
+      name: r.name,
+      amount: centsToYuan(r.amount_cents),
+    }));
 
     // 两份维度口径
     this.monthAmountsByDim = { category: {}, context: {} };

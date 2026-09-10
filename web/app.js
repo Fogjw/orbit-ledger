@@ -18,6 +18,10 @@ const API=(typeof window!=='undefined'?window:globalThis).OrbitAPI;
 const Data=(typeof window!=='undefined'?window:globalThis).OrbitData;
 /* 渲染用数组（id:'t'+tag_id 字符串，金额查表用数字 tagId） */
 let CATS=[], CTXS=[];
+/** 收入类目：产品约定用同一套 tag 体系加「收入·」前缀（需求基线 §5.3）。
+    星图里它们走独立的绿色圆环样式，不混进支出品类的弧线。 */
+let INCOMES=[];
+const isIncomeTag=t=>String(t.name||'').startsWith('收入');
 let MONTHS=[];
 let TODAY=0;
 let DAYS=[];    // 日档：当前时间窗所在月的逐日序列（数据来自 Data.days）
@@ -29,17 +33,27 @@ let SUBS={};
 const toRenderTag=t=>({id:'t'+t.id,name:t.name,color:t.color,is_unnamed:t.is_unnamed,tagId:t.id});
 function refreshTagArrays(){
   if(!Data)return;
-  CATS=(Data.cats||[]).map(toRenderTag);
+  const cats=(Data.cats||[]).map(toRenderTag);
+  CATS=cats.filter(t=>!isIncomeTag(t));      // 支出品类：走北斗弧线
+  INCOMES=cats.filter(t=>isIncomeTag(t)).map(t=>({...t,color:'#6fe3a8'}));   // 收入统一绿色（基线 §5.3）
   CTXS=(Data.ctxs||[]).map(toRenderTag);
   SUBS={};
   for(const tree of Object.values(Data.dims||{})){
     for(const root of (tree.roots||[]))SUBS[root.id]=(root.children||[]).map(toRenderTag);
   }
 }
+/** 把当前窗口的收入金额贴到收入类目上（金额来自 Data.incomeRows） */
+function refreshIncomes(){
+  if(!Data||!INCOMES.length)return;
+  const amt={};
+  for(const r of (Data.incomeRows||[]))amt[r.tagId]=r.amount;
+  INCOMES=INCOMES.map(t=>({...t,amount:amt[t.tagId]||0}));
+}
 function refreshAmounts(){
   if(!Data)return;
   tagAmountMap.category={...(Data.monthAmountsByDim.category||{})};
   tagAmountMap.context={...(Data.monthAmountsByDim.context||{})};
+  refreshIncomes();  // 收入金额（依赖 refreshTagArrays 已建好的 INCOMES 列表）
   refreshDays();   // 日序列同属"当前窗口统计"，一并搬进渲染层（各调用点无需再单独刷新）
 }
 function refreshMonths(){
@@ -254,8 +268,20 @@ function buildGraph(){
         seed:hash01(c.id)*7,idx:i,
         sats:[0,1].map(k=>({a0:hash01(c.id+k)*6.28,d:2.1+hash01(c.id+'d'+k)*.9,s:.8+hash01(c.id+'s'+k),sp:(.3+hash01(c.id+'v'+k)*.4)*(k?1:-1)}))});
     });
+    // 收入节点：底部独立一排，绿色圆环 + 向上箭头（需求基线 §5.3：
+    // 「收入为独立样式节点，不混入花销节点」）。只显示本期有收入的类目。
+    const inc=INCOMES.filter(c=>c.amount>0);
+    inc.forEach((c,i)=>{
+      const nx=inc.length===1?0.5:(0.18+0.64*(i/(inc.length-1)));
+      const p=P(nx,0.95);
+      const R=Math.max(7,Math.min(16,tagR(c.amount)*0.8));
+      nodes.push({kind:'inc',id:c.id,ref:c,amount:c.amount,R,tr:R,
+        x:p.x,y:p.y+(hash01(c.id)-.5)*10,vx:0,vy:0,ax:p.x,ay:p.y,k:0.0016,
+        seed:hash01(c.id)*5,idx:i,sats:[]});
+    });
+
     // 消费轨迹折线：按金额降序连成北斗式折线
-    poly=[...nodes].sort((a,b)=>b.amount-a.amount).map(n=>n.id);
+    poly=[...nodes].filter(n=>n.kind==='cat').sort((a,b)=>b.amount-a.amount).map(n=>n.id);
     for(let i=0;i<poly.length-1;i++)links.push({id:poly[i]+'>'+poly[i+1],s:poly[i],t:poly[i+1],w:.9,ph:Math.random(),sp:.25});
   }else{
     /* ---- L3 下钻：分类内「花销 × 细分」二部图 ----
@@ -464,6 +490,22 @@ function burst(x,y,color,n=26){
   for(let i=0;i<n;i++){const a=Math.random()*6.28,v=1+Math.random()*3.4;
     bursts.push({x,y,vx:Math.cos(a)*v,vy:Math.sin(a)*v-1,r:1+Math.random()*2.2,c:Math.random()<.3?'#ffffff':color,life:.8+Math.random()*.6})}
 }
+/** 收入节点：绿色圆环 + 向上箭头（需求基线 §5.3 指定的独立样式，
+    刻意区别于「无硬边的星体」，让人一眼看出这不是花销） */
+function drawIncomeNode(x,y,R,color,tw){
+  g.save();g.globalCompositeOperation='lighter';
+  const hs=R*4.4;
+  g.globalAlpha=.42*tw;g.drawImage(glowSprite(color),x-hs/2,y-hs/2,hs,hs);
+  g.globalAlpha=.92*tw;
+  g.strokeStyle=color;g.lineWidth=Math.max(1.2,R*.13);
+  g.beginPath();g.arc(x,y,R,0,7);g.stroke();                 // 圆环
+  g.lineWidth=Math.max(1.1,R*.11);g.lineCap='round';
+  g.beginPath();                                              // 向上箭头
+  g.moveTo(x,y+R*.42);g.lineTo(x,y-R*.46);
+  g.moveTo(x-R*.36,y-R*.06);g.lineTo(x,y-R*.46);g.lineTo(x+R*.36,y-R*.06);
+  g.stroke();
+  g.restore();
+}
 function drawStar(x,y,R,color,tw,spiky){
   g.save();g.globalCompositeOperation='lighter';
   // 大星带呼吸（光晕半径 + 强度微脉动）；小星不呼吸 —— 整屏同频闪会晕
@@ -547,8 +589,12 @@ function drawGraph(t){
     const a=dimA(n.id);if(a<=.02)continue;
     const tw=.8+.2*Math.sin(t*2.2+n.seed);
     const col=n.kind==='exp'?(hot?n.ctxColor:'#aeb9d4'):n.ref.color;
-    // 细分节点是「标签」身份，给星芒；花销节点保持素净（数量多，加芒会糊）
-    drawStar(n.x,n.y,Math.max(.5,n.R*sc),col,tw*a,n.kind==='sub');
+    if(n.kind==='inc'){
+      drawIncomeNode(n.x,n.y,Math.max(.5,n.R*sc),col,tw*a);   // 收入：圆环 + 箭头
+    }else{
+      // 细分节点是「标签」身份，给星芒；花销节点保持素净（数量多，加芒会糊）
+      drawStar(n.x,n.y,Math.max(.5,n.R*sc),col,tw*a,n.kind==='sub');
+    }
     g.save();g.globalAlpha=a;g.restore();
     // 账单节点数量多，默认不挂标签（几十笔会糊成一片）：只有被 hover 关联到时才显示日期与金额。
     // 细分节点是这张图的骨架，名字始终显示。
@@ -1030,7 +1076,7 @@ function setHover(h){
     document.querySelectorAll('.top-row').forEach(e=>e.classList.remove('hot'));
     return;
   }
-  if(h.kind==='cat'||h.kind==='exp'||h.kind==='sub'){
+  if(h.kind==='cat'||h.kind==='exp'||h.kind==='sub'||h.kind==='inc'){
     const n=byId(h.id);if(!n){tip.hidden=true;return}
     const title=n.kind==='exp'?(n.ref.note||'一笔花销'):n.ref.name;
     let sub;
@@ -1039,6 +1085,8 @@ function setHover(h){
     }else if(n.kind==='exp'){
       const p=(n.ref.tags||[]).filter(t=>t.role==='primary').map(t=>t.name).join(' / ');
       sub=n.ref.date+(p?' · '+p:'');
+    }else if(n.kind==='inc'){
+      sub='收入类目';
     }else{
       sub=`${n.ref.count} 笔`;
     }
@@ -1140,6 +1188,7 @@ gC.addEventListener('pointerup',e=>{
       if(best.kind==='exp')openExpenseEditor(best.ref);
       else if(best.kind==='sub')openExpenseList({tagId:best.tagId,name:best.ref.name});
       else if(best.kind==='cat')openExpenseList(best.ref);
+      else if(best.kind==='inc')openExpenseList(best.ref);   // 收入类目 → 该收入的逐笔明细
     }
   }
 });
@@ -1219,7 +1268,9 @@ const expMask=$('#expMask');
 let expCtx=null; // {tagId, dimKey, name}
 /** 打开花销明细浮层：某 tag（主 tag 或它的副 tag）在当月的逐笔花销 + 编辑/删除 */
 async function openExpenseList(tag){
-  const isMain=CATS.some(c=>c.tagId===tag.tagId)||CTXS.some(c=>c.tagId===tag.tagId);
+  // 收入类目也按「主 tag」处理（它不在 CATS 里，因为 CATS 只留支出品类）
+  const isMain=CATS.some(c=>c.tagId===tag.tagId)||CTXS.some(c=>c.tagId===tag.tagId)
+             ||INCOMES.some(c=>c.tagId===tag.tagId);
   let dimKey=S.dim;
   if(CATS.some(c=>c.tagId===tag.tagId))dimKey='category';
   else if(CTXS.some(c=>c.tagId===tag.tagId))dimKey='context';
