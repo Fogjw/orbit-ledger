@@ -256,14 +256,19 @@ function buildGraph(){
       if(n===1){nx=.5;ny=.45}
       else{
         nx=0.14+0.72*(i/(n-1));
-        ny=0.5+0.32*Math.sin(i*1.2+0.6);
-        if(i===0){nx=.5;ny=.34}
+        // 弧线中心上移、振幅收敛：底部收入那条轨迹线固定在 ny=0.95，
+        // 支出弧线原先最低压到 0.81（再叠加抖动）会与它贴在一起。
+        // 注意：x 必须随序号**单调递增**。早先把金额最大者特判到画面中央（nx=.5），
+        // 会让前几颗星连成「中-左-中」的折返：相邻两段几乎共线且方向相反，
+        // 视觉上就是两条线合成一条（居住-餐饮 / 餐饮-学习 实测夹角 176.5°）。
+        // 金额轻重已由节点半径（√金额）表达，位置不必再抢戏。
+        ny=0.44+0.27*Math.sin(i*1.2+0.6);
         nx=clamp(nx,0.08,0.92);ny=clamp(ny,0.1,0.9);
       }
       const p=P(nx,ny);
       const va=hash01(c.id+'v')*6.28;
       nodes.push({kind:'cat',id:c.id,ref:c,amount:amt,R,tr:R,
-        x:p.x+(hash01(c.id)-.5)*60,y:p.y+(hash01(c.id+'y')-.5)*44,
+        x:p.x+(hash01(c.id)-.5)*60,y:p.y+(hash01(c.id+'y')-.5)*28,
         vx:Math.cos(va)*.5,vy:Math.sin(va)*.5,ax:p.x,ay:p.y,k:0.0011,
         seed:hash01(c.id)*7,idx:i,
         sats:[0,1].map(k=>({a0:hash01(c.id+k)*6.28,d:2.1+hash01(c.id+'d'+k)*.9,s:.8+hash01(c.id+'s'+k),sp:(.3+hash01(c.id+'v'+k)*.4)*(k?1:-1)}))});
