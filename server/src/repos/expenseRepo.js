@@ -58,10 +58,13 @@ export function createExpenseRepo(db) {
       this.linkTags(expenseId, links);
     },
 
-    /** 一笔花销的全部 tag（带维度 key 与名称） */
+    /**
+     * 一笔花销的全部 tag（带维度 key 与名称）。
+     * parent_tag_id 供前端把副 tag 归到它所属的主 tag 下（L3 分类内「花销×标签」视图）。
+     */
     tagsOf(expenseId) {
       return plainAll(db.prepare(
-        `SELECT l.role, l.tag_id, t.name, t.is_unnamed, d.key AS dim_key, d.name AS dim_name
+        `SELECT l.role, l.tag_id, t.name, t.is_unnamed, t.parent_tag_id, d.key AS dim_key, d.name AS dim_name
          FROM expense_tag_links l
          JOIN tags t ON t.id = l.tag_id
          JOIN dimensions d ON d.id = t.dimension_id

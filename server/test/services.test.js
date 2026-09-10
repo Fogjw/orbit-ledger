@@ -102,7 +102,7 @@ describe('记账（正交维度 Σ 守恒）', () => {
     assert.ok(secondaries.every(t => t.name === '未分类' && t.is_unnamed === 1));
     assert.deepEqual(
       new Set(secondaries.map(t => t.parent_tag_id)),
-      new Set(primaries.map(t => t.id)),
+      new Set(primaries.map(t => t.tag_id)),
       '副 tag 各挂在自己维度的主 tag 下'
     );
     // 占位 tag 按需创建：库里恰好 4 个（2 主 + 2 副），且不重复创建
