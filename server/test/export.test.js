@@ -41,8 +41,15 @@ describe('导出（S3-3：账本 JSON 全量快照）', () => {
     assert.equal(snap.ledger.id, l.id);
     assert.equal(snap.ledger.name, '生活费');
     assert.equal(snap.dimensions.length, 2, '品类+情境两维');
-    // 默认 tags 11（品类6+情境4+未标注）+ 夜宵 + 收入·生活费 = 13
-    assert.equal(snap.tags.length, 13);
+    // tags：默认维度 10（品类6 + 情境4，**不预设占位**）+ 夜宵（餐饮副 tag）+ 收入·生活费 = 12
+    // 另加记账缺省兜底按需创建的 4 个「未分类」占位：
+    //   和朋友→未分类（情境副）、收入·生活费→未分类（品类副）、
+    //   情境维「未分类」主 tag、以及它下面的「未分类」副 tag
+    assert.equal(snap.tags.length, 16);
+    assert.equal(snap.tags.filter(t => t.is_unnamed === 1).length, 4, '占位 tag 均为 is_unnamed=1');
+    // 未记账时账本里没有任何占位 tag（懒创建，不预设）
+    const fresh = svc.ledgers.create('空账本');
+    assert.equal(svc.tags.dimensions(fresh.id).flatMap(d => d.tags).length, 10, '新账本只有种子 tag');
     // 副 tag 的父子关系随快照导出（import 可回插）
     const snackRow = snap.tags.find(t => t.name === '夜宵');
     assert.equal(snackRow.parent_tag_id, food.id, '副 tag 带父引用导出');
@@ -78,7 +85,7 @@ describe('导出（S3-3：账本 JSON 全量快照）', () => {
       assert.equal(perDim[k], total, `快照中 ${k} 维 Σ=总额`);
     }
     const unnamed = snap.tags.find(t => t.is_unnamed === 1);
-    assert.equal(unnamed.name, '未标注');
+    assert.equal(unnamed.name, '未分类');
   });
 
   test('跨账本导出隔离 + 不存在账本 → null', () => {

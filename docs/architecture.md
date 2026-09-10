@@ -35,11 +35,16 @@ orbit-ledger/
 |---|---|---|
 | `ledgers` | 账本 | 顶级隔离（D-07）；花销/维度/tag 均挂 ledger_id |
 | `dimensions` | 维度 | `(ledger_id, key)` 唯一；key ∈ category/context/payment（MVP: 前两者） |
-| `tags` | 维度取值（两级） | `parent_tag_id` 自引用：NULL = **主 tag**（维度取值，如「餐饮」）；非 NULL = **副 tag**（主 tag 的细分，如 餐饮→午餐）。每维一「未标注」（is_unnamed=1，产品层弱化）；颜色可选覆盖 |
+| `tags` | 维度取值（两级） | `parent_tag_id` 自引用：NULL = **主 tag**（维度取值，如「餐饮」）；非 NULL = **副 tag**（主 tag 的细分，如 餐饮→午餐）。每维/每主 tag 各有一个 **「未分类」占位**（is_unnamed=1，产品层弱化）；颜色可选覆盖 |
 | `expenses` | 花销事实表 | type expense/income；**amount_cents 分存储**；date YYYY-MM-DD |
 | `expense_tag_links` | 花销↔tag | role primary/secondary；每维一个 primary + N 个 secondary（secondary 须挂在本笔某个 primary 之下） |
 
-**核心不变量（D-03）**：每笔花销每维恰好一个 primary ⇒ 每维 Σ = 总额（未标注参与求和）。统计按 type 过滤。
+**核心不变量（D-03）**：每笔花销每维恰好一个 primary ⇒ 每维 Σ = 总额（「未分类」参与求和）。统计按 type 过滤。
+
+**缺省兜底（记一笔不要求用户选任何 tag）**：
+- 某维主 tag 未选 → 落到该维「未分类」主 tag
+- 某主 tag 下一个副 tag 都没选 → 补该主 tag 的「未分类」副 tag
+- 「未分类」**用到了才创建**（懒创建，不预设）：新账本/新维度里不会有没人用过的占位行；创建与记账同一事务，记账失败则占位 tag 一并回滚。
 
 **副 tag 归属（S6-v3）**：一笔花销的副 tag 只能取自**它自己的主 tag** —— 副 tag 的 `parent_tag_id` 必须 ∈ 本笔的 primary tag 集合。因为「每维恰一 primary」，这一条规则同时实现了「交通通勤下挂不了午餐」与「维度之间互不串味」。副 tag 不参与维度求和（不重复计数）。
 
@@ -48,14 +53,14 @@ orbit-ledger/
 ## 业务规则（services 层）
 
 - **记账 = 单事务**（`expenseService.add`）：写 expense + 全部 primary + secondary；任一步失败整体回滚（测试锁定）。
-- 品类 primary 必填（CATEGORY_REQUIRED）；情境等可选维缺省 → 该维「未标注」。
+- **所有维度均可缺省**（不再有必填维）：缺省 → 该维「未分类」占位主 tag（见上「缺省兜底」）。`dimensions.required` 列保留但当前不参与校验。
 - 全部 tag 必须属于同一账本（隔离，防跨账本关联）。
 - 副 tag 只能挂在本笔同维主 tag 下，否则 `SUBTAG_NOT_UNDER_PRIMARY`；主/副不可互相冒充（`NOT_A_SUBTAG` / `NOT_A_PRIMARY_TAG`）。
 - 副 tag 按名解析遇重名（不同主 tag 下同名）→ 要求用 id（`TAG_AMBIGUOUS`）。
-- tag 层级只支持两级：副 tag 之下不可再建（`SUBTAG_DEPTH_EXCEEDED`）；「未标注」不可作为父（`UNNAMED_TAG_LOCKED`）。
+- tag 层级只支持两级：副 tag 之下不可再建（`SUBTAG_DEPTH_EXCEEDED`）；「未分类」不可作为父（`UNNAMED_TAG_LOCKED`）。
 - 删除保护扩展：删主 tag 时，其副 tag 若被花销引用也拒删（`TAG_IN_USE`）—— 否则 `ON DELETE CASCADE` 会静默删掉副 tag 及其 links，造成历史断裂。
 - 金额正整数（分）；日期 YYYY-MM-DD（schema CHECK + service 双保险）。
-- 建账本自动初始化默认维度（品类 6 + 情境 4 及「未标注」）。
+- 建账本自动初始化默认维度（品类 6 + 情境 4），**不预设占位 tag**。
 
 ## REST API 契约
 
@@ -65,11 +70,11 @@ Base: `http://localhost:5310/api`（端口 env `ORBIT_PORT` 覆盖）。CORS 放
 | GET/POST | `/ledgers` | 账本列表 / 建账本 `{name}`（自动维度） |
 | GET | `/ledgers/:id` | 账本 |
 | GET | `/ledgers/:id/dimensions` | 维度+tag 树（录入下拉/图谱源） |
-| POST | `/ledgers/:id/dimensions` | 启用扩展维度 `{key,name?}`（如 payment，自动建「未标注」） |
+| POST | `/ledgers/:id/dimensions` | 启用扩展维度 `{key,name?}`（如 payment；不预设占位 tag） |
 | GET | `/ledgers/:id/export` | 账本全量 JSON 快照（备份，D-13，供未来 import） |
 | PATCH/DELETE | `/ledgers/:id` | 改名 `{name}` / 删除 |
 | POST | `/ledgers/:id/tags` | 建 tag `{dimensionKey,name,color?,parentTagId?}`——带 `parentTagId` 则在其下建副 tag（父须为同维度主 tag） |
-| PATCH/DELETE | `/ledgers/:id/tags/:tagId` | 改名/改色 `{name?,color?}`（同维唯一，未标注锁定） / 删除（未标注与被引用 tag 409 保护） |
+| PATCH/DELETE | `/ledgers/:id/tags/:tagId` | 改名/改色 `{name?,color?}`（同层级唯一，「未分类」锁定） / 删除（「未分类」与被引用 tag、以及副 tag 被引用的父 tag 409 保护） |
 | POST | `/ledgers/:id/expenses` | 记一笔（见下） |
 | GET | `/ledgers/:id/expenses?from&to&type` | 时间窗列表（含 tag 明细） |
 | GET/PUT/DELETE | `/ledgers/:id/expenses/:eid` | 单笔 / 编辑 / 删除（单笔操作账本内校验，跨账本 404） |
@@ -82,7 +87,7 @@ Base: `http://localhost:5310/api`（端口 env `ORBIT_PORT` 覆盖）。CORS 放
   "tags": ["夜宵"] }
 ```
 - `tags` 是副 tag 列表（元素可为 id 或名称），必须挂在**本笔某个主 tag** 下（S6-v3）；用数字 id 可避开重名歧义。
-- PUT 语义：金额/日期/类型/备注/主副 tag **一次重写**（旧关联清空），单事务回滚；校验同记一笔（品类必填、账本内 tag、副 tag 归属）。
+- PUT 语义：金额/日期/类型/备注/主副 tag **一次重写**（旧关联清空），单事务回滚；校验同记一笔（账本内 tag、副 tag 归属）。
 - 响应花销含 `tags[]`（role primary/secondary、dim_key、is_unnamed）。
 
 统计响应（图谱/星轨数据源）：
@@ -106,7 +111,7 @@ Base: `http://localhost:5310/api`（端口 env `ORBIT_PORT` 覆盖）。CORS 放
   | `list_ledgers` | 账本列表 |
   | `list_dimensions` | 维度+tag 树 |
   | `create_tag` | 建 tag（可选 `parentTagId` 建副 tag） |
-  | `add_expense` | 记一笔（Σ 守恒/品类必填/隔离经 service 生效，与 REST 同源） |
+  | `add_expense` | 记一笔（Σ 守恒/缺省兜底/隔离经 service 生效，与 REST 同源） |
   | `get_stats` | 聚合视图 |
   | `export_ledger` | JSON 快照 |
 - 错误：业务规则失败返回工具 `isError: true` + `[CODE] message`（如 `[REQUIRED_TAG] …`、`[TAG_NOT_FOUND] …`）。

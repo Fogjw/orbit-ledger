@@ -31,14 +31,17 @@ function mainTagId(svc, ledgerId, dimKey, name) {
 }
 
 describe('账本', () => {
-  test('建账本自动生成默认维度与「未标注」', () => {
+  test('建账本生成默认维度与种子 tag（不预设占位 tag）', () => {
     const { svc } = setup();
     const l = svc.ledgers.create('生活费');
     const dims = svc.tags.dimensions(l.id);
-    const keys = dims.map(d => d.key);
-    assert.deepEqual(keys, ['category', 'context']);
-    const ctx = dims.find(d => d.key === 'context');
-    assert.ok(ctx.tags.some(t => t.is_unnamed === 1 && t.name === '未标注'), '情境维含未标注');
+    assert.deepEqual(dims.map(d => d.key), ['category', 'context']);
+    assert.equal(dims.find(d => d.key === 'category').tags.length, 6, '品类 6 个常用类');
+    assert.equal(dims.find(d => d.key === 'context').tags.length, 4, '情境 4 个常用场景');
+    assert.equal(
+      dims.flatMap(d => d.tags).some(t => t.is_unnamed === 1), false,
+      '不预设占位 tag ——「未分类」由记账缺省时按需创建'
+    );
   });
 
   test('账本隔离：A 账本 tag 不能用于 B 账本记账', () => {
@@ -84,16 +87,33 @@ describe('记账（正交维度 Σ 守恒）', () => {
     assert.equal(ctxSum, total, '情境 Σ=总额（含未标注）');
   });
 
-  test('品类必填：缺省主 tag 抛 REQUIRED_TAG 且事务回滚', () => {
+  test('什么 tag 都不选也能记账：各维自动落「未分类」（并当场创建）', () => {
     const { db, svc } = setup();
     const l = svc.ledgers.create('X');
-    assert.throws(
-      () => svc.expenses.add({ ledgerId: l.id, amountCents: 100, date: '2026-06-01', primary: {} }),
-      { code: 'REQUIRED_TAG' }
+    const e = svc.expenses.add({ ledgerId: l.id, amountCents: 100, date: '2026-06-01' });
+
+    // 每维一个「未分类」主 tag
+    const primaries = e.tags.filter(t => t.role === 'primary');
+    assert.equal(primaries.length, 2, '两维各一个 primary');
+    assert.ok(primaries.every(t => t.name === '未分类' && t.is_unnamed === 1), '缺省落到「未分类」占位主 tag');
+    // 每维的主 tag 下还各补一个「未分类」副 tag
+    const secondaries = e.tags.filter(t => t.role === 'secondary');
+    assert.equal(secondaries.length, 2, '两维各补一个副 tag');
+    assert.ok(secondaries.every(t => t.name === '未分类' && t.is_unnamed === 1));
+    assert.deepEqual(
+      new Set(secondaries.map(t => t.parent_tag_id)),
+      new Set(primaries.map(t => t.id)),
+      '副 tag 各挂在自己维度的主 tag 下'
     );
-    // 事务回滚：无残留花销
-    const cnt = db.prepare('SELECT COUNT(*) n FROM expenses').get();
-    assert.equal(cnt.n, 0, '失败事务应回滚');
+    // 占位 tag 按需创建：库里恰好 4 个（2 主 + 2 副），且不重复创建
+    assert.equal(db.prepare('SELECT COUNT(*) n FROM tags WHERE is_unnamed = 1').get().n, 4);
+    svc.expenses.add({ ledgerId: l.id, amountCents: 50, date: '2026-06-02' });
+    assert.equal(db.prepare('SELECT COUNT(*) n FROM tags WHERE is_unnamed = 1').get().n, 4, '复用既有占位，不重复创建');
+    // 缺省仍保证 Σ 守恒
+    const view = svc.reports.windowView(l.id, { type: 'expense' });
+    assert.equal(view.totals.expense, 150);
+    assert.equal(view.byDimension.category.reduce((s, r) => s + r.amount_cents, 0), 150, '品类 Σ=总额');
+    assert.equal(view.byDimension.context.reduce((s, r) => s + r.amount_cents, 0), 150, '情境 Σ=总额');
   });
 
   test('副 tag 不存在 → 抛错回滚（隔离 + 事务原子性）', () => {
@@ -169,6 +189,8 @@ describe('花销编辑（S1：PUT 全量替换，单事务）', () => {
     const l = svc.ledgers.create('X');
     svc.tags.create(l.id, { dimensionKey: 'category', name: '夜宵', parentTagId: mainTagId(svc, l.id, 'category', '餐饮') });
     const e = svc.expenses.add({ ledgerId: l.id, amountCents: 4560, date: '2026-06-07', primary: { category: '餐饮' }, tags: ['夜宵'] });
+    const before = db.prepare('SELECT COUNT(*) n FROM expense_tag_links').get().n;
+    const beforeTags = db.prepare('SELECT COUNT(*) n FROM tags').get().n;
     // 副 tag 不存在 → 抛错回滚
     assert.throws(
       () => svc.expenses.update(l.id, e.id, { amountCents: 999, date: '2026-06-08', primary: { category: '交通' }, tags: ['不存在的tag'] }),
@@ -177,20 +199,23 @@ describe('花销编辑（S1：PUT 全量替换，单事务）', () => {
     const after = svc.expenses.byId(e.id);
     assert.equal(after.amount_cents, 4560, '金额未变');
     assert.equal(after.date, '2026-06-07');
-    const cnt = db.prepare('SELECT COUNT(*) n FROM expense_tag_links').get();
-    assert.equal(cnt.n, 3, 'links 未被破坏（餐饮 primary + 未标注 primary + 夜宵 secondary）');
+    assert.equal(db.prepare('SELECT COUNT(*) n FROM expense_tag_links').get().n, before, 'links 未被破坏');
+    assert.equal(
+      db.prepare('SELECT COUNT(*) n FROM tags').get().n, beforeTags,
+      '失败事务内懒创建的占位 tag 也一并回滚（懒创建与记账同生共死）'
+    );
   });
 
-  test('编辑仍需品类必填（全量替换语义）', () => {
+  test('编辑缺省主 tag → 同样落「未分类」（全量替换语义）', () => {
     const { svc } = setup();
     const l = svc.ledgers.create('X');
     const e = svc.expenses.add({ ledgerId: l.id, amountCents: 4560, date: '2026-06-07', primary: { category: '餐饮' } });
-    assert.throws(
-      () => svc.expenses.update(l.id, e.id, { amountCents: 100, date: '2026-06-08', primary: {} }),
-      { code: 'REQUIRED_TAG' }
+    const updated = svc.expenses.update(l.id, e.id, { amountCents: 100, date: '2026-06-08' });
+    assert.equal(updated.amount_cents, 100);
+    assert.ok(
+      updated.tags.filter(t => t.role === 'primary').every(t => t.name === '未分类'),
+      '编辑时两维主 tag 都缺省 → 均落「未分类」'
     );
-    const after = svc.expenses.byId(e.id);
-    assert.equal(after.amount_cents, 4560, '失败应回滚');
   });
 
   test('跨账本编辑/删除/单笔读取 → 404（隔离收紧）', () => {
@@ -267,11 +292,15 @@ describe('tag 维护（S2-1：改名/改色/删除保护）', () => {
     assert.throws(() => svc.tags.update(a.id, food.id, { name: '  ' }), { code: 'MISSING_FIELD' });
   });
 
-  test('「未标注」锁定：不可改名/改色/删除', () => {
+  test('「未分类」占位锁定：不可改名/改色/删除', () => {
     const { svc } = setup();
     const l = svc.ledgers.create('X');
+    // 缺省记账触发懒创建（不预设）
+    svc.expenses.add({ ledgerId: l.id, amountCents: 100, date: '2026-06-01' });
     const ctx = svc.tags.dimensions(l.id).find(d => d.key === 'context');
-    const unnamed = ctx.tags.find(t => t.is_unnamed === 1);
+    const unnamed = ctx.tags.find(t => t.is_unnamed === 1 && t.parent_tag_id === null);
+    assert.ok(unnamed, '情境维已按需创建「未分类」主 tag');
+    assert.equal(unnamed.name, '未分类');
     assert.throws(() => svc.tags.update(l.id, unnamed.id, { name: '随便' }), { code: 'UNNAMED_TAG_LOCKED', status: 409 });
     assert.throws(() => svc.tags.update(l.id, unnamed.id, { color: '#ff0000' }), { code: 'UNNAMED_TAG_LOCKED', status: 409 });
     assert.throws(() => svc.tags.remove(l.id, unnamed.id), { code: 'UNNAMED_TAG_LOCKED', status: 409 });
@@ -310,7 +339,7 @@ describe('tag 维护（S2-1：改名/改色/删除保护）', () => {
 });
 
 describe('维度扩展（S2-2：payment 启用 + 记账/统计贯通）', () => {
-  test('启用 payment 维度：维度树出现 + 自动建「未标注」', () => {
+  test('启用 payment 维度：维度树出现（不预设占位 tag）', () => {
     const { svc } = setup();
     const l = svc.ledgers.create('生活费');
     const dim = svc.ledgers.enableDimension(l.id, 'payment', '支付方式');
@@ -320,7 +349,7 @@ describe('维度扩展（S2-2：payment 启用 + 记账/统计贯通）', () => 
     assert.deepEqual(dims.map(d => d.key), ['category', 'context', 'payment']);
     const pay = dims.find(d => d.key === 'payment');
     assert.equal(pay.name, '支付方式');
-    assert.ok(pay.tags.some(t => t.is_unnamed === 1), '新维度自动建「未标注」');
+    assert.equal(pay.tags.length, 0, '新维度不预设占位 tag，「未分类」按需创建');
   });
 
   test('重复启用 / 未知 key / 跨账本不受影响', () => {
@@ -338,17 +367,18 @@ describe('维度扩展（S2-2：payment 启用 + 记账/统计贯通）', () => 
     assert.equal(svc.tags.dimensions(b.id).some(d => d.key === 'payment'), false);
   });
 
-  test('启用后记账：缺省 payment → 「未标注」，payment Σ=总额', () => {
+  test('启用后记账：缺省 payment → 「未分类」，payment Σ=总额', () => {
     const { svc } = setup();
     const l = svc.ledgers.create('生活费');
     svc.ledgers.enableDimension(l.id, 'payment');
     const e1 = svc.expenses.add({ ledgerId: l.id, amountCents: 3500, date: '2026-06-05', primary: { category: '餐饮' } });
     const e2 = svc.expenses.add({ ledgerId: l.id, amountCents: 1200, date: '2026-06-06', primary: { category: '交通', context: '通勤' } });
-    // 每笔 payment primary = 未标注
+    // 每笔 payment primary = 未分类
     for (const id of [e1.id, e2.id]) {
       const x = svc.expenses.byId(id);
       const pay = x.tags.find(t => t.role === 'primary' && t.dim_key === 'payment');
-      assert.equal(pay.is_unnamed, 1, '缺省 payment 落到未标注');
+      assert.equal(pay.is_unnamed, 1, '缺省 payment 落到「未分类」');
+      assert.equal(pay.name, '未分类');
     }
     // 统计：payment Σ = 总额
     const view = svc.reports.windowView(l.id, { type: 'expense' });
@@ -412,7 +442,10 @@ describe('副 tag 绑定主 tag（两级结构 + 归属校验）', () => {
     );
     // 失败整体回滚，无残留
     assert.equal(db.prepare('SELECT COUNT(*) n FROM expenses').get().n, 1);
-    assert.equal(db.prepare('SELECT COUNT(*) n FROM expense_tag_links').get().n, 3, '成功笔 3 条 link（2 primary + 1 secondary）');
+    assert.equal(
+      db.prepare('SELECT COUNT(*) n FROM expense_tag_links').get().n, 4,
+      '成功笔 4 条 link（2 primary + 午餐 secondary + 情境维「未分类」兜底 secondary）'
+    );
   });
 
   test('各维度副 tag 各归其主：品类与情境互不串位', () => {
@@ -491,9 +524,12 @@ describe('副 tag 绑定主 tag（两级结构 + 归属校验）', () => {
       () => svc.tags.create(l.id, { dimensionKey: 'category', name: 'X', parentTagId: 999999 }),
       { code: 'NOT_FOUND', status: 404 }
     );
-    // 「未标注」不能作为父
+    // 「未分类」占位不能作为父：缺省记一笔触发懒创建，再拿它当父建子 tag
+    svc.expenses.add({ ledgerId: l.id, amountCents: 100, date: '2026-06-01' });
+    const unnamedCtx = svc.tags.dimensions(l.id)
+      .find(d => d.key === 'context').tags.find(t => t.is_unnamed === 1);
     assert.throws(
-      () => svc.tags.create(l.id, { dimensionKey: 'context', name: '子', parentTagId: mainTagId(svc, l.id, 'context', '未标注') }),
+      () => svc.tags.create(l.id, { dimensionKey: 'context', name: '子', parentTagId: unnamedCtx.id }),
       { code: 'UNNAMED_TAG_LOCKED', status: 409 }
     );
     assert.ok(food > 0 && traffic > 0);
@@ -519,7 +555,7 @@ describe('副 tag 绑定主 tag（两级结构 + 归属校验）', () => {
     svc.expenses.add({ ledgerId: l.id, amountCents: 1000, date: '2026-06-01', primary: { category: '餐饮' }, tags: ['午餐'] });
     // 父自身被 primary 引用 → 拒
     assert.throws(() => svc.tags.remove(l.id, food), { code: 'TAG_IN_USE', status: 409 });
-    assert.equal(db.prepare('SELECT COUNT(*) n FROM expense_tag_links').get().n, 3, '拒绝发生在删除之前，关联完好');
+    assert.equal(db.prepare('SELECT COUNT(*) n FROM expense_tag_links').get().n, 4, '拒绝发生在删除之前，关联完好');
 
     // 造「父零引用、子被引用」态：记账路径必然同时引用父，故直接写 link 专测该保护
     const traffic = mainTagId(svc, l.id, 'category', '交通');
@@ -554,7 +590,9 @@ describe('副 tag 绑定主 tag（两级结构 + 归属校验）', () => {
     );
     // 改成交通 + 地铁（同主 tag 下）→ 通过
     const ok = svc.expenses.update(l.id, e.id, { amountCents: 2000, date: '2026-06-01', primary: { category: '交通' }, tags: ['地铁'] });
-    assert.deepEqual(ok.tags.filter(t => t.role === 'secondary').map(t => t.name), ['地铁']);
+    const subs = ok.tags.filter(t => t.role === 'secondary').map(t => t.name);
+    assert.ok(subs.includes('地铁'), '地铁成为本笔副 tag');
+    assert.ok(subs.includes('未分类'), '情境维没选副 tag → 自动补「未分类」');
   });
 
   test('副 tag 不参与维度求和（Σ 守恒仍只按 primary 计）', () => {

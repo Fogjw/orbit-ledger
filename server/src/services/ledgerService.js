@@ -12,7 +12,9 @@ export class BizError extends Error {
   }
 }
 
-// 新账本默认维度（MVP：品类 + 情境；品类种子常用类，情境含「未标注」）
+// 新账本默认维度（MVP：品类 + 情境）
+// 注意：**不预设任何占位 tag** ——「未分类」由记账缺省时按需创建
+//（见 expenseService 的兜底逻辑 / tagRepo.ensureUnnamedTag），账本里不留没人用过的占位行。
 const DEFAULT_DIMENSIONS = [
   {
     key: 'category', name: '品类', tags: [
@@ -24,7 +26,6 @@ const DEFAULT_DIMENSIONS = [
     key: 'context', name: '情境', tags: [
       ['和朋友', '#5ad7ff'], ['独处', '#9fb8d0'], ['和对象', '#ff9fb0'], ['通勤', '#b48cff'],
     ],
-    unnamed: '未标注',
   },
 ];
 
@@ -56,14 +57,12 @@ export function createLedgerService(db) {
       return transaction(db, () => {
         const ledger = ledgers.create(clean);
         DEFAULT_DIMENSIONS.forEach((dim, i) => {
-          // required = 该维主 tag 每笔必填（v2 语义：品类必填数据化，不再硬编码 key）
+          // required 列保留（记录「该维为建议必填」的历史语义），当前不参与记账校验：
+          // 所有维度均可缺省，缺省由记账层落到「未分类」占位 tag
           const required = dim.key === 'category' ? 1 : 0;
           const dimId = tags.createDimension(ledger.id, dim.key, dim.name, i, required);
           for (const [tname, color] of dim.tags) {
             tags.createTag(ledger.id, dimId, tname, { color });
-          }
-          if (dim.unnamed) {
-            tags.createTag(ledger.id, dimId, dim.unnamed, { isUnnamed: 1, position: 999 });
           }
         });
         return ledger;
@@ -88,8 +87,8 @@ export function createLedgerService(db) {
     },
 
     /**
-     * 账本启用扩展维度（如 payment）。单事务：
-     * 建维度 + 自动建该维「未标注」（保证"每笔每维恰一 primary"对新增维度也成立）。
+     * 账本启用扩展维度（如 payment）。单事务：建维度 + 种子 tag。
+     * 不预设占位 tag（同建账本）：缺省值由记账层按需创建。
      * 校验：key 须在 schema 白名单（ALLOWED_DIMENSION_KEYS）→ INVALID_DIMENSION_KEY；
      * 维度已存在 → DIMENSION_EXISTS。
      * @param {number} ledgerId
@@ -107,8 +106,7 @@ export function createLedgerService(db) {
       const displayName = name ?? EXTENSIBLE_DIMENSIONS[key] ?? key;
       return transaction(db, () => {
         const position = tags.dimensions(ledgerId).length;
-        const dimId = tags.createDimension(ledgerId, key, displayName, position);
-        tags.createTag(ledgerId, dimId, '未标注', { isUnnamed: 1, position: 999 });
+        tags.createDimension(ledgerId, key, displayName, position);
         return tags.dimensionByKey(ledgerId, key);
       });
     },

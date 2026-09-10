@@ -7,6 +7,11 @@
 /** tag 统一投影（避免各处手写列清单漂移） */
 const TAG_COLS = 'id, ledger_id, dimension_id, name, is_unnamed, color, position, parent_tag_id';
 
+/** 系统占位 tag 名：用户没选时的兜底取值（**用到了才创建**，不预设） */
+export const UNNAMED_TAG_NAME = '未分类';
+/** 占位 tag 排在同层级末尾 */
+const UNNAMED_TAG_POSITION = 999;
+
 export function createTagRepo(db) {
   const plain = (r) => (r ? { ...r } : null);
   const plainAll = (rs) => rs.map(r => ({ ...r }));
@@ -67,13 +72,40 @@ export function createTagRepo(db) {
       ).all(ledgerId, parentTagId));
     },
 
-    /** 维度内特殊默认「未标注」主 tag */
+    /**
+     * 维度内特殊默认「未分类」主 tag（存在时）。懒创建的存在性探测。
+     */
     unnamedTag(ledgerId, dimensionKey) {
       return plain(db.prepare(
         `SELECT t.id, t.dimension_id, t.name, t.is_unnamed, t.parent_tag_id
          FROM tags t JOIN dimensions d ON d.id = t.dimension_id
          WHERE t.ledger_id = ? AND d.key = ? AND t.is_unnamed = 1 AND t.parent_tag_id IS NULL`
       ).get(ledgerId, dimensionKey));
+    },
+
+    /**
+     * 取或建「未分类」占位 tag（同一作用域内先查后建，幂等）。
+     * 记账缺省兜底用，两种作用域：
+     *  - parentTagId = null → 该维的「未分类」**主 tag**（某维主 tag 未选时）
+     *  - parentTagId = 主 tag id → 该主 tag 的「未分类」**副 tag**（选了主 tag 但没选副 tag 时）
+     * 按需创建、不预设：账本里不会堆积没人用过的占位行。
+     * 调用方须在事务内使用（与记账同生共死）。
+     * @returns {number} tag id
+     */
+    ensureUnnamedTag(ledgerId, dimensionId, { parentTagId = null } = {}) {
+      const found = parentTagId === null
+        ? db.prepare(
+            'SELECT id FROM tags WHERE ledger_id = ? AND dimension_id = ? AND parent_tag_id IS NULL AND name = ?'
+          ).get(ledgerId, dimensionId, UNNAMED_TAG_NAME)
+        : db.prepare(
+            'SELECT id FROM tags WHERE ledger_id = ? AND dimension_id = ? AND parent_tag_id = ? AND name = ?'
+          ).get(ledgerId, dimensionId, parentTagId, UNNAMED_TAG_NAME);
+      if (found) return Number(found.id);
+      return this.createTag(ledgerId, dimensionId, UNNAMED_TAG_NAME, {
+        isUnnamed: 1,
+        position: UNNAMED_TAG_POSITION,
+        parentTagId,
+      });
     },
 
     /** 建维度（required=1 表示该维每笔必填主 tag，如品类） */

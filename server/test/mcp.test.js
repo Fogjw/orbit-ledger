@@ -87,14 +87,17 @@ describe('MCP 服务（2026-07-28 stateless over HTTP）', () => {
     }
   });
 
-  test('add_expense 业务校验经 MCP 生效：缺品类 → isError 返回 REQUIRED_TAG', async () => {
+  test('add_expense 经 MCP 生效：什么 tag 都不选也能记账（自动落「未分类」）', async () => {
     const { client, transport } = await connectClient();
     try {
-      const l = await client.callTool({ name: 'create_ledger', arguments: { name: '校验账本' } });
+      const l = await client.callTool({ name: 'create_ledger', arguments: { name: '缺省账本' } });
       const ledger = JSON.parse(l.content[0].text);
       const r = await client.callTool({ name: 'add_expense', arguments: { ledgerId: ledger.id, amountCents: 100, date: '2026-06-01' } });
-      assert.equal(r.isError, true);
-      assert.match(r.content[0].text, /REQUIRED_TAG/);
+      assert.notEqual(r.isError, true, '缺 tag 不再报错（改为兜底占位）');
+      const expense = JSON.parse(r.content[0].text);
+      const primaries = expense.tags.filter(t => t.role === 'primary');
+      assert.equal(primaries.length, 2, '两维各一个 primary');
+      assert.ok(primaries.every(t => t.name === '未分类'), '缺省落到「未分类」占位主 tag');
     } finally {
       await client.close();
       transport.close();
@@ -132,7 +135,10 @@ describe('MCP 服务（2026-07-28 stateless over HTTP）', () => {
       const d = await client.callTool({ name: 'list_dimensions', arguments: { ledgerId: ledger.id } });
       const dims = JSON.parse(d.content[0].text);
       assert.equal(dims.length, 2);
-      assert.ok(dims.find(x => x.key === 'context').tags.some(t => t.is_unnamed === 1), '情境维含未标注');
+      assert.equal(
+        dims.find(x => x.key === 'context').tags.some(t => t.is_unnamed === 1), false,
+        '不预设占位 tag（记账缺省时按需创建）'
+      );
 
       // 建副 tag（须挂在主 tag 下，v3）+ 用其记账
       const food = dims.find(x => x.key === 'category').tags.find(t => t.name === '餐饮');

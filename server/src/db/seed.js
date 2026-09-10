@@ -1,5 +1,6 @@
 // 开发种子数据（可选）：建默认账本 + MVP 维度（品类/情境）+ tag 体系
-// 对应需求基线：品类必填（6 常用类）；情境可选（含特殊默认「未标注」）
+// 对应需求基线：品类 6 常用类、情境 4 常用场景；**不预设占位 tag**
+//（「未分类」由记账缺省时按需创建，见 tagRepo.ensureUnnamedTag）
 import { transaction } from './database.js';
 
 /**
@@ -28,14 +29,12 @@ export function seedIfEmpty(db) {
     ];
     categories.forEach(([name, color], i) => insTag.run(ledgerId, catDimId, name, 0, color, i));
 
-    // 情境维度（required=0 可选主 tag，含特殊默认「未标注」）
+    // 情境维度（4 常用场景；不预设占位 tag）
     const { lastInsertRowid: ctxDimId } = insDim.run(ledgerId, 'context', '情境', 1, 0);
     const contexts = [
       ['和朋友', '#5ad7ff'], ['独处', '#9fb8d0'], ['和对象', '#ff9fb0'], ['通勤', '#b48cff'],
     ];
     contexts.forEach(([name, color], i) => insTag.run(ledgerId, ctxDimId, name, 0, color, i));
-    // 「未标注」= 数据层合法取值，产品层弱化（is_unnamed=1）
-    insTag.run(ledgerId, ctxDimId, '未标注', 1, '#666a75', 99);
 
     return { seeded: true };
   });

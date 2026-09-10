@@ -204,10 +204,16 @@ describe('API 全流程', () => {
     assert.equal(r.status, 400);
     assert.equal((await j(r)).error, 'PARENT_DIMENSION_MISMATCH');
 
-    // 「未标注」锁定 → 409（取情境维未标注 id）
+    // 「未分类」占位锁定 → 409：缺省记一笔触发按需创建，再取情境维那个
+    await fetch(`${base}/api/ledgers/${ledger.id}/expenses`, {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ amountCents: 100, date: '2026-06-01' }),
+    });
     const dims = await (await fetch(`${base}/api/ledgers/${ledger.id}/dimensions`)).json();
     const ctxDim = dims.dimensions.find(d => d.key === 'context');
-    const unnamed = ctxDim.tags.find(t => t.is_unnamed === 1);
+    const unnamed = ctxDim.tags.find(t => t.is_unnamed === 1 && t.parent_tag_id === null);
+    assert.ok(unnamed, '缺省记账后情境维应存在「未分类」主 tag');
+    assert.equal(unnamed.name, '未分类');
     r = await fetch(`${base}/api/ledgers/${ledger.id}/tags/${unnamed.id}`, {
       method: 'PATCH', headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ name: '改了' }),
@@ -252,11 +258,11 @@ describe('API 全流程', () => {
     const dim = await j(r);
     assert.equal(dim.key, 'payment');
 
-    // 维度树含 payment + 未标注
+    // 维度树含 payment（不预设占位 tag，「未分类」由记账缺省按需创建）
     r = await fetch(`${base}/api/ledgers/${ledger.id}/dimensions`);
     const dims = await j(r);
     const pay = dims.dimensions.find(d => d.key === 'payment');
-    assert.ok(pay.tags.some(t => t.is_unnamed === 1));
+    assert.equal(pay.tags.length, 0, '新维度不预设占位 tag');
 
     // 记一笔带 payment primary
     await fetch(`${base}/api/ledgers/${ledger.id}/tags`, {

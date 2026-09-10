@@ -16,20 +16,22 @@ export function createExpenseService(db) {
   const expenses = createExpenseRepo(db);
   const tags = createTagRepo(db);
 
-  /** 解析维度主 tag 引用（数字 id 或名称）；缺省 → 该维「未标注」 */
-  function resolvePrimary(ledgerId, dimKey, ref, dimName) {
+  /**
+   * 解析维度主 tag。**所有维度都不强制必填**（产品规则：记一笔不要求用户选 tag）：
+   * 未选 → 该维「未分类」占位主 tag，没有则当场创建。
+   * @param {{id:number, key:string, name:string}} dim
+   */
+  function resolvePrimary(ledgerId, dim, ref) {
     if (ref === undefined || ref === null || ref === '') {
-      const unnamed = tags.unnamedTag(ledgerId, dimKey);
-      if (unnamed) return unnamed;
-      throw new BizError(`维度「${dimName}」缺少默认「未标注」tag，请补建`, 'NO_UNNAMED_TAG');
+      return tags.tagById(ledgerId, tags.ensureUnnamedTag(ledgerId, dim.id));
     }
     const tag = typeof ref === 'number'
       ? tags.tagById(ledgerId, ref)
-      : tags.rootTagByName(ledgerId, dimKey, String(ref));
-    if (!tag) throw new BizError(`tag 不存在或不属于该账本: ${ref}（维度 ${dimName}）`, 'TAG_NOT_FOUND', 404);
+      : tags.rootTagByName(ledgerId, dim.key, String(ref));
+    if (!tag) throw new BizError(`tag 不存在或不属于该账本: ${ref}（维度 ${dim.name}）`, 'TAG_NOT_FOUND', 404);
     // 主 tag 必须是根级：副 tag（主 tag 的细分）不能充当维度的主取值
     if (tag.parent_tag_id !== null && tag.parent_tag_id !== undefined) {
-      throw new BizError(`「${tag.name}」是副 tag，不能作为维度「${dimName}」的主 tag`, 'NOT_A_PRIMARY_TAG', 400);
+      throw new BizError(`「${tag.name}」是副 tag，不能作为维度「${dim.name}」的主 tag`, 'NOT_A_PRIMARY_TAG', 400);
     }
     return tag;
   }
@@ -69,8 +71,12 @@ export function createExpenseService(db) {
 
   /**
    * 记账输入 → 待写 expense 字段 + links 列表（add/update 共用，规则单一来源）。
-   * 校验不变量：金额正整数、日期 YYYY-MM-DD、品类 primary 必填、每维恰一 primary、
-   * 全部 tag 属于同一账本。不改库；写库由调用方在事务内执行。
+   * 校验不变量：金额正整数、日期 YYYY-MM-DD、每维恰一 primary、全部 tag 属于同一账本。
+   *
+   * 缺省兜底（产品规则：记一笔不要求用户选任何 tag）：
+   *  - 某维主 tag 未选 → 该维「未分类」主 tag（没有则当场创建）
+   *  - 某主 tag 下一个副 tag 都没选 → 补该主 tag 的「未分类」副 tag（没有则当场创建）
+   * 因此本函数**可能写库**（懒创建占位 tag），调用方必须包在事务内，保证与记账同生共死。
    */
   function plan(input) {
     const { ledgerId, amountCents, date } = input;
@@ -80,44 +86,49 @@ export function createExpenseService(db) {
     if (!DATE_RE.test(date)) throw new BizError('日期格式须为 YYYY-MM-DD', 'INVALID_DATE');
     const type = input.type === 'income' ? 'income' : 'expense';
 
-    const links = [];
-    // 主 tag：遍历账本全部维度；required 维主 tag 必填，其余维缺省 → 该维「未标注」
-    const dims = tags.dimensions(ledgerId);
-    for (const dim of dims) {
-      const ref = input.primary ? input.primary[dim.key] : undefined;
-      if (dim.required && (ref === undefined || ref === null || ref === '')) {
-        throw new BizError(`维度「${dim.name}」主 tag 必填`, 'REQUIRED_TAG');
+    // 主 tag：遍历账本全部维度，每维恰一个（未选 → 「未分类」）
+    const primaries = tags.dimensions(ledgerId).map(dim => ({
+      dimensionId: dim.id,
+      tag: resolvePrimary(ledgerId, dim, input.primary ? input.primary[dim.key] : undefined),
+    }));
+
+    // 副 tag：归属校验的基准 = 本笔各维主 tag
+    const primaryTagIds = new Set(primaries.map(p => p.tag.id));
+    const secondaries = resolveSecondary(ledgerId, input.tags, primaryTagIds);
+
+    // 副 tag 兜底：某主 tag 下若一个副 tag 都没选 → 补它的「未分类」副 tag
+    const parentsWithSecondary = new Set(secondaries.map(t => t.parent_tag_id));
+    for (const p of primaries) {
+      if (!parentsWithSecondary.has(p.tag.id)) {
+        const id = tags.ensureUnnamedTag(ledgerId, p.dimensionId, { parentTagId: p.tag.id });
+        secondaries.push(tags.tagById(ledgerId, id));
       }
-      const tag = resolvePrimary(ledgerId, dim.key, ref, dim.name);
-      links.push({ tagId: tag.id, role: 'primary' });
-    }
-    // 副 tag：归属校验的基准 = 上面刚定下的主 tag 集合（每维恰一个）
-    const primaryTagIds = new Set(links.map(l => l.tagId));
-    for (const t of resolveSecondary(ledgerId, input.tags, primaryTagIds)) {
-      links.push({ tagId: t.id, role: 'secondary' });
     }
 
     return {
       fields: { ledgerId, type, amountCents, date, note: input.note ?? null },
-      links,
+      links: [
+        ...primaries.map(p => ({ tagId: p.tag.id, role: 'primary' })),
+        ...secondaries.map(t => ({ tagId: t.id, role: 'secondary' })),
+      ],
     };
   }
 
   const api = {
     /**
-     * 记一笔（支出/收入）。单事务，任一步失败整体回滚。
+     * 记一笔（支出/收入）。单事务，任一步失败整体回滚（含缺省占位 tag 的懒创建）。
      * @param {object} input
      * @param {number} input.ledgerId
      * @param {'expense'|'income'} [input.type]
      * @param {number} input.amountCents 金额（分）
      * @param {string} input.date YYYY-MM-DD
      * @param {string|null} [input.note]
-     * @param {object} input.primary { category: name|id, context?: name|id|null }
-     * @param {Array<number|string>} [input.tags] 副 tag
+     * @param {object} [input.primary] 各维主 tag { category?: name|id, context?: name|id }；全部可缺省
+     * @param {Array<number|string>} [input.tags] 副 tag（须挂在本笔某主 tag 下；缺省自动补「未分类」）
      */
     add(input) {
-      const p = plan(input);
       return transaction(db, () => {
+        const p = plan(input);
         const expenseId = expenses.insert(p.fields);
         expenses.linkTags(expenseId, p.links);
         return api.byId(expenseId);
@@ -149,7 +160,7 @@ export function createExpenseService(db) {
 
     /**
      * 编辑花销（D-10 PUT 全量替换，规则与 add 同源）。单事务：
-     * 更新事实行 + 清空旧 links + 重写全部主/副 tag，任一步失败整体回滚。
+     * 更新事实行 + 清空旧 links + 重写全部主/副 tag（含缺省占位 tag 的懒创建），任一步失败整体回滚。
      * @param {number} ledgerId 路径账本（隔离校验基准）
      * @param {number} expenseId 目标花销
      * @param {object} input 同 add 的记账输入（不含 ledgerId，由路径参数决定归属）
@@ -159,8 +170,8 @@ export function createExpenseService(db) {
       if (!existing || existing.ledger_id !== ledgerId) {
         throw new BizError(`花销不存在: ${expenseId}`, 'NOT_FOUND', 404);
       }
-      const p = plan({ ...input, ledgerId });
       return transaction(db, () => {
+        const p = plan({ ...input, ledgerId });
         expenses.update(expenseId, p.fields);
         expenses.replaceLinks(expenseId, p.links);
         return api.byId(expenseId);
