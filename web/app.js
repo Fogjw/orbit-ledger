@@ -68,7 +68,9 @@ function refreshDays(){
 
 /* ---------- 状态 ---------- */
 const S={dim:'category',ledgerId:null,view:'l1',focus:null,hover:null,hoverKind:null};
-const TL={z:1,scroll:1,sel:{level:'month',idx:0}};
+const TL={z:1,pan:0,view:{from:0,to:1},sel:{level:'month',idx:0}};
+// z = 连续变焦（0=日 / 1=月 / 2=年）；view = 当前视口时间区间（天序号）；
+// pan = 手动平移量（天），由左右拖动产生，切换选中项时归零
 const catList=()=>S.dim==='category'?CATS:CTXS;
 
 /* 当前维度各 tag 金额（渲染id → 元），只含金额>0 */
@@ -609,6 +611,7 @@ function drawOrbit(t){
   const w=r.width,h=r.height;
   oc.clearRect(0,0,w,h);
   const W8=levelW();
+  syncViewport();   // 每帧对齐视口：数据/选中项/变焦任何一处变了都自动跟上
   // 地形（按主导口径）
   oc.save();
   const dl=domLevel();
@@ -653,11 +656,88 @@ function tlPoly(pts,a){
   oc.beginPath();pts.forEach((p,i)=>i?oc.lineTo(p.x,p.y):oc.moveTo(p.x,p.y));oc.stroke();
   oc.restore();
 }
-const MONTH_GAP=64;
-function monthX(w,i){
-  const pad=44, cw=MONTHS.length*MONTH_GAP, vw=w-pad*2;
-  return pad+i*MONTH_GAP-TL.scroll*Math.max(0,cw-vw);
+/* ---------- 星轨统一时间轴 ----------
+   三档（日/月/年）**共用一条连续时间轴**：节点的 x = 它代表的时间点在当前视口里的位置。
+   变焦只改变视口跨度（日档≈1 个月、月档≈1 年、年档=全部），于是放大/缩小看到的是
+   「同一条星轨的局部放大」，而不是三套互不相干的数据 ——
+   在年视图选中 2025 再滚到月视图，看到的就是 2025 那一段的十二个月；
+   继续放大到日档，看到的就是某个选中的月里每一天。反向缩小同理。 */
+const DAY_MS=86400000;
+const pad2=n=>String(n).padStart(2,'0');
+/** 'YYYY-MM-DD' → 天序号（UTC，避免时区偏移） */
+function dayNum(ymd){
+  const [y,m,d]=ymd.split('-').map(Number);
+  return Math.floor(Date.UTC(y,m-1,d)/DAY_MS);
 }
+/** 数据覆盖的完整时间范围（按最早/最晚月取整到月边界） */
+function timelineFull(){
+  if(!MONTHS.length){
+    const t=dayNum(new Date().toISOString().slice(0,10));
+    return {from:t-15,to:t+15};
+  }
+  const f=MONTHS[0],l=MONTHS[MONTHS.length-1];
+  const lastDay=new Date(Date.UTC(l.y,l.m,0)).getUTCDate();
+  return {from:dayNum(`${f.y}-${pad2(f.m)}-01`),to:dayNum(`${l.y}-${pad2(l.m)}-${pad2(lastDay)}`)};
+}
+/** 各档视口跨度：日档＝选中日所在月、月档＝选中月所在年、年档＝全部。
+    这样「年档选 2025 → 放大到月档」看到的正是 2025 的十二个月，「月档选某月 →
+    放大到日档」看到的正是该月的每一天；反向缩小则是把视口一层层拉回上级周期。 */
+const SPAN_DAY=31, SPAN_MONTH=365;
+function spanForZoom(){
+  const full=timelineFull(), all=Math.max(1,full.to-full.from);
+  const lv=domLevel();
+  if(lv==='day')return SPAN_DAY;
+  if(lv==='year')return all;
+  return Math.min(all,SPAN_MONTH);
+}
+/** 视口锚点＝选中节点在**上一级周期**的中心：
+    日档→该月中心；月档→该年中心（年中即 7/1）；年档→整体中心。 */
+function anchorCenter(){
+  const full=timelineFull();
+  const lv=domLevel();
+  if(lv==='day'){
+    const d=DAYS[TL.sel.idx];
+    if(d)return dayNum(`${d.y}-${pad2(d.m)}-15`);
+  }else if(lv==='month'){
+    const m=MONTHS[TL.sel.idx];
+    if(m)return dayNum(`${m.y}-07-01`);
+  }
+  return (full.from+full.to)/2;
+}
+/** 当前选中节点代表的时间中心（天）—— 跨档衔接时用来找「覆盖它的新节点」 */
+function selCenterDay(){
+  const {level,idx}=TL.sel;
+  if(level==='day'&&DAYS[idx])return dayNum(DAYS[idx].date);
+  if(level==='month'&&MONTHS[idx])return dayNum(`${MONTHS[idx].y}-${pad2(MONTHS[idx].m)}-15`);
+  if(level==='year'&&YEARS[idx])return dayNum(`${YEARS[idx].y}-07-01`);
+  const full=timelineFull();
+  return (full.from+full.to)/2;
+}
+/** 依「当前档位 + 选中项 + 手动平移」重算视口。
+    锚定时**不做硬 clamp** —— 硬 clamp 到数据范围会把视口推偏（例如数据只到 9 月时，
+    「2026 年」的视口会被推成 2025-09~2026-09）。改为：视口永远以选中周期为中心，
+    只对**手动平移量**设限，避免拖到无数据区域以外太远。 */
+function syncViewport(){
+  const full=timelineFull(), all=Math.max(1,full.to-full.from);
+  const span=spanForZoom();
+  if(span>=all){                       // 看到全部：居中
+    const mid=(full.from+full.to)/2;
+    TL.view={from:mid-span/2,to:mid+span/2};
+    return;
+  }
+  const maxPan=Math.max(0,(all-span)/2);
+  const pan=clamp(TL.pan||0,-maxPan,maxPan);
+  const c=anchorCenter()+pan;
+  TL.view={from:c-span/2,to:c+span/2};
+}
+/** 天序号 → 星轨像素 x（视口线性映射，两侧留边） */
+function xOfDay(d,w){
+  const PAD=44, vw=Math.max(1,w-PAD*2);
+  const {from,to}=TL.view, span=Math.max(1,to-from);
+  return PAD+(d-from)/span*vw;
+}
+const monthMidDay=m=>dayNum(`${m.y}-${pad2(m.m)}-15`);
+function monthX(w,i){ return xOfDay(monthMidDay(MONTHS[i]),w) }
 function monthXY(w,h,i){
   const m=MONTHS[i];
   return{x:monthX(w,i),
@@ -706,12 +786,9 @@ function drawOrbitMonth(w,h,t,al){
     }
   }
 }
-const DAY_GAP=44;
-function dayContent(w){return DAYS.length*DAY_GAP}
-function dayX(w,i){
-  const vw=w-80, cw=dayContent(w);
-  return 40+i*DAY_GAP-TL.scroll*Math.max(0,cw-vw);
-}
+/* 日节点：x 同样取自统一时间轴 —— 放大到日档时，视口只覆盖一个月，
+   于是画出来的正好是「当前这一段」里的每一天 */
+function dayX(w,i){ return xOfDay(dayNum(DAYS[i].date),w) }
 /* 日节点纵坐标：正弦 + 哈希抖动，不规律的起伏 */
 function dayY(h,i){return h*.55+Math.sin(i*.5)*6+(hash01('dy'+i)-.5)*18}
 function drawOrbitDay(w,h,t,al){
@@ -745,12 +822,13 @@ function drawOrbitDay(w,h,t,al){
     }
   }
 }
-function yearY(h,i){return h*[.40,.60,.44][i]}
+function yearY(h,i){return h*[.40,.60,.44][i%3]}
 function drawOrbitYear(w,h,t,al){
   orbitBase(w,h);
-  tlPoly(YEARS.map((_,i)=>({x:w*(.22+.28*i),y:yearY(h,i)})),al);
+  const yearX=(i)=>xOfDay(dayNum(`${YEARS[i].y}-07-01`),w);   // 同样走统一时间轴
+  tlPoly(YEARS.map((_,i)=>({x:yearX(i),y:yearY(h,i)})),al);
   YEARS.forEach((y,i)=>{
-    const x=w*(.22+.28*i), yy=yearY(h,i);
+    const x=yearX(i), yy=yearY(h,i);
     const R=clamp(6+Math.sqrt(y.total)*.09,9,15);
     const col=y.color||'#9be9ff';
     const hov=S.hoverKind==='year'&&TL.sel.level==='year'&&S.hover===i;
@@ -779,7 +857,7 @@ function orbitHit(x,y){
   if(lv==='day'){
     for(let i=0;i<DAYS.length;i++)if(near(dayX(w,i),dayY(h,i)))return{kind:'day',id:i};
   }else if(lv==='year'){
-    for(let i=0;i<YEARS.length;i++)if(near(w*(.22+.28*i),yearY(h,i),20))return{kind:'year',id:i};
+    for(let i=0;i<YEARS.length;i++)if(near(xOfDay(dayNum(`${YEARS[i].y}-07-01`),w),yearY(h,i),20))return{kind:'year',id:i};
   }else{
     for(let i=0;i<MONTHS.length;i++){const p=monthXY(w,h,i);if(near(p.x,p.y))return{kind:'month',id:i}}
   }
@@ -826,8 +904,21 @@ async function reloadDetailExpenses(){
     detailExpenses=items.filter(e=>e.tags.some(t=>t.role==='primary'&&t.tag_id===detailTag.tagId));
   }catch(e){detailExpenses=[]}
 }
-/** 档位切换后对齐选中项（日→今天 / 月→最新月 / 年→最新年）
-    拖动滑块时会连续跨档，故数据加载走防抖，避免并发拉接口 */
+/** 跨档时：在新档位里找「覆盖当前选中时间」的那个节点（语义缩放的衔接）
+    注意必须在改写 TL.sel **之前**调用 —— 它读的是旧档位的选中时间 */
+function idxForLevel(lv){
+  const c=selCenterDay();
+  const nearest=(arr,dayOf)=>{
+    if(!arr.length)return 0;
+    let best=0,bd=Infinity;
+    arr.forEach((it,i)=>{const dd=Math.abs(dayOf(it)-c);if(dd<bd){bd=dd;best=i}});
+    return best;
+  };
+  if(lv==='day')return nearest(DAYS,d=>dayNum(d.date));
+  if(lv==='month')return nearest(MONTHS,m=>dayNum(`${m.y}-${pad2(m.m)}-15`));
+  return nearest(YEARS,y=>dayNum(`${y.y}-07-01`));
+}
+/** 档位切换后对齐选中项（按时间包含关系），并让视口跟过去 */
 let winTimer=null;
 function scheduleWindowSync(){
   if(winTimer)clearTimeout(winTimer);
@@ -836,30 +927,31 @@ function scheduleWindowSync(){
 function applyZoomSnap(){
   const lv=domLevel();
   if(TL.sel.level!==lv){
-    if(lv==='day')TL.sel={level:'day',idx:DAY_TODAY};
-    else if(lv==='year')TL.sel={level:'year',idx:Math.max(0,YEARS.length-1)};
-    else TL.sel={level:'month',idx:TODAY};
+    const idx=idxForLevel(lv);        // 先算（读旧选中时间），再落新档位
+    TL.sel={level:lv,idx};
+    TL.pan=0;
   }
   syncRail();
+  syncViewport();
   scheduleWindowSync();
 }
 async function selectTime(kind,id){
   if(kind==='day'){
     if(!DAYS[id])return;
-    TL.sel={level:'day',idx:id};
+    TL.sel={level:'day',idx:id};TL.pan=0;
     await syncWindowToSel();
     burst(W/2,H-190,'#9be9ff',10);
     return;
   }
   if(kind==='year'){
     if(!YEARS[id])return;
-    TL.sel={level:'year',idx:id};
+    TL.sel={level:'year',idx:id};TL.pan=0;
     await syncWindowToSel();
     burst(W/2,H-190,'#9be9ff',18);
     return;
   }
   if(kind!=='month'||!MONTHS[id])return;
-  TL.sel={level:'month',idx:id};
+  TL.sel={level:'month',idx:id};TL.pan=0;
   await syncWindowToSel();
   burst(W/2,H-190,'#9be9ff',14);
 }
@@ -868,9 +960,11 @@ function setZoom(z,quiet){
   const before=domLevel();
   TL.z=z;syncRail();
   const now=domLevel();
-  if(before!==now){                 // 跨过档位阈值 → 对齐选中态并切数据窗口
+  if(before!==now){                 // 跨过档位阈值 → 对齐选中项、切数据窗口
     applyZoomSnap();
     if(!quiet)toast('星轨 · '+LV_NAME[now]+'视图');
+  }else{
+    syncViewport();                 // 同档内变焦：只是视口缩放，不换数据
   }
 }
 
@@ -986,8 +1080,7 @@ gC.addEventListener('wheel',e=>{e.preventDefault();setZoom(TL.z+e.deltaY*0.0016)
 /* 星轨：左右拖拽看时间，点击选中 */
 let oDrag=null;
 oC.addEventListener('pointerdown',e=>{
-  const r=oC.getBoundingClientRect();
-  oDrag={x:e.clientX,y:e.clientY,sx:TL.scroll,moved:false};
+  oDrag={x:e.clientX,y:e.clientY,pan:TL.pan,moved:false};
   oC.setPointerCapture&&oC.setPointerCapture(e.pointerId);
 });
 oC.addEventListener('pointermove',e=>{
@@ -996,9 +1089,11 @@ oC.addEventListener('pointermove',e=>{
     const dx=e.clientX-oDrag.x;
     if(Math.abs(dx)>4)oDrag.moved=true;
     if(oDrag.moved){
-      const lv=domLevel();
-      const pad=lv==='day'?80:88, cw=lv==='day'?dayContent(r.width):MONTHS.length*MONTH_GAP;
-      if(cw>r.width-pad)TL.scroll=clamp(oDrag.sx-dx/(cw-(r.width-pad)),0,1);
+      // 左右拖动 = 沿统一时间轴平移视口（像素位移换算成天数）
+      const span=Math.max(1,TL.view.to-TL.view.from);
+      const vw=Math.max(1,r.width-88);
+      TL.pan=(oDrag.pan||0)-dx/vw*span;
+      syncViewport();
     }
     return;
   }
@@ -1366,7 +1461,7 @@ async function switchLedger(id){
     refreshTagArrays();refreshMonths();refreshAmounts();
     TODAY=Math.max(0,MONTHS.length-1);
     const ni=MONTHS.findIndex(m=>m.y===Data._currentMonthY&&m.m===Data._currentMonthM);
-    TL.sel={level:'month',idx:ni>=0?ni:TODAY};TL.scroll=1;
+    TL.sel={level:'month',idx:ni>=0?ni:TODAY};TL.pan=0;
   }catch(e){toast('切换账本失败：'+(e.message||e))}
   renderLedgerDD();
   buildGraph();syncChrome();
@@ -1454,6 +1549,7 @@ $('#btnToday').onclick=async ()=>{
   }else{
     TL.sel={level:'month',idx:TODAY};
   }
+  TL.pan=0;
   await syncWindowToSel();
   toast('回到今天');
 };
@@ -1834,7 +1930,8 @@ async function boot(){
   TODAY=Math.max(0,MONTHS.length-1);
   const ni=MONTHS.findIndex(m=>m.y===Data._currentMonthY&&m.m===Data._currentMonthM);
   TL.sel={level:'month',idx:ni>=0?ni:TODAY};
-  TL.z=1;TL.scroll=1;   // 默认月档（需求基线 §5.4：启动默认月视图）
+  TL.z=1;TL.pan=0;   // 默认月档（需求基线 §5.4：启动默认月视图）
+  syncViewport();
   renderLedgerDD();
   buildGraph();syncChrome();syncRail&&syncRail();
   requestAnimationFrame(frame);

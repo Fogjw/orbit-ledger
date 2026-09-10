@@ -100,17 +100,14 @@ const Data = {
 
   /**
    * 拉取一个时间窗的统计（三个档位共用）。
-   * @param {string} from YYYY-MM-DD
-   * @param {string} to YYYY-MM-DD
-   * @param {{daysFrom?:string, daysTo?:string}} [opts] 日序列取数范围（默认同窗口）。
-   *   切到「日」档时窗口只有一天，但星轨日档需要整月上下文，故分开指定。
+   * 日序列固定取**全量**：星轨日档要能左右拖到任意时间，若只覆盖当前窗口，
+   * 一拖出窗口就没数据了。
    */
-  async _loadWindow(from, to, { daysFrom, daysTo } = {}) {
+  async _loadWindow(from, to) {
     this.monthRange = { from, to };
-    const dFrom = daysFrom || from, dTo = daysTo || to;
     const [periodStats, dailyStats] = await Promise.all([
       API.getStats(this.ledgerId, { from, to, type: 'expense' }),
-      API.getStats(this.ledgerId, { from: dFrom, to: dTo }),
+      API.getStats(this.ledgerId, {}),
     ]);
 
     this.monthTotal = centsToYuan(periodStats.totals.expense || 0);
@@ -166,13 +163,13 @@ const Data = {
   },
 
   // ===== 日选择 =====
-  // 统计窗口＝当天；日序列仍取该日所在**整月**，这样星轨切到日档时能看到整月上下文
+  // 统计窗口＝当天；日序列现在是全量，星轨日档可自由拖动到任意时间
   async selectDay(date) {
     const [y, m] = date.split('-').map(Number);
     this._window = { kind: 'day', date, year: y, month: m };
     this._currentMonthY = y;
     this._currentMonthM = m;
-    await this._loadWindow(date, date, { daysFrom: monthStart(y, m), daysTo: monthEnd(y, m) });
+    await this._loadWindow(date, date);
 
     // 日档的「上期」＝该月内有支出日序列里的前一天
     const i = this.days.findIndex(d => d.date === date);
