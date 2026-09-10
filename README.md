@@ -40,6 +40,9 @@ npm start          # 起窗口：主进程内嵌同一个本地服务，与浏�
 
 窗口菜单（按 Alt 显示）：视图 → 重新载入（Ctrl+R）/ 强制重新载入（Ctrl+Shift+R）/ 开发者工具（F12）。
 
+**关窗 ≠ 退出**：关掉窗口后进程继续驻留托盘，内嵌服务仍在监听（浏览器直连与 MCP 照常可用）；
+右键托盘图标可以「显示主窗口」或「退出 Orbit 星账」——只有后者才真正结束进程。
+
 ## 打包成安装包（Windows）
 
 ```bash
@@ -47,7 +50,10 @@ npm run make:icon  # assets/icon.svg → assets/icon.png（用 Electron 自己�
 npm run dist       # electron-builder → release/Orbit-Setup-<版本>.exe
 ```
 
-安装包特性：可自选安装目录、创建**桌面快捷方式与开始菜单快捷方式**、卸载入口齐全；`npm run pack` 只产目录不产安装包。
+安装向导里有**两处可选路径**：安装目录，以及紧接着一页的**账本数据目录**（默认 `%APPDATA%\Orbit 星账`）。
+数据目录选择结果写入 `%APPDATA%\Orbit 星账\data-path.txt`，主进程启动时读取；
+换目录不会自动搬走旧数据 —— 把旧的 `orbit.db` 复制过去即可。安装包还会自动创建
+**桌面与开始菜单快捷方式**，并在注册表留下卸载入口。`npm run pack` 只产目录不产安装包。
 
 打包会下载 Electron 二进制与 NSIS，受限网络下同样靠镜像：
 
