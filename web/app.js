@@ -536,10 +536,12 @@ function drawGraph(t){
     // 细分节点是「标签」身份，给星芒；花销节点保持素净（数量多，加芒会糊）
     drawStar(n.x,n.y,Math.max(.5,n.R*sc),col,tw*a,n.kind==='sub');
     g.save();g.globalAlpha=a;g.restore();
-    // 花销节点密集，标签只在被高亮时出现；细分节点始终显示（它是这张图的骨架）
+    // 账单节点数量多，默认不挂标签（几十笔会糊成一片）：只有被 hover 关联到时才显示日期与金额。
+    // 细分节点是这张图的骨架，名字始终显示。
     const isExp=n.kind==='exp';
-    const lbText=isExp?((n.ref.note||n.ref.date||'').slice(0,7)||'一笔'):n.ref.name;
-    if(!isExp||hot){
+    const showLb=isExp?(!!hotNodes&&hotNodes.has(n.id)):true;
+    if(showLb){
+      const lbText=isExp?((n.ref.date||'').slice(5)||'一笔'):n.ref.name;
       label(lbText,'¥'+n.amount.toLocaleString(),n.x,n.y+n.R*sc+16,a*(hot?1:.6),hovG===n.id);
     }
   }
