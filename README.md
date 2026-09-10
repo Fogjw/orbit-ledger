@@ -5,6 +5,8 @@
 > 于是「钱花在哪了」不再是一串数字，而是一片能一眼看清的夜空。
 > 偶尔有几颗反向划过的星，那是收入。
 
+**[在线试用](https://fogjw.github.io/orbit-ledger/)** —— 纯前端版：打开即用，数据存在你自己那台设备上，不上传
+
 ![Orbit 星账 · 主视图](docs/screenshots/overview.png)
 
 图谱化账单软件：用关系图谱替代流水账/扇形图，花销与分类构成二部图，节点大小编码金额，让"钱花在哪、钱之间有什么关联"一眼可见。
@@ -83,9 +85,12 @@ npm run verify:web   # 端到端验证：起静态服务 + 用 Electron 当浏�
   其他浏览器自动降级为浏览器内部存储（IndexedDB），**清站点数据会丢**，所以要定期导出备份。
 - **两种形态的关系**：业务规则（`core/`）与界面（`web/`）完全共用，差别只在数据来源 ——
   桌面端走本地服务（带 MCP），纯前端版直接跑在浏览器里（无服务端、无 MCP）。
-- **部署**：产物是纯静态的，GitHub Pages（`.github/workflows/pages.yml`）、Cloudflare Pages、
-  Vercel 或任意静态服务器都能托管。用 Pages 时注意它挂在 `/<仓库名>/` 子路径下 ——
-  构建产物里的引用全是相对的，所以子路径部署不需要改任何配置。
+- **在线试用**：<https://fogjw.github.io/orbit-ledger/>（GitHub Pages，由 `.github/workflows/pages.yml` 自动构建部署）
+- **部署**：产物是纯静态的，GitHub Pages、Cloudflare Pages、Vercel 或任意静态服务器都能托管。
+  Pages 会挂在 `/<仓库名>/` 子路径下 —— 构建产物里的引用全是相对的，所以子路径部署不需要改任何配置。
+  唯一的前提：首次启用 Pages 必须由仓库主人在 Settings → Pages 把 Source 设为 GitHub Actions，
+  这一步**无法由 workflow 代办**（`GITHUB_TOKEN` 拿不到创建 Pages 站点的权限，会被拒为
+  `Resource not accessible by integration`）。
 
 ## 打包成安装包（Windows）
 
