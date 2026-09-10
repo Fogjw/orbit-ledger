@@ -1,0 +1,81 @@
+# 纯前端版：构建静态站点并部署到 GitHub Pages
+#
+# 形态：共享 core + 本地 API + 存储层 + sql.js 打成静态站点，数据存在访问者的
+# 浏览器或本地文件里 —— 服务端不留任何账目，所以这里只做「构建 + 托管」，没有后端。
+#
+# 关于 Pages 的一个前提：GitHub Pages 对**私有仓库**需要付费方案。没启用 Pages 时
+# deploy 这一步会失败，但 build 产出的 artifact 仍然可以下载下来自己托管
+# （Cloudflare Pages / Vercel / 任意静态服务器都行，产物是纯静态的）。
+#
+# 路径说明：Pages 会把它挂在 /<仓库名>/ 子路径下，所以产物里的引用必须是相对的 ——
+# 这正是构建脚本刻意用 ./bundle.js 与 import.meta.url 的原因。
+name: Webapp
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'webapp/**'
+      - 'web/**'
+      - 'core/**'
+      - '.github/workflows/pages.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+concurrency:
+  group: pages
+  cancel-in-progress: true
+
+jobs:
+  build:
+    name: 构建静态站点
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+          cache: npm
+          cache-dependency-path: package-lock.json
+
+      - name: 安装依赖
+        run: npm ci
+
+      - name: 构建（esbuild 打包 + 复用 web/ 的界面）
+        run: npm run build:web
+
+      # 少一个文件站点就跑不起来（典型的是 wasm），所以这里逐个点名检查
+      - name: 检查产物完整性
+        run: |
+          set -e
+          for f in index.html bundle.js data.js app.js styles.css logo.svg sqlite-wasm/sql-wasm.wasm; do
+            test -f "webapp/dist/$f" || { echo "::error::缺少产物 $f"; exit 1; }
+            echo "ok $f"
+          done
+
+      - name: 上传构建产物（可下载自托管）
+        uses: actions/upload-artifact@v4
+        with:
+          name: orbit-webapp
+          path: webapp/dist
+
+      - uses: actions/upload-pages-artifact@v3
+        with:
+          path: webapp/dist
+
+  deploy:
+    name: 部署到 GitHub Pages
+    needs: build
+    if: github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - id: deployment
+        uses: actions/deploy-pages@v4

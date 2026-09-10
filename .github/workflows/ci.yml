@@ -29,6 +29,10 @@ jobs:
           cache: npm
           cache-dependency-path: server/package-lock.json
 
+      # 仓库根依赖也要装：webapp 的双驱动测试会用 sql.js 跑同一套 core
+      - name: 安装仓库根依赖
+        run: npm ci
+
       - name: 安装服务依赖
         working-directory: server
         run: npm ci
@@ -54,7 +58,34 @@ jobs:
       - name: node --check
         run: |
           set -e
-          for f in web/*.js electron/*.js electron/scripts/*.js; do
+          for f in web/*.js electron/*.js electron/scripts/*.js webapp/*.js webapp/*.mjs core/*.js core/repos/*.js core/services/*.js; do
             echo "checking $f"
             node --check "$f"
           done
+
+  webapp-build:
+    name: 纯前端版构建
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+          cache: npm
+          cache-dependency-path: package-lock.json
+
+      # 这条链路依赖 sql.js 的 wasm 与 esbuild，缺一个就构建不出来
+      - name: 安装依赖
+        run: npm ci
+
+      - name: 构建静态站点
+        run: npm run build:web
+
+      - name: 检查产物
+        run: |
+          set -e
+          test -f webapp/dist/index.html
+          test -f webapp/dist/bundle.js
+          test -f webapp/dist/sqlite-wasm/sql-wasm.wasm
+          echo "构建产物完整"
