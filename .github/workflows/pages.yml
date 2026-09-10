@@ -77,13 +77,10 @@ jobs:
       name: github-pages
       url: ${{ steps.deployment.outputs.page_url }}
     steps:
-      # enablement 会尝试自动开启 Pages；有些账号 / 仓库不允许 token 这么做。
-      # 那就让它失败但不阻塞 —— 后续 deploy-pages 会给出「Pages 未启用」这个更明确的错误。
-      # 人去 Settings → Pages 把 Source 选成 GitHub Actions 之后，这一步自然会通过。
+      # Pages 已启用（Settings → Pages 的 Source 设为 GitHub Actions）。
+      # 这一步只能由仓库主人做一次：GITHUB_TOKEN 拿不到「创建 Pages 站点」的权限，
+      # 所以 workflow 里无论怎么配 enablement 都会被拒（Resource not accessible by integration）。
       - uses: actions/configure-pages@v5
-        continue-on-error: true
-        with:
-          enablement: true
 
       - id: deployment
         uses: actions/deploy-pages@v4
