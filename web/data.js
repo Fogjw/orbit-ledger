@@ -54,6 +54,7 @@ const Data = {
   // —— 维度原始缓存（渲染层不直接用）——
   _currentMonthY: null,
   _currentMonthM: null,
+  _window: null,   // 当前时间窗 {kind:'day'|'month'|'year', ...}，见 selectDay/selectMonth/selectYear
 
   // ===== 初始化 =====
   async init() {
@@ -85,6 +86,7 @@ const Data = {
     this.monthRange = { from: null, to: null };
     this._currentMonthY = null;
     this._currentMonthM = null;
+    this._window = null;
     this.monthTotal = 0;
     this.prevMonthTotal = 0;
     this.monthAmountsByDim = { category: {}, context: {} };
@@ -92,17 +94,23 @@ const Data = {
     this.days = [];
   },
 
-  // ===== 月选择 =====
-  async selectMonth({ year, month }) {
-    const from = monthStart(year, month);
-    const to = monthEnd(year, month);
-    this.monthRange = { from, to };
-    this._currentMonthY = year;
-    this._currentMonthM = month;
+  // ===== 时间窗（日 / 月 / 年，统一入口）=====
+  // _window 记录当前档位：{kind:'day',date,year,month} | {kind:'month',year,month} | {kind:'year',year}
+  // UI 据此决定标题与环比是否适用。
 
-    const [periodStats, allStats] = await Promise.all([
+  /**
+   * 拉取一个时间窗的统计（三个档位共用）。
+   * @param {string} from YYYY-MM-DD
+   * @param {string} to YYYY-MM-DD
+   * @param {{daysFrom?:string, daysTo?:string}} [opts] 日序列取数范围（默认同窗口）。
+   *   切到「日」档时窗口只有一天，但星轨日档需要整月上下文，故分开指定。
+   */
+  async _loadWindow(from, to, { daysFrom, daysTo } = {}) {
+    this.monthRange = { from, to };
+    const dFrom = daysFrom || from, dTo = daysTo || to;
+    const [periodStats, dailyStats] = await Promise.all([
       API.getStats(this.ledgerId, { from, to, type: 'expense' }),
-      API.getStats(this.ledgerId, { from, to }),
+      API.getStats(this.ledgerId, { from: dFrom, to: dTo }),
     ]);
 
     this.monthTotal = centsToYuan(periodStats.totals.expense || 0);
@@ -115,15 +123,22 @@ const Data = {
     this.monthAmounts = this.monthAmountsByDim.category;
 
     // 日序列（expense only，按日期排序）
-    const dailyExpense = (allStats.daily || []).filter(d => d.type === 'expense');
+    const dailyExpense = (dailyStats.daily || []).filter(d => d.type === 'expense');
     this.days = dailyExpense.map(d => {
-      const [, mm, dd] = d.date.split('-').map(Number);
-      return {
-        label: mm + '月' + dd + '日',
-        date: d.date,
-        total: centsToYuan(d.amount_cents),
-      };
+      const [yy, mm, dd] = d.date.split('-').map(Number);
+      return { label: mm + '月' + dd + '日', date: d.date, y: yy, m: mm, d: dd, total: centsToYuan(d.amount_cents) };
     });
+  },
+
+  // ===== 月选择 =====
+  async selectMonth({ year, month }) {
+    const from = monthStart(year, month);
+    const to = monthEnd(year, month);
+    this._window = { kind: 'month', year, month };
+    this._currentMonthY = year;
+    this._currentMonthM = month;
+
+    await this._loadWindow(from, to);
 
     // 保证星轨连续：所选月无任何 expense 也入列（total 0）
     let idx = this.months.findIndex(m => m.y === year && m.m === month);
@@ -145,6 +160,29 @@ const Data = {
     this.prevMonthTotal = idx > 0 ? this.months[idx - 1].total : 0;
   },
 
+  // ===== 日选择 =====
+  // 统计窗口＝当天；日序列仍取该日所在**整月**，这样星轨切到日档时能看到整月上下文
+  async selectDay(date) {
+    const [y, m] = date.split('-').map(Number);
+    this._window = { kind: 'day', date, year: y, month: m };
+    this._currentMonthY = y;
+    this._currentMonthM = m;
+    await this._loadWindow(date, date, { daysFrom: monthStart(y, m), daysTo: monthEnd(y, m) });
+
+    // 日档的「上期」＝该月内有支出日序列里的前一天
+    const i = this.days.findIndex(d => d.date === date);
+    this.prevMonthTotal = i > 0 ? this.days[i - 1].total : 0;
+  },
+
+  // ===== 年选择 =====
+  async selectYear(year) {
+    this._window = { kind: 'year', year };
+    this._currentMonthY = year;
+    this._currentMonthM = null;
+    await this._loadWindow(year + '-01-01', year + '-12-31');
+    this.prevMonthTotal = 0; // 年环比需要跨年全量，UI 层在年档不显示环比
+  },
+
   // ===== 定位最新月 =====
   gotoToday() {
     if (!this.months.length) return Promise.resolve();
@@ -152,12 +190,14 @@ const Data = {
     return this.selectMonth({ year: last.y, month: last.m });
   },
 
-  // ===== 变更后刷新 =====
+  // ===== 变更后刷新（按当前档位重新加载）=====
   async afterChange() {
     await this._loadMonths();
-    if (this._currentMonthY && this._currentMonthM) {
-      await this.selectMonth({ year: this._currentMonthY, month: this._currentMonthM });
-    }
+    const w = this._window;
+    if (!w) return;
+    if (w.kind === 'day' && w.date) await this.selectDay(w.date);
+    else if (w.kind === 'year' && w.year) await this.selectYear(w.year);
+    else if (w.year && w.month) await this.selectMonth({ year: w.year, month: w.month });
   },
 
   // ===== 建账本（建后入列表并选中，含默认维度）=====

@@ -20,9 +20,9 @@ const Data=(typeof window!=='undefined'?window:globalThis).OrbitData;
 let CATS=[], CTXS=[];
 let MONTHS=[];
 let TODAY=0;
-const DAYS=[]; // 本任务只做月视图，日序列留空即不画
-const YEARS=[]; // 年视图留空
-const DAY_TODAY=0;
+let DAYS=[];    // 日档：当前时间窗所在月的逐日序列（数据来自 Data.days）
+let YEARS=[];   // 年档：由 MONTHS 按年聚合
+let DAY_TODAY=0; // 日档里的"今天"下标
 const tagAmountMap={category:{},context:{}};
 /* 副 tag 索引：父主 tag id → 该主 tag 下的副 tag 数组（记一笔多选的数据源） */
 let SUBS={};
@@ -40,11 +40,29 @@ function refreshAmounts(){
   if(!Data)return;
   tagAmountMap.category={...(Data.monthAmountsByDim.category||{})};
   tagAmountMap.context={...(Data.monthAmountsByDim.context||{})};
+  refreshDays();   // 日序列同属"当前窗口统计"，一并搬进渲染层（各调用点无需再单独刷新）
 }
 function refreshMonths(){
   if(!Data)return;
   MONTHS=(Data.months||[]).map(m=>({label:m.label,full:m.full,total:m.total,y:m.y,m:m.m,topColor:m.topColor||''}));
   TODAY=Math.max(0,MONTHS.length-1);
+  // 年档：按年聚合（星轨年视图的数据源）
+  const byY=new Map();
+  for(const m of MONTHS){
+    const cur=byY.get(m.y)||{label:m.y+'年',y:m.y,total:0,topColor:''};
+    cur.total+=m.total;
+    if(!cur.topColor&&m.topColor)cur.topColor=m.topColor;
+    byY.set(m.y,cur);
+  }
+  YEARS=[...byY.values()].sort((a,b)=>a.y-b.y);
+}
+/** 日档：取当前时间窗所在月的逐日序列（Data.days 由 _loadWindow 填充） */
+function refreshDays(){
+  if(!Data)return;
+  DAYS=(Data.days||[]).map(d=>({label:d.label,date:d.date,y:d.y,m:d.m,day:d.d,total:d.total}));
+  const t=new Date().toISOString().slice(0,10);
+  const i=DAYS.findIndex(d=>d.date===t);
+  DAY_TODAY=i>=0?i:Math.max(0,DAYS.length-1);
 }
 
 /* ---------- 状态 ---------- */
@@ -66,6 +84,11 @@ function selTotal(){
   return (Data&&typeof Data.monthTotal==='number')?Data.monthTotal:0;
 }
 function selLabel(){
+  const w=Data&&Data._window;
+  if(w){
+    if(w.kind==='day')return w.date.replace(/-/g,'/');
+    if(w.kind==='year')return w.year+'年';
+  }
   if(Data&&Data._currentMonthY&&Data._currentMonthM)return Data._currentMonthY+'年'+Data._currentMonthM+'月';
   const m=MONTHS[TL.sel.idx];
   return m?m.full:'';
@@ -559,7 +582,14 @@ function drawGraph(t){
 /* ---------- 星轨：日/月/年连续变焦 + 左右拖拽 ---------- */
 function smooth(a,b,x){const t=clamp((x-a)/(b-a),0,1);return t*t*(3-2*t)}
 function levelW(){const z=TL.z;const wd=1-smooth(.35,.65,z),wy=smooth(1.35,1.65,z);return{d:wd,m:1-wd-wy,y:wy}}
-function domLevel(){ return 'month'; } // 本版只支持月视图
+/** 当前主导档位（日/月/年）—— 由连续变焦量 z 经 levelW 的三档权重判定 */
+function domLevel(){
+  const w=levelW();
+  if(w.d>=w.m&&w.d>=w.y)return 'day';
+  if(w.y>=w.m&&w.y>=w.d)return 'year';
+  return 'month';
+}
+const LV_NAME={day:'日',month:'月',year:'年'};
 function tlMonthColor(mi){
   const m=MONTHS[mi];
   if(m&&m.topColor)return m.topColor;
@@ -576,13 +606,16 @@ function drawOrbit(t){
   oc.save();
   const dl=domLevel();
   const vals=dl==='day'?DAYS.map(d=>d.total):dl==='year'?YEARS.map(y=>y.total):MONTHS.map(m=>m.total);
-  const n=vals.length,mx=Math.max(...vals);
-  oc.beginPath();
-  for(let i=0;i<n;i++){const x=30+i/(n-1)*(w-60),y=h*.62-(vals[i]/mx)*h*.30;i?oc.lineTo(x,y):oc.moveTo(x,y)}
-  oc.lineTo(w-30,h);oc.lineTo(30,h);oc.closePath();
-  const tg=oc.createLinearGradient(0,0,0,h);
-  tg.addColorStop(0,'rgba(110,150,255,.16)');tg.addColorStop(1,'rgba(110,150,255,0)');
-  oc.fillStyle=tg;oc.fill();oc.restore();
+  const n=vals.length,mx=Math.max(1,...vals);   // mx 兜底 1：空窗口时避免除零
+  if(n>1){
+    oc.beginPath();
+    for(let i=0;i<n;i++){const x=30+i/(n-1)*(w-60),y=h*.62-(vals[i]/mx)*h*.30;i?oc.lineTo(x,y):oc.moveTo(x,y)}
+    oc.lineTo(w-30,h);oc.lineTo(30,h);oc.closePath();
+    const tg=oc.createLinearGradient(0,0,0,h);
+    tg.addColorStop(0,'rgba(110,150,255,.16)');tg.addColorStop(1,'rgba(110,150,255,0)');
+    oc.fillStyle=tg;oc.fill();
+  }
+  oc.restore();
 
   if(W8.m>0.01)drawOrbitMonth(w,h,t,W8.m);
   if(W8.d>0.01)drawOrbitDay(w,h,t,W8.d);
@@ -734,56 +767,104 @@ function drawOrbitYear(w,h,t,al){
 }
 function orbitHit(x,y){
   const r=oC.getBoundingClientRect(),w=r.width,h=r.height;
-  // 本版只支持月视图
-  for(let i=0;i<MONTHS.length;i++){const p=monthXY(w,h,i);
-    if(Math.hypot(p.x-x,p.y-y)<18)return{kind:'month',id:i}}
+  const near=(px,py,rad=18)=>Math.hypot(px-x,py-y)<rad;
+  const lv=domLevel();
+  if(lv==='day'){
+    for(let i=0;i<DAYS.length;i++)if(near(dayX(w,i),dayY(h,i)))return{kind:'day',id:i};
+  }else if(lv==='year'){
+    for(let i=0;i<YEARS.length;i++)if(near(w*(.22+.28*i),yearY(h,i),20))return{kind:'year',id:i};
+  }else{
+    for(let i=0;i<MONTHS.length;i++){const p=monthXY(w,h,i);if(near(p.x,p.y))return{kind:'month',id:i}}
+  }
   return null;
 }
 
-/* ---------- 时间选择（本版只支持月视图） ---------- */
-function applyZoomSnap(){
-  // 任何非 month 选择都弹回 month
-  if(TL.sel.level!=='month'){TL.sel={level:'month',idx:TODAY}}
-  TL.z=1;syncRail&&syncRail();
+/* ---------- 时间选择：日/月/年三档联动 ----------
+   四路联动（竖滑块 / 滚轮 / 星轨点击 / 回到今天）都写同一个状态：
+   TL.z（连续变焦量）与 TL.sel（当前选中的档位与下标）；数据窗口由 syncWindowToSel 落地。 */
+
+/** 把选中项落到数据层的时间窗，并刷新全链（图谱/洞察/星轨） */
+async function syncWindowToSel(){
+  const {level,idx}=TL.sel;
+  try{
+    if(level==='day'&&DAYS[idx])await Data.selectDay(DAYS[idx].date);
+    else if(level==='year'&&YEARS[idx])await Data.selectYear(YEARS[idx].y);
+    else if(level==='month'&&MONTHS[idx])await Data.selectMonth({year:MONTHS[idx].y,month:MONTHS[idx].m});
+  }catch(e){toast('切换时间窗失败：'+(e.message||e))}
+  refreshDays();refreshMonths();refreshAmounts();
+  relockSel();                       // 刷新后索引可能漂移（月档可能补列）
+  if(S.view==='detail'&&detailTag)await reloadDetailExpenses();
   buildGraph();syncChrome();
 }
-async function selectTime(kind,id){
-  if(kind!=='month'){toast('即将支持');return}
-  if(!MONTHS[id])return;
-  TL.sel={level:'month',idx:id};
-  try{
-    await Data.selectMonth({year:MONTHS[id].y,month:MONTHS[id].m});
-    refreshMonths();refreshAmounts();
-    // selectMonth 可能补列导致下标漂移，按年月重新定位
-    const ni=MONTHS.findIndex(m=>m.y===Data._currentMonthY&&m.m===Data._currentMonthM);
-    if(ni>=0)TL.sel.idx=ni;
-    TODAY=Math.max(0,MONTHS.length-1);
-  }catch(e){toast('切换月份失败：'+(e.message||e))}
-  // 下钻视图里切月：按新月份重拉该分类的花销，避免图上是上月数据
-  if(S.view==='detail'&&detailTag){
-    const {from,to}=Data.monthRange;
-    try{
-      const {items=[]}=await OrbitAPI.listExpenses(Data.ledgerId,{from,to});
-      detailExpenses=items.filter(e=>e.tags.some(t=>t.role==='primary'&&t.tag_id===detailTag.tagId));
-    }catch(e){detailExpenses=[]}
+/** 刷新后把 TL.sel.idx 对齐到 Data._window 实际指向的那一格 */
+function relockSel(){
+  const w=Data&&Data._window;if(!w)return;
+  if(w.kind==='day'){
+    const i=DAYS.findIndex(d=>d.date===w.date);
+    if(i>=0)TL.sel={level:'day',idx:i};
+  }else if(w.kind==='year'){
+    const i=YEARS.findIndex(y=>y.y===w.year);
+    if(i>=0)TL.sel={level:'year',idx:i};
+  }else if(w.year&&w.month){
+    const i=MONTHS.findIndex(m=>m.y===w.year&&m.m===w.month);
+    if(i>=0)TL.sel={level:'month',idx:i};
   }
-  buildGraph();syncChrome();
+}
+/** 下钻视图里重拉当前时间窗的花销（切月/切日后图不能停在旧数据） */
+async function reloadDetailExpenses(){
+  if(!detailTag)return;
+  const {from,to}=Data.monthRange;
+  try{
+    const {items=[]}=await OrbitAPI.listExpenses(Data.ledgerId,{from,to});
+    detailExpenses=items.filter(e=>e.tags.some(t=>t.role==='primary'&&t.tag_id===detailTag.tagId));
+  }catch(e){detailExpenses=[]}
+}
+/** 档位切换后对齐选中项（日→今天 / 月→最新月 / 年→最新年）
+    拖动滑块时会连续跨档，故数据加载走防抖，避免并发拉接口 */
+let winTimer=null;
+function scheduleWindowSync(){
+  if(winTimer)clearTimeout(winTimer);
+  winTimer=setTimeout(()=>{winTimer=null;syncWindowToSel()},120);
+}
+function applyZoomSnap(){
+  const lv=domLevel();
+  if(TL.sel.level!==lv){
+    if(lv==='day')TL.sel={level:'day',idx:DAY_TODAY};
+    else if(lv==='year')TL.sel={level:'year',idx:Math.max(0,YEARS.length-1)};
+    else TL.sel={level:'month',idx:TODAY};
+  }
+  syncRail();
+  scheduleWindowSync();
+}
+async function selectTime(kind,id){
+  if(kind==='day'){
+    if(!DAYS[id])return;
+    TL.sel={level:'day',idx:id};
+    await syncWindowToSel();
+    burst(W/2,H-190,'#9be9ff',10);
+    return;
+  }
+  if(kind==='year'){
+    if(!YEARS[id])return;
+    TL.sel={level:'year',idx:id};
+    await syncWindowToSel();
+    burst(W/2,H-190,'#9be9ff',18);
+    return;
+  }
+  if(kind!=='month'||!MONTHS[id])return;
+  TL.sel={level:'month',idx:id};
+  await syncWindowToSel();
   burst(W/2,H-190,'#9be9ff',14);
 }
 function setZoom(z,quiet){
   z=clamp(z,0,2);
   const before=domLevel();
   TL.z=z;syncRail();
-  const after=levelW();
-  // 若试图进入日/年（z 偏离 1），立即弹回月视图
-  const wantDay=1-(after.d||0), wantYear=after.y||0;
-  if(z<0.65||z>1.35){
-    TL.z=1;syncRail();
-    if(!quiet)toast('即将支持');
-    if(before!=='month'||TL.sel.level!=='month'){TL.sel={level:'month',idx:TODAY};buildGraph();syncChrome()}
-    return;
+  const now=domLevel();
+  if(before!==now){                 // 跨过档位阈值 → 对齐选中态并切数据窗口
+    applyZoomSnap();
+    if(!quiet)toast('星轨 · '+LV_NAME[now]+'视图');
   }
-  if(before!==domLevel()){applyZoomSnap();if(!quiet)toast('星轨 · 月视图')}
 }
 
 /* ---------- 交互 ---------- */
@@ -892,7 +973,8 @@ gC.addEventListener('pointerup',e=>{
   }
 });
 gC.addEventListener('pointerleave',()=>{setHover(null);dragN=null});
-gC.addEventListener('wheel',e=>{e.preventDefault();toast('即将支持')},{passive:false});
+// 滚轮缩放星轨粒度（需求基线 §5.4「四路联动」之一：滚轮 / 竖滑块 / 星轨点击 / 回到今天）
+gC.addEventListener('wheel',e=>{e.preventDefault();setZoom(TL.z+e.deltaY*0.0016)},{passive:false});
 
 /* 星轨：左右拖拽看时间，点击选中 */
 let oDrag=null;
@@ -1214,6 +1296,8 @@ function animateNum(el,to,fmt){
 }
 function syncChrome(){
   const tot=selTotal();
+  const w=Data&&Data._window;
+  const lv=(w&&w.kind)||'month';
   // 笔数：Data.days 为有支出的天数，笔数保守估算；总额必须真实
   let nExp=1;
   try{
@@ -1223,10 +1307,14 @@ function syncChrome(){
   $('#mtLabel').textContent=`${selLabel()} · 共 ${nExp} 笔`;
   animateNum($('#mtValue'),tot,v=>'¥'+Math.round(v).toLocaleString());
   animateNum($('#pNum'),tot,v=>'¥'+Math.round(v).toLocaleString());
-  $('#pCount').textContent=`${nExp} 笔 · 日均 ¥${Math.round(tot/30)}`;
+  // 日均按当前窗口天数算（日档 1 天、年档 365 天、其余按 30 天）
+  const span=lv==='day'?1:(lv==='year'?365:30);
+  $('#pCount').textContent=`${nExp} 笔 · 日均 ¥${Math.round(tot/span)}`;
   const pv=prevTotal(),d=pv>0?(tot-pv)/pv*100:0;
-  $('#pDelta').textContent=`${d>=0?'▲':'▼'} ${Math.abs(d).toFixed(1)}% vs 上期`;
-  $('#tlTip').textContent='星轨 · 月视图（点击星星切换月份）';
+  $('#pDelta').textContent=(lv==='year')
+    ?'年度合计'                                        // 年环比需跨年全量，暂不显示
+    :`${d>=0?'▲':'▼'} ${Math.abs(d).toFixed(1)}% vs ${lv==='day'?'前一日':'上期'}`;
+  $('#tlTip').textContent='星轨 · '+LV_NAME[domLevel()]+'视图（点击星星切换'+(lv==='day'?'日期':lv==='year'?'年份':'月份')+'，滚轮或右轨缩放）';
   // 底部操作提示随视图切换（下钻视图的可用操作与 L1 不同）
   const hintEl=document.querySelector('.hint');
   if(hintEl){
@@ -1347,26 +1435,45 @@ seg('#dimSeg',v=>{
   $('#btnBack').hidden=true;
   refreshAmounts();buildGraph();syncChrome();
   toast(v==='category'?'维度 · 品类（这是什么钱）':'维度 · 情境（和谁 / 什么场景）')});
+/** 「回到今天」按当前档位落地：日→今天那天 / 月→最新月 / 年→最新年 */
 $('#btnToday').onclick=async ()=>{
-  try{
-    await Data.gotoToday();
-    refreshMonths();refreshAmounts();
-    TODAY=Math.max(0,MONTHS.length-1);
-    const ni=MONTHS.findIndex(m=>m.y===Data._currentMonthY&&m.m===Data._currentMonthM);
-    TL.sel={level:'month',idx:ni>=0?ni:TODAY};
-  }catch(e){toast('回到今天失败：'+(e.message||e))}
-  TL.z=1;syncRail();buildGraph();syncChrome();
+  const lv=domLevel();
+  if(lv==='day'){
+    const t=new Date().toISOString().slice(0,10);
+    const i=DAYS.findIndex(d=>d.date===t);
+    TL.sel={level:'day',idx:i>=0?i:DAY_TODAY};
+  }else if(lv==='year'){
+    TL.sel={level:'year',idx:Math.max(0,YEARS.length-1)};
+  }else{
+    TL.sel={level:'month',idx:TODAY};
+  }
+  await syncWindowToSel();
+  toast('回到今天');
 };
 
-/* 粒度轨已隐藏（本版只支持月视图）：保留函数防崩 */
+/* ---------- 右侧刻度轨：连续变焦（上=日 下=年），与滚轮/点击写同一状态 ---------- */
 const rail=$('#rail'),handle=$('#railHandle');
-function syncRail(){if(!handle)return;handle.style.top=(12+TL.z/2*76)+'%'}
+function syncRail(){
+  if(!handle||!rail)return;
+  const r=rail.getBoundingClientRect();
+  const h=r.height||1;
+  handle.style.top=clamp(6+TL.z/2*(h-12),4,h-4)+'px';
+}
 let railDrag=false;
-function railSet(e){toast('即将支持')}
+function railSet(e){
+  if(!rail)return;
+  const r=rail.getBoundingClientRect();
+  const t=clamp((e.clientY-r.top)/Math.max(1,r.height),0,1);
+  setZoom(t*2,true);   // 顶部=日(z≈0)、底部=年(z≈2)
+}
 if(rail){
-rail.addEventListener('pointerdown',e=>{railDrag=true;rail.setPointerCapture(e.pointerId);railSet(e)});
-rail.addEventListener('pointermove',e=>{if(railDrag)railSet(e)});
-rail.addEventListener('pointerup',()=>{railDrag=false;toast('即将支持')});
+  rail.addEventListener('pointerdown',e=>{railDrag=true;rail.setPointerCapture(e.pointerId);railSet(e)});
+  rail.addEventListener('pointermove',e=>{if(railDrag)railSet(e)});
+  rail.addEventListener('pointerup',()=>{if(railDrag){railDrag=false;toast('星轨 · '+LV_NAME[domLevel()]+'视图')}});
+}
+// 刻度轨与星轨上也能滚轮缩放（与图谱区一致）
+for(const el of [$('#railWrap'),$('#orbit')]){
+  if(el)el.addEventListener('wheel',e=>{e.preventDefault();setZoom(TL.z+e.deltaY*0.0016)},{passive:false});
 }
 
 /* 记账浮层（真实提交：POST → 重拉 → 图谱刷新） */
@@ -1715,12 +1822,12 @@ async function boot(){
   const last=Data.months[Data.months.length-1];
   if(last){
     try{await Data.selectMonth({year:last.y,month:last.m});}catch(e){}
-    refreshMonths();refreshAmounts();
+    refreshDays();refreshMonths();refreshAmounts();
   }
   TODAY=Math.max(0,MONTHS.length-1);
   const ni=MONTHS.findIndex(m=>m.y===Data._currentMonthY&&m.m===Data._currentMonthM);
   TL.sel={level:'month',idx:ni>=0?ni:TODAY};
-  TL.z=1;TL.scroll=1;
+  TL.z=1;TL.scroll=1;   // 默认月档（需求基线 §5.4：启动默认月视图）
   renderLedgerDD();
   buildGraph();syncChrome();syncRail&&syncRail();
   requestAnimationFrame(frame);
