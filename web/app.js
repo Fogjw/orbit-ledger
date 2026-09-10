@@ -162,11 +162,29 @@ function drawBg(t,dt,mx,my){
   shoots=shoots.filter(p=>p.life>0);
   for(const p of shoots){
     p.x+=p.vx*dt;p.y+=p.vy*dt;p.life-=dt*.9;
-    const len=130*p.life, hyp=Math.hypot(p.vx,p.vy)||1, dx=-p.vx/hyp, dy=-p.vy/hyp;
-    const gr=bg.createLinearGradient(p.x,p.y,p.x+dx*len,p.y+dy*len);
-    gr.addColorStop(0,`rgba(255,255,255,${.9*p.life})`);gr.addColorStop(1,'rgba(140,190,255,0)');
-    bg.strokeStyle=gr;bg.lineWidth=1.6;bg.lineCap='round';
-    bg.beginPath();bg.moveTo(p.x,p.y);bg.lineTo(p.x+dx*len,p.y+dy*len);bg.stroke();
+    const L=158*p.life, hyp=Math.hypot(p.vx,p.vy)||1;
+    const ux=-p.vx/hyp, uy=-p.vy/hyp;   // 尾方向（与运动方向相反）
+    // 多段渐隐拖尾：逐段变细变淡，比单段线性渐变更有「流星」的颗粒感
+    bg.save();bg.lineCap='round';
+    const SEG=7;
+    for(let k=0;k<SEG;k++){
+      const t0=k/SEG, t1=(k+1)/SEG;
+      const a0=(1-t0)*(1-t0)*.85*p.life;
+      if(a0<=.01)continue;
+      bg.strokeStyle=`rgba(${200+Math.round(55*(1-t0))},${220+Math.round(35*(1-t0))},255,${a0})`;
+      bg.lineWidth=1.9*(1-t0*.72);
+      bg.beginPath();
+      bg.moveTo(p.x+ux*L*t0,p.y+uy*L*t0);
+      bg.lineTo(p.x+ux*L*t1,p.y+uy*L*t1);
+      bg.stroke();
+    }
+    // 头部亮点（光晕而非硬圆）
+    bg.globalCompositeOperation='lighter';
+    const hg=bg.createRadialGradient(p.x,p.y,0,p.x,p.y,7);
+    hg.addColorStop(0,`rgba(255,255,255,${.95*p.life})`);
+    hg.addColorStop(1,'rgba(160,210,255,0)');
+    bg.fillStyle=hg;bg.beginPath();bg.arc(p.x,p.y,7,0,7);bg.fill();
+    bg.restore();
   }
 }
 
@@ -410,8 +428,11 @@ function burst(x,y,color,n=26){
 }
 function drawStar(x,y,R,color,tw,spiky){
   g.save();g.globalCompositeOperation='lighter';
-  const hs=R*(R>15?4.6:6.2);
-  g.globalAlpha=.6*tw;g.drawImage(glowSprite(color),x-hs/2,y-hs/2,hs,hs);
+  // 大星带呼吸（光晕半径 + 强度微脉动）；小星不呼吸 —— 整屏同频闪会晕
+  // 相位随坐标偏移，避免所有大星同频
+  const breathe=R>13?(1+.055*Math.sin(tNow*1.6+x*.01+y*.013)):1;
+  const hs=R*(R>15?4.6:6.2)*breathe;
+  g.globalAlpha=.6*tw*breathe;g.drawImage(glowSprite(color),x-hs/2,y-hs/2,hs,hs);
   g.globalAlpha=.95;
   const gr=g.createRadialGradient(x,y,0,x,y,R);
   gr.addColorStop(0,'rgba(255,255,255,1)');
@@ -420,12 +441,19 @@ function drawStar(x,y,R,color,tw,spiky){
   gr.addColorStop(1,rgba(color,0)); // 透明收边，无轮廓
   g.fillStyle=gr;g.beginPath();g.arc(x,y,R,0,7);g.fill();
   if(spiky){
-    g.globalAlpha=.30*tw;g.strokeStyle='#fff';g.lineCap='round';
-    for(let k=0;k<4;k++){
-      const an=k*Math.PI/2+.4, L=R*(k%2?1.6:2.6);
-      g.lineWidth=k%2?1:1.3;
-      g.beginPath();g.moveTo(x+Math.cos(an)*R*.4,y+Math.sin(an)*R*.4);
-      g.lineTo(x+Math.cos(an)*L,y+Math.sin(an)*L);g.stroke();
+    // 4 主芒 + 4 次芒：长度随星体分层；芒身色散（根部偏白、末端接节点色）
+    const L1=R*2.7, L2=R*1.55;
+    g.lineCap='round';
+    for(let k=0;k<8;k++){
+      const long=(k%2===0);
+      const an=k*Math.PI/4+.4, L=long?L1:L2;
+      const x2=x+Math.cos(an)*L, y2=y+Math.sin(an)*L;
+      const lg=g.createLinearGradient(x,y,x2,y2);
+      lg.addColorStop(0,`rgba(255,255,255,${(long?.40:.24)*tw*breathe})`);
+      lg.addColorStop(.5,`rgba(255,255,255,${(long?.15:.09)*tw})`);
+      lg.addColorStop(1,rgba(color,0));
+      g.strokeStyle=lg;g.lineWidth=long?1.35:.8;
+      g.beginPath();g.moveTo(x+Math.cos(an)*R*.3,y+Math.sin(an)*R*.3);g.lineTo(x2,y2);g.stroke();
     }
   }
   g.restore();
@@ -477,7 +505,8 @@ function drawGraph(t){
     const a=dimA(n.id);if(a<=.02)continue;
     const tw=.8+.2*Math.sin(t*2.2+n.seed);
     const col=n.kind==='exp'?(hot?n.ctxColor:'#aeb9d4'):n.ref.color;
-    drawStar(n.x,n.y,Math.max(.5,n.R*sc),col,tw*a,false);
+    // 细分节点是「标签」身份，给星芒；花销节点保持素净（数量多，加芒会糊）
+    drawStar(n.x,n.y,Math.max(.5,n.R*sc),col,tw*a,n.kind==='sub');
     g.save();g.globalAlpha=a;g.restore();
     // 花销节点密集，标签只在被高亮时出现；细分节点始终显示（它是这张图的骨架）
     const isExp=n.kind==='exp';
@@ -618,8 +647,14 @@ function drawOrbitMonth(w,h,t,al){
     oc.restore();
     oc.save();oc.globalAlpha=al*(hov?1:(1-.5*age));
     tlStar(p.x,p.y,R*(hov?1.25:1),tlMonthColor(i),1);
-    if(i===TODAY){oc.strokeStyle=`rgba(160,240,255,${.55+.3*Math.sin(t*2.2)})`;oc.lineWidth=1.6;
-      oc.beginPath();oc.arc(p.x,p.y,(R+7)*(1+.1*Math.sin(t*2.2)),0,7);oc.stroke()}
+    if(i===TODAY){
+      // 双层呼吸环：内外相位错开，比单环同相呼吸更自然
+      const b1=Math.sin(t*1.8), b2=Math.sin(t*1.8+1.15);
+      oc.strokeStyle=`rgba(160,240,255,${.50+.28*b1})`;oc.lineWidth=1.6;
+      oc.beginPath();oc.arc(p.x,p.y,(R+7)*(1+.10*b1),0,7);oc.stroke();
+      oc.strokeStyle=`rgba(120,200,255,${.24+.16*b2})`;oc.lineWidth=1;
+      oc.beginPath();oc.arc(p.x,p.y,(R+13)*(1+.07*b2),0,7);oc.stroke();
+    }
     else if(foc){oc.strokeStyle='rgba(255,255,255,.8)';oc.lineWidth=1.2;oc.beginPath();oc.arc(p.x,p.y,R+4,0,7);oc.stroke()}
     if(hov){oc.strokeStyle='#fff';oc.lineWidth=1.4;oc.beginPath();oc.arc(p.x,p.y,R+5,0,7);oc.stroke()}
     oc.restore();
