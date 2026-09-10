@@ -588,15 +588,13 @@ function drawGraph(t){
   g.restore();g.globalAlpha=1;
 }
 
-/* ---------- 星轨：日/月/年连续变焦 + 左右拖拽 ---------- */
-function smooth(a,b,x){const t=clamp((x-a)/(b-a),0,1);return t*t*(3-2*t)}
-function levelW(){const z=TL.z;const wd=1-smooth(.35,.65,z),wy=smooth(1.35,1.65,z);return{d:wd,m:1-wd-wy,y:wy}}
-/** 当前主导档位（日/月/年）—— 由连续变焦量 z 经 levelW 的三档权重判定 */
+/* ---------- 星轨：日/月/年三档吸附切换 + 统一时间轴 + 左右拖拽 ---------- */
+/** 当前主导档位：**只取三档之一，不做中间态混合**。
+    变焦量 z 连续累积只用于滚轮手感与手柄位置，渲染永远落在某一档上 ——
+    因此不会出现「日/月/年两套节点叠在一起」的中间画面。
+    拖动过程若停在两档之间，也只会落在更近的那一档（相当于弹回/顺势进入）。 */
 function domLevel(){
-  const w=levelW();
-  if(w.d>=w.m&&w.d>=w.y)return 'day';
-  if(w.y>=w.m&&w.y>=w.d)return 'year';
-  return 'month';
+  return ['day','month','year'][Math.round(clamp(TL.z,0,2))];
 }
 const LV_NAME={day:'日',month:'月',year:'年'};
 function tlMonthColor(mi){
@@ -610,11 +608,9 @@ function drawOrbit(t){
   const r=oC.getBoundingClientRect();if(r.width<10)return;
   const w=r.width,h=r.height;
   oc.clearRect(0,0,w,h);
-  const W8=levelW();
-  syncViewport();   // 每帧对齐视口：数据/选中项/变焦任何一处变了都自动跟上
-  // 地形（按主导口径）
-  oc.save();
   const dl=domLevel();
+  // 地形（按当前档位的口径）
+  oc.save();
   const vals=dl==='day'?DAYS.map(d=>d.total):dl==='year'?YEARS.map(y=>y.total):MONTHS.map(m=>m.total);
   const n=vals.length,mx=Math.max(1,...vals);   // mx 兜底 1：空窗口时避免除零
   if(n>1){
@@ -627,9 +623,11 @@ function drawOrbit(t){
   }
   oc.restore();
 
-  if(W8.m>0.01)drawOrbitMonth(w,h,t,W8.m);
-  if(W8.d>0.01)drawOrbitDay(w,h,t,W8.d);
-  if(W8.y>0.01)drawOrbitYear(w,h,t,W8.y);
+  // **只画当前档位**（不做中间态混合）：两套节点叠在一起很难看，
+  // 切换的「顺」由节点入场动画提供，而不是让新旧两套并存。
+  if(dl==='day')drawOrbitDay(w,h,t,1);
+  else if(dl==='year')drawOrbitYear(w,h,t,1);
+  else drawOrbitMonth(w,h,t,1);
 }
 function orbitBase(w,h){
   oc.save();oc.lineCap='round';
@@ -679,16 +677,26 @@ function timelineFull(){
   const lastDay=new Date(Date.UTC(l.y,l.m,0)).getUTCDate();
   return {from:dayNum(`${f.y}-${pad2(f.m)}-01`),to:dayNum(`${l.y}-${pad2(l.m)}-${pad2(lastDay)}`)};
 }
-/** 各档视口跨度：日档＝选中日所在月、月档＝选中月所在年、年档＝全部。
-    这样「年档选 2025 → 放大到月档」看到的正是 2025 的十二个月，「月档选某月 →
-    放大到日档」看到的正是该月的每一天；反向缩小则是把视口一层层拉回上级周期。 */
-const SPAN_DAY=31, SPAN_MONTH=365;
-function spanForZoom(){
+/** 视口 = 中心（天）+ 像素/天比例。
+    比例由档位固定给出 ⇒ **节点间距恒定、不为了把整年/整月塞进视口而压缩距离**；
+    视口能装下多少节点是结果，不是约束。 */
+const PX_PER_MONTH=64, PX_PER_DAY=44, DAYS_PER_MONTH=30.44;
+function viewOf(w){
   const full=timelineFull(), all=Math.max(1,full.to-full.from);
+  const PAD=44, vw=Math.max(1,w-PAD*2);
   const lv=domLevel();
-  if(lv==='day')return SPAN_DAY;
-  if(lv==='year')return all;
-  return Math.min(all,SPAN_MONTH);
+  const p = lv==='day' ? PX_PER_DAY
+          : lv==='month' ? PX_PER_MONTH/DAYS_PER_MONTH
+          : vw/all;                       // 年档：整段压进宽度，保证全貌可见
+  const half=vw/2/p;                      // 视口半径（天）
+  const maxPan=Math.max(0,all/2-half);
+  const c=anchorCenter()+clamp(TL.pan||0,-maxPan,maxPan);
+  return {c,p,vw,PAD,half};
+}
+/** 天序号 → 星轨像素 x */
+function xOfDay(d,w){
+  const v=viewOf(w);
+  return v.PAD + v.vw/2 + (d-v.c)*v.p;
 }
 /** 视口锚点＝选中节点在**上一级周期**的中心：
     日档→该月中心；月档→该年中心（年中即 7/1）；年档→整体中心。 */
@@ -712,29 +720,6 @@ function selCenterDay(){
   if(level==='year'&&YEARS[idx])return dayNum(`${YEARS[idx].y}-07-01`);
   const full=timelineFull();
   return (full.from+full.to)/2;
-}
-/** 依「当前档位 + 选中项 + 手动平移」重算视口。
-    锚定时**不做硬 clamp** —— 硬 clamp 到数据范围会把视口推偏（例如数据只到 9 月时，
-    「2026 年」的视口会被推成 2025-09~2026-09）。改为：视口永远以选中周期为中心，
-    只对**手动平移量**设限，避免拖到无数据区域以外太远。 */
-function syncViewport(){
-  const full=timelineFull(), all=Math.max(1,full.to-full.from);
-  const span=spanForZoom();
-  if(span>=all){                       // 看到全部：居中
-    const mid=(full.from+full.to)/2;
-    TL.view={from:mid-span/2,to:mid+span/2};
-    return;
-  }
-  const maxPan=Math.max(0,(all-span)/2);
-  const pan=clamp(TL.pan||0,-maxPan,maxPan);
-  const c=anchorCenter()+pan;
-  TL.view={from:c-span/2,to:c+span/2};
-}
-/** 天序号 → 星轨像素 x（视口线性映射，两侧留边） */
-function xOfDay(d,w){
-  const PAD=44, vw=Math.max(1,w-PAD*2);
-  const {from,to}=TL.view, span=Math.max(1,to-from);
-  return PAD+(d-from)/span*vw;
 }
 const monthMidDay=m=>dayNum(`${m.y}-${pad2(m.m)}-15`);
 function monthX(w,i){ return xOfDay(monthMidDay(MONTHS[i]),w) }
@@ -932,7 +917,6 @@ function applyZoomSnap(){
     TL.pan=0;
   }
   syncRail();
-  syncViewport();
   scheduleWindowSync();
 }
 async function selectTime(kind,id){
@@ -956,16 +940,23 @@ async function selectTime(kind,id){
   burst(W/2,H-190,'#9be9ff',14);
 }
 function setZoom(z,quiet){
-  z=clamp(z,0,2);
+  z=clamp(Math.round(z),0,2);       // 只落在三档之一：不允许停在中间态
   const before=domLevel();
   TL.z=z;syncRail();
   const now=domLevel();
-  if(before!==now){                 // 跨过档位阈值 → 对齐选中项、切数据窗口
+  if(before!==now){                 // 跨档 → 对齐选中项 + 切数据窗口 + 节点重新入场
     applyZoomSnap();
     if(!quiet)toast('星轨 · '+LV_NAME[now]+'视图');
-  }else{
-    syncViewport();                 // 同档内变焦：只是视口缩放，不换数据
   }
+}
+/** 滚轮变焦：一次滚动＝跨一档，并做 220ms 节流，
+    免得惯性滚动一下连跳三档（也保证不会停在两档之间） */
+let lastWheel=0;
+function wheelZoom(dy){
+  const now=performance.now();
+  if(now-lastWheel<220)return;
+  lastWheel=now;
+  setZoom(TL.z+(dy>0?1:-1),false);
 }
 
 /* ---------- 交互 ---------- */
@@ -1075,7 +1066,7 @@ gC.addEventListener('pointerup',e=>{
 });
 gC.addEventListener('pointerleave',()=>{setHover(null);dragN=null});
 // 滚轮缩放星轨粒度（需求基线 §5.4「四路联动」之一：滚轮 / 竖滑块 / 星轨点击 / 回到今天）
-gC.addEventListener('wheel',e=>{e.preventDefault();setZoom(TL.z+e.deltaY*0.0016)},{passive:false});
+gC.addEventListener('wheel',e=>{e.preventDefault();wheelZoom(e.deltaY)},{passive:false});
 
 /* 星轨：左右拖拽看时间，点击选中 */
 let oDrag=null;
@@ -1089,11 +1080,10 @@ oC.addEventListener('pointermove',e=>{
     const dx=e.clientX-oDrag.x;
     if(Math.abs(dx)>4)oDrag.moved=true;
     if(oDrag.moved){
-      // 左右拖动 = 沿统一时间轴平移视口（像素位移换算成天数）
-      const span=Math.max(1,TL.view.to-TL.view.from);
-      const vw=Math.max(1,r.width-88);
-      TL.pan=(oDrag.pan||0)-dx/vw*span;
-      syncViewport();
+      // 左右拖动 = 沿统一时间轴平移视口：像素位移 ÷ 当前档位的「像素/天」＝ 天数。
+      // 平移量在 viewOf 内部按数据范围 clamp，不会拖到无数据的地方。
+      const p=viewOf(r.width).p;
+      TL.pan=(oDrag.pan||0)-dx/p;
     }
     return;
   }
@@ -1554,20 +1544,20 @@ $('#btnToday').onclick=async ()=>{
   toast('回到今天');
 };
 
-/* ---------- 右侧刻度轨：连续变焦（上=日 下=年），与滚轮/点击写同一状态 ---------- */
+/* ---------- 右侧刻度轨：三档吸附切换（上=日 下=月 中=年），与滚轮/点击写同一状态 ---------- */
 const rail=$('#rail'),handle=$('#railHandle');
 function syncRail(){
   if(!handle||!rail)return;
   const r=rail.getBoundingClientRect();
   const h=r.height||1;
-  handle.style.top=clamp(6+TL.z/2*(h-12),4,h-4)+'px';
+  handle.style.top=clamp(6+TL.z/2*(h-12),4,h-4)+'px';   // z 只会是 0/1/2 → 手柄落到三个档位点
 }
 let railDrag=false;
 function railSet(e){
   if(!rail)return;
   const r=rail.getBoundingClientRect();
   const t=clamp((e.clientY-r.top)/Math.max(1,r.height),0,1);
-  setZoom(t*2,true);   // 顶部=日(z≈0)、底部=年(z≈2)
+  setZoom(Math.round(t*2),true);   // 拖动即吸附到最近档：松手不会停在两档之间
 }
 if(rail){
   rail.addEventListener('pointerdown',e=>{railDrag=true;rail.setPointerCapture(e.pointerId);railSet(e)});
@@ -1576,7 +1566,7 @@ if(rail){
 }
 // 刻度轨与星轨上也能滚轮缩放（与图谱区一致）
 for(const el of [$('#railWrap'),$('#orbit')]){
-  if(el)el.addEventListener('wheel',e=>{e.preventDefault();setZoom(TL.z+e.deltaY*0.0016)},{passive:false});
+  if(el)el.addEventListener('wheel',e=>{e.preventDefault();wheelZoom(e.deltaY)},{passive:false});
 }
 
 /* 记账浮层（真实提交：POST → 重拉 → 图谱刷新） */
@@ -1931,7 +1921,6 @@ async function boot(){
   const ni=MONTHS.findIndex(m=>m.y===Data._currentMonthY&&m.m===Data._currentMonthM);
   TL.sel={level:'month',idx:ni>=0?ni:TODAY};
   TL.z=1;TL.pan=0;   // 默认月档（需求基线 §5.4：启动默认月视图）
-  syncViewport();
   renderLedgerDD();
   buildGraph();syncChrome();syncRail&&syncRail();
   requestAnimationFrame(frame);
