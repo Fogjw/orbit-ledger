@@ -54,12 +54,13 @@ function refreshMonths(){
     if(!cur.topColor&&m.topColor)cur.topColor=m.topColor;
     byY.set(m.y,cur);
   }
-  YEARS=[...byY.values()].sort((a,b)=>a.y-b.y);
+  YEARS=[...byY.values()].sort((a,b)=>a.y-b.y).map(v=>({...v,color:v.topColor||'#9be9ff'}));
 }
 /** 日档：取当前时间窗所在月的逐日序列（Data.days 由 _loadWindow 填充） */
 function refreshDays(){
   if(!Data)return;
-  DAYS=(Data.days||[]).map(d=>({label:d.label,date:d.date,y:d.y,m:d.m,day:d.d,total:d.total}));
+  DAYS=(Data.days||[]).map(d=>({label:d.label,date:d.date,y:d.y,m:d.m,day:d.d,total:d.total,
+    topName:d.topName,color:d.topColor||'#9be9ff'}));
   const t=new Date().toISOString().slice(0,10);
   const i=DAYS.findIndex(d=>d.date===t);
   DAY_TODAY=i>=0?i:Math.max(0,DAYS.length-1);
@@ -717,7 +718,7 @@ function drawOrbitDay(w,h,t,al){
     const d=DAYS[i], age=(DAYS.length-1-i)/(DAYS.length-1);
     const y=dayY(h,i);
     const R=clamp(2.5+Math.sqrt(d.total)*.32,3,7.5)+(i===DAY_TODAY?2:0);
-    const col=(((CATS.find(c=>c.id===d.top)||CATS[0])||CTXS[0])||{color:'#9be9ff'}).color;
+    const col=d.color||'#9be9ff';
     const hov=S.hoverKind==='day'&&TL.sel.level==='day'&&S.hover===i;
     const foc=TL.sel.level==='day'&&TL.sel.idx===i;
     oc.save();oc.globalAlpha=al*(1-.5*age);
@@ -745,7 +746,7 @@ function drawOrbitYear(w,h,t,al){
   YEARS.forEach((y,i)=>{
     const x=w*(.22+.28*i), yy=yearY(h,i);
     const R=clamp(6+Math.sqrt(y.total)*.09,9,15);
-    const col=((CATS.find(c=>c.id===y.top)||CATS[0])||{color:'#9be9ff'}).color;
+    const col=y.color||'#9be9ff';
     const hov=S.hoverKind==='year'&&TL.sel.level==='year'&&S.hover===i;
     const foc=TL.sel.level==='year'&&TL.sel.idx===i;
     oc.save();oc.globalAlpha=al;

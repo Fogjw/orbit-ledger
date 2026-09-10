@@ -122,11 +122,16 @@ const Data = {
     if (byDim.context) for (const r of byDim.context) this.monthAmountsByDim.context[r.tag_id] = centsToYuan(r.amount_cents);
     this.monthAmounts = this.monthAmountsByDim.category;
 
-    // 日序列（expense only，按日期排序）
+    // 日序列（expense only，按日期排序）；topColor = 该日金额最大的品类 tag 色（星轨日节点上色）
     const dailyExpense = (dailyStats.daily || []).filter(d => d.type === 'expense');
     this.days = dailyExpense.map(d => {
       const [yy, mm, dd] = d.date.split('-').map(Number);
-      return { label: mm + '月' + dd + '日', date: d.date, y: yy, m: mm, d: dd, total: centsToYuan(d.amount_cents) };
+      return {
+        label: mm + '月' + dd + '日', date: d.date, y: yy, m: mm, d: dd,
+        total: centsToYuan(d.amount_cents),
+        topName: d.top_name || '',
+        topColor: d.top_color || hashColor(d.top_name || ''),
+      };
     });
   },
 
@@ -253,24 +258,26 @@ const Data = {
     const raw = await API.getStats(this.ledgerId);
     const monthly = raw.monthly || [];
 
-    // 按月聚合 expense
+    // 按月聚合 expense；同时记录该月主导 tag（星轨月节点上色用）
     const byMonth = {};
+    const topOf = {};
     for (const r of monthly) {
       if (r.type !== 'expense') continue;
-      if (!byMonth[r.month]) byMonth[r.month] = 0;
-      byMonth[r.month] += r.amount_cents;
+      byMonth[r.month] = (byMonth[r.month] || 0) + r.amount_cents;
+      if (r.top_name) topOf[r.month] = { name: r.top_name, color: r.top_color || hashColor(r.top_name) };
     }
 
     this.months = Object.keys(byMonth)
       .sort()
       .map(m => {
         const [y, mo] = m.split('-').map(Number);
+        const top = topOf[m] || { name: '', color: '' };
         return {
           label: monthLabel(mo),
           full: monthFull(y, mo),
           total: centsToYuan(byMonth[m]),
-          topName: '',
-          topColor: '',
+          topName: top.name,
+          topColor: top.color,
           y,
           m: mo,
         };
