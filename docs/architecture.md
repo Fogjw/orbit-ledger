@@ -1,14 +1,15 @@
 # Orbit 星账 · 业务逻辑层架构
 
 > 对齐 Obsidian 需求基线（`10-项目/账单图谱/账单图谱-需求基线.md`）与技术选型文档的分层架构。
-> 本文件描述 `server/`（业务逻辑层）；前端由 demo-star/ 等其他 Agent 负责。
+> 本文件描述 `server/`（业务逻辑层）；前端（`web/`）的交互与视觉约定见需求基线与 `web/` 源码。
 
 ## 分工
 
 ```
 orbit-ledger/
 ├─ server/       ★ 业务逻辑层（本仓库后端）：数据 + 业务规则 + REST API
-├─ demo-star/    前端视觉 Demo（其他 Agent，纯静态，当前不接后端）
+├─ web/          前端（消费本仓库 REST）：零依赖 Canvas2D 星图 + 记账 / 统计 / tag 管理
+├─ demo-star/    早期视觉 Demo（纯静态、不接后端，保留作视觉参考）
 └─ docs/
    └─ architecture.md（本文档）
 ```
@@ -122,7 +123,7 @@ Base: `http://localhost:5310/api`（端口 env `ORBIT_PORT` 覆盖）。CORS 放
 
 ## 质量
 
-- 测试：`npm test`（node:test 56 项：Σ 守恒/隔离/回滚/校验/编辑全量替换/tag 维护保护/维度扩展贯通/迁移机制（含 v3 表重建安全性）/导出快照/MCP 真实协议/聚合/API 全流程/错误映射/副 tag 归属校验）。
+- 测试：`npm test`（node:test 63 项：Σ 守恒/隔离/回滚/校验/编辑全量替换/tag 维护保护/维度扩展贯通/迁移机制（含 v3 表重建安全性）/导出快照/MCP 真实协议/聚合/API 全流程/错误映射/副 tag 归属校验）。
 - schema 版本：当前 **v3**（v1 五表、v2 dimensions.required、v3 tags 两级化）。v3 走表重建流程，属 `foreignKeysOff` 类迁移。
 - 金额守恒是记账正确性生死线，回归必查。
 
