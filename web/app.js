@@ -66,6 +66,10 @@ function refreshDays(){
   DAY_TODAY=i>=0?i:Math.max(0,DAYS.length-1);
 }
 
+/* 画布平移（相机）：拖空白处移动视角。
+   布局不再把节点硬塞进视口 —— 内容可以超出窗口，靠平移查看，而不是压缩间距。 */
+const CAM={x:0,y:0};
+
 /* ---------- 状态 ---------- */
 const S={dim:'category',ledgerId:null,view:'l1',focus:null,hover:null,hoverKind:null};
 const TL={z:1,pan:0,view:{from:0,to:1},sel:{level:'month',idx:0}};
@@ -266,7 +270,9 @@ function buildGraph(){
     const subById=new Map(subs.map(s=>[s.tagId,s]));   // 取 count 判断共享线
 
     // 外环：细分节点（按金额降序均布，从正上方起）
-    const R2=span*0.42;
+    // 环半径随节点数放大：每个细分在环上至少留出弧长；装不下就超出视口，
+    // 靠拖动画布查看 —— 不再压缩间距硬塞进窗口。
+    const R2=Math.max(span*0.42, subs.length*3.2);
     const angOf=new Map();
     subs.forEach((s,i)=>angOf.set(s.tagId,(subs.length?i/subs.length:0)*6.28-Math.PI/2));
     subs.forEach((s,i)=>{
@@ -280,7 +286,8 @@ function buildGraph(){
 
     // 内环：花销节点。先算每笔的目标角度（其所属细分角度的**圆周均值**），
     // 再在同一扇区内均匀散开 —— 否则同细分的多笔会叠成一条射线。
-    const R1=span*0.24;
+    // 内环半径同样随账单数放大（每笔在环上至少 ~12px 弧长）
+    const R1=Math.max(span*0.24, detailExpenses.length*1.91);
     const rows=detailExpenses.map((e,i)=>{
       const subIds=e.tags.filter(t=>t.role==='secondary'&&t.parent_tag_id===detailTag.tagId).map(t=>t.tag_id);
       let sx=0,sy=0;
@@ -388,11 +395,13 @@ function tickL1(dt){
     const sp=Math.hypot(n.vx,n.vy),mx=1.5;
     if(sp>mx){n.vx*=mx/sp;n.vy*=mx/sp}
     if(!n.pin){n.x+=n.vx*60*dt;n.y+=n.vy*60*dt}
-    const m=20+n.tr;
-    if(n.x<m){n.x=m;n.vx=Math.abs(n.vx)*.85}
-    if(n.x>W-m){n.x=W-m;n.vx=-Math.abs(n.vx)*.85}
-    if(n.y<TOP+m){n.y=TOP+m;n.vy=Math.abs(n.vy)*.85}
-    if(n.y>H-ORBIT_H-m+24){n.y=H-ORBIT_H-m+24;n.vy=-Math.abs(n.vy)*.85}
+    // 世界边界远大于视口：节点不再被强行约束在窗口内，
+    // 超出视口的部分拖动画面即可看到（只保留一个防无限飘的兜底范围）
+    const m=20+n.tr, WL=-W, WR=W*2, WT=-H, WB=H*2;
+    if(n.x<WL+m){n.x=WL+m;n.vx=Math.abs(n.vx)*.85}
+    if(n.x>WR-m){n.x=WR-m;n.vx=-Math.abs(n.vx)*.85}
+    if(n.y<WT+m){n.y=WT+m;n.vy=Math.abs(n.vy)*.85}
+    if(n.y>WB-m){n.y=WB-m;n.vy=-Math.abs(n.vy)*.85}
   }
   // 分离（只排斥、不吸引）
   for(let i=0;i<nodes.length;i++)for(let j=i+1;j<nodes.length;j++){
@@ -440,11 +449,12 @@ function tickDetail(dt){
     const sp=Math.hypot(n.vx,n.vy),mx=3;
     if(sp>mx){n.vx*=mx/sp;n.vy*=mx/sp}
     if(!n.pin){n.x+=n.vx*60*dt;n.y+=n.vy*60*dt}
-    const m=14+n.tr; // 软边界（加速度推回，不断裂）
-    if(n.x<300+m)n.vx+=(300+m-n.x)*.02*f;
-    if(n.x>W-m)n.vx-=(n.x-(W-m))*.02*f;
-    if(n.y<TOP+m)n.vy+=(TOP+m-n.y)*.02*f;
-    if(n.y>H-ORBIT_H-m+24)n.vy-=(n.y-(H-ORBIT_H-m+24))*.02*f;
+    // 世界边界放宽（同上：下钻图节点多，允许超出视口，靠平移查看）
+    const m=14+n.tr, WL=-W, WR=W*2, WT=-H, WB=H*2;
+    if(n.x<WL+m)n.vx+=(WL+m-n.x)*.02*f;
+    if(n.x>WR-m)n.vx-=(n.x-(WR-m))*.02*f;
+    if(n.y<WT+m)n.vy+=(WT+m-n.y)*.02*f;
+    if(n.y>WB-m)n.vy-=(n.y-(WB-m))*.02*f;
   }
 }
 
@@ -501,6 +511,8 @@ function drawGraph(t){
   const hov=S.hover, hovG=(hov&&S.hoverKind!=='month')?hov:null;
   const dimA=id=>!hotNodes?1:(hotNodes.has(id)?1:.13);
   const esc=clamp(enterT,0,1.4);
+  // 画布平移：图谱元素都在世界坐标里绘制，统一加相机偏移
+  g.save();g.translate(CAM.x,CAM.y);
 
   // 星座连线 / 二部图边
   for(const l of links){
@@ -578,6 +590,8 @@ function drawGraph(t){
     g.restore();
     label(n.ref.name,'¥'+n.amount.toLocaleString(),n.x,n.y+R+18,a,isH);
   }
+  g.restore();   // 结束画布平移：爆裂粒子走屏幕坐标，不随相机移动
+
   bursts=bursts.filter(p=>p.life>0);
   g.save();g.globalCompositeOperation='lighter';
   for(const p of bursts){
@@ -979,7 +993,7 @@ function wheelZoom(dy){
 
 /* ---------- 交互 ---------- */
 const tip=$('#tooltip');
-let mouse={x:.5,y:.5},dragN=null,downPos=null,downT=0;
+let mouse={x:.5,y:.5},dragN=null,panDrag=null,downPos=null,downT=0;
 /** 点到线段的距离（共享线 hover 命中判定用） */
 function distToSeg(px,py,x1,y1,x2,y2){
   const dx=x2-x1,dy=y2-y1,L2=dx*dx+dy*dy;
@@ -1005,10 +1019,12 @@ function setHover(h){
     const l=links.find(x=>linkKey(x)===h.id);
     if(!l){tip.hidden=true;return}
     const A=byId(l.s),B=byId(l.t);
-    const names=(A?A.ref.name:'')+' ↔ '+(B?B.ref.name:'');
+    // 归属线的一端是**账单节点**（花销对象没有 name），所以只取 tag 那一端的名字；
+    // 共享线两端都是细分，才显示「A ↔ B」
+    const tagEnd=(A&&A.kind!=='exp')?A:((B&&B.kind!=='exp')?B:null);
     tip.innerHTML=l.shared
-      ?`<b>共享线</b><div style="color:#8b96b5">${names}</div><div style="color:#8b96b5">${(l.exps||[]).length} 笔共享</div>`
-      :`<b>${names}</b>`;
+      ?`<b>共享线</b><div style="color:#8b96b5">${A?A.ref.name:''} ↔ ${B?B.ref.name:''}</div><div style="color:#8b96b5">${(l.exps||[]).length} 笔共享</div>`
+      :`<b>${tagEnd?tagEnd.ref.name:'一笔花销'}</b>`;
     tip.hidden=false;gC.style.cursor='pointer';
     document.querySelectorAll('.top-row').forEach(e=>e.classList.remove('hot'));
     return;
@@ -1038,36 +1054,53 @@ function setHover(h){
   }
 }
 function moveTip(e){tip.style.left=Math.min(innerWidth-250,e.clientX+16)+'px';tip.style.top=(e.clientY+18)+'px'}
+/** 屏幕坐标 → 世界坐标。画布可平移，所有命中判定都必须先换算 */
+function worldPos(e){
+  const r=gC.getBoundingClientRect();
+  return {x:e.clientX-r.left-CAM.x, y:e.clientY-r.top-CAM.y};
+}
 gC.addEventListener('pointermove',e=>{
   mouse={x:e.clientX/W,y:e.clientY/H};moveTip(e);
-  if(dragN){const r=gC.getBoundingClientRect();
-    dragN.x=e.clientX-r.left;dragN.y=e.clientY-r.top;dragN.vx=dragN.vy=0;dragN.pin=true;
+  if(dragN){const p=worldPos(e);
+    dragN.x=p.x;dragN.y=p.y;dragN.vx=dragN.vy=0;dragN.pin=true;
     dragN.ax=dragN.x;dragN.ay=dragN.y;return}
-  const r=gC.getBoundingClientRect(),x=e.clientX-r.left,y=e.clientY-r.top;
+  if(panDrag){                                   // 拖动画布（平移视角）
+    CAM.x=panDrag.cx+(e.clientX-panDrag.sx);
+    CAM.y=panDrag.cy+(e.clientY-panDrag.sy);
+    if(Math.hypot(e.clientX-panDrag.sx,e.clientY-panDrag.sy)>4)panDrag.moved=true;
+    return;
+  }
+  const p=worldPos(e);
   let best=null,bd=1e9;
-  for(const n of nodes){const d=Math.hypot(n.x-x,n.y-y);if(d<=n.R+9&&d<bd){best=n;bd=d}}
+  for(const n of nodes){const d=Math.hypot(n.x-p.x,n.y-p.y);if(d<=n.R+9&&d<bd){best=n;bd=d}}
   if(best){
     setHover({kind:best.kind,id:best.id});
   }else{
-    const l=pickLink(x,y);   // 没命中节点时，再看是否压在某条连线上
+    const l=pickLink(p.x,p.y);   // 没命中节点时，再看是否压在某条连线上
     setHover(l?{kind:'link',id:linkKey(l)}:null);
   }
 });
 gC.addEventListener('pointerdown',e=>{
-  const r=gC.getBoundingClientRect(),x=e.clientX-r.left,y=e.clientY-r.top;
+  const p=worldPos(e);
   downPos={x:e.clientX,y:e.clientY};downT=performance.now();
-  for(const n of nodes){if(Math.hypot(n.x-x,n.y-y)<=n.R+9){dragN=n;break}}
+  for(const n of nodes){if(Math.hypot(n.x-p.x,n.y-p.y)<=n.R+9){dragN=n;break}}
+  if(!dragN){                                    // 空白处按下 → 准备拖画布
+    panDrag={sx:e.clientX,sy:e.clientY,cx:CAM.x,cy:CAM.y,moved:false};
+    gC.style.cursor='grabbing';
+  }
 });
 gC.addEventListener('pointerup',e=>{
   if(dragN){dragN.pin=false;dragN.ax=dragN.x;dragN.ay=dragN.y}
   const moved=downPos?Math.hypot(e.clientX-downPos.x,e.clientY-downPos.y):99;
   const quick=performance.now()-downT<600;
   dragN=null;
-  if(moved<6&&quick){
-    const r=gC.getBoundingClientRect(),x=e.clientX-r.left,y=e.clientY-r.top;
+  const panned=panDrag&&panDrag.moved;
+  panDrag=null;gC.style.cursor='default';
+  if(moved<6&&quick&&!panned){
+    const p=worldPos(e);
     let best=null,bd=1e9;
     for(const n of nodes){
-      const d=Math.hypot(n.x-x,n.y-y);
+      const d=Math.hypot(n.x-p.x,n.y-p.y);
       if(d<=n.R+9&&d<bd){best=n;bd=d}
     }
     if(!best){
@@ -1082,7 +1115,7 @@ gC.addEventListener('pointerup',e=>{
     }
   }
 });
-gC.addEventListener('pointerleave',()=>{setHover(null);dragN=null});
+gC.addEventListener('pointerleave',()=>{setHover(null);dragN=null;panDrag=null;gC.style.cursor='default'});
 // 滚轮缩放星轨粒度（需求基线 §5.4「四路联动」之一：滚轮 / 竖滑块 / 星轨点击 / 回到今天）
 gC.addEventListener('wheel',e=>{e.preventDefault();wheelZoom(e.deltaY)},{passive:false});
 
@@ -1136,6 +1169,7 @@ async function enterDetail(id){
   }
   detailTag=tag;
   S.view='detail';S.focus=id;
+  CAM.x=0;CAM.y=0;   // 换视图：视角归位，平移状态不跨视图沿用
   // 分类上下文放在返回按钮上（画布中央刻意不画主 tag，避免冗余节点）
   const tot=detailExpenses.reduce((s,e)=>s+e.amount_cents,0);
   $('#btnBack').textContent='← '+tag.name+(detailExpenses.length?(' · ¥'+(tot/100).toLocaleString()):'');
@@ -1146,6 +1180,7 @@ async function enterDetail(id){
 function goBack(){
   if(S.view!=='detail')return;
   S.view='l1';S.focus=null;detailExpenses=[];detailTag=null;
+  CAM.x=0;CAM.y=0;
   $('#btnBack').textContent='← 主视图';
   $('#btnBack').hidden=true;buildGraph();syncChrome();
 }
@@ -1429,8 +1464,8 @@ function syncChrome(){
   const hintEl=document.querySelector('.hint');
   if(hintEl){
     hintEl.textContent=(S.view==='detail')
-      ?'点花销星编辑该笔 · 点细分星看明细 · 点中心星看本类 · 点空白或「← 主视图」返回'
-      :'拖拽星体 · 悬停看关联 · 点击星星下钻 · 滚轮缩放星轨 · 星轨可左右拖';
+      ?'拖空白平移画面 · 点花销星编辑该笔 · 点细分星看明细 · 轻点空白返回主视图'
+      :'拖拽星体 · 拖空白平移画面 · 悬停看关联 · 点击星星下钻 · 滚轮缩放星轨';
   }
   renderTop();
 }
@@ -1542,7 +1577,7 @@ addEventListener('keydown',e=>{if(e.key==='Escape'){const m=$('#ledgerMenu');if(
 seg('#dimSeg',v=>{
   S.dim=v;
   // 切维度必然离开下钻（下钻是针对某个具体分类的）
-  if(S.view==='detail'){S.view='l1';S.focus=null;detailExpenses=[];detailTag=null}
+  if(S.view==='detail'){S.view='l1';S.focus=null;detailExpenses=[];detailTag=null;CAM.x=0;CAM.y=0}
   $('#btnBack').textContent='← 主视图';
   $('#btnBack').hidden=true;
   refreshAmounts();buildGraph();syncChrome();
