@@ -2291,4 +2291,31 @@ async function boot(){
   history.replaceState(viewState(),'');   // 视图历史基线：站内首次后退＝回主视图，而不是退出站点
   toast('欢迎来到 Orbit 星账 · 真实数据已加载');
 }
+/* 只读调试快照：给自动化验证用。
+   星轨的档位与节点坐标都锁在这个闭包里，外部（包括 Electron 验证脚本）拿不到；
+   而「年档节点跑到画布外」这类问题**只能从坐标上判断** —— 截图看着完全正常，
+   只是没有节点，靠肉眼和像素统计都发现不了。
+   snapshot(level) 会临时按指定档位算一遍再还原（同步执行，不留副作用），
+   所以验证不需要真的去切档（实测合成输入事件在无头环境里切不动）。
+   只读、不含任何用户数据，留在生产里也无害。 */
+window.OrbitDebug = {
+  snapshot(level){
+    const saved=TL.z;
+    if(level&&{day:0,month:1,year:2}[level]!==undefined)TL.z={day:0,month:1,year:2}[level];
+    const w=oC.getBoundingClientRect().width;
+    const out={
+      level:domLevel(),
+      months:MONTHS.length,
+      years:YEARS.map(y=>y.y),
+      days:DAYS.length,
+      canvasWidth:Math.round(w),
+      yearX:YEARS.map((_,i)=>Math.round(xOfDay(dayNum(`${YEARS[i].y}-07-01`),w))),
+      monthX:MONTHS.map((_,i)=>Math.round(xOfDay(dayNum(`${MONTHS[i].y}-${pad2(MONTHS[i].m)}-15`),w))),
+      dayX:DAYS.map((_,i)=>Math.round(xOfDay(dayNum(DAYS[i].date),w))),
+    };
+    TL.z=saved;
+    return out;
+  },
+};
+
 boot();
