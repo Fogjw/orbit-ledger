@@ -877,6 +877,114 @@ $('#expRenameTag').onclick=()=>{
   openNameBox({kind:'tag',mode:'rename',dimKey:expCtx.dimKey,targetId:expCtx.tagId,currentName:expCtx.name});
   expMask.hidden=false; // 保持明细在命名浮层后仍可回看
 };
+/* 明细浮层改色：展开色板后点色即改（color=null 表示清除覆盖色，回到按名哈希） */
+let expColorBusy=false;
+function syncExpSwatches(){
+  renderSwatches($('#expSwatches'),null,c=>applyTagColor(c));
+}
+async function applyTagColor(color){
+  if(!expCtx||expColorBusy)return;
+  expColorBusy=true;
+  try{
+    await OrbitAPI.updateTag(Data.ledgerId,expCtx.tagId,{color});
+    await Data.selectLedger(Data.ledgerId);   // 重拉维度（含新颜色）
+    refreshTagArrays();refreshAmounts();
+    buildGraph();syncChrome();
+    if(!mask.hidden)renderModalChips();       // 记一笔浮层开着则同步
+    if(!expMask.hidden)await refreshExpList();
+    toast(color?'已改色':'已恢复自动取色');
+  }catch(e){
+    toast('改色失败：'+(e.message||e));
+  }finally{
+    expColorBusy=false;
+  }
+}
+$('#expRecolorTag').onclick=()=>{
+  const box=$('#expColors');
+  box.hidden=!box.hidden;
+  if(!box.hidden)syncExpSwatches();
+};
+$('#expColorDefault').onclick=()=>applyTagColor(null);
+$('#expCustom').onchange=e=>applyTagColor(e.target.value);
+
+/* ---------- 标签管理浮层（排序 / 重命名）----------
+   排序作用于 tags.position：影响记一笔的候选排列、星图节点顺序、下拉顺序。
+   层级 = 「维度 + 父 tag」：排主 tag 时 parentTagId 传 null，排副 tag 时传其父 id。 */
+const tagMask=$('#tagMask');
+let tagMgrDim='category';
+function openTagMgr(){
+  tagMgrDim=(S.dim==='context')?'context':'category';
+  tagMask.hidden=false;
+  syncTagMgrDim();
+  renderTagMgr();
+}
+function syncTagMgrDim(){
+  $('#tagDimSeg').querySelectorAll('.seg').forEach(b=>b.classList.toggle('active',b.dataset.v===tagMgrDim));
+}
+/** 在当前管理维度里按 id 找 tag（parentId 为 null 时在根层找） */
+function findMgrTag(parentId,tagId){
+  const tree=(Data.dims||{})[tagMgrDim];
+  if(!tree)return null;
+  if(parentId==null)return tree.roots.find(t=>t.id===tagId)||null;
+  const parent=tree.roots.find(t=>t.id===parentId);
+  return parent?((parent.children||[]).find(t=>t.id===tagId)||null):null;
+}
+function renderTagMgr(){
+  const box=$('#tagList');
+  const tree=(Data.dims||{})[tagMgrDim];
+  if(!tree||!tree.roots.length){box.innerHTML='<div class="e-empty">该账本暂无此维度的标签</div>';return}
+  const row=(t,parentId,index,total,isSub)=>
+    `<div class="t-row${isSub?' t-sub':''}${t.is_unnamed?' t-unnamed':''}" data-id="${t.id}" data-parent="${parentId==null?'':parentId}">
+      <span class="t-dot" style="background:${t.color}"></span>
+      <span class="t-name">${t.name}</span>
+      ${isSub?'':'<span class="t-badge">主</span>'}
+      <button class="t-mv" data-dir="-1"${index===0?' disabled':''} title="上移">↑</button>
+      <button class="t-mv" data-dir="1"${index===total-1?' disabled':''} title="下移">↓</button>
+      <button class="t-edit" title="重命名">✎</button>
+    </div>`;
+  let html='';
+  tree.roots.forEach((r,i)=>{
+    html+=row(r,null,i,tree.roots.length,false);
+    (r.children||[]).forEach((c,ci)=>html+=row(c,r.id,ci,r.children.length,true));
+  });
+  box.innerHTML=html;
+  box.querySelectorAll('.t-row').forEach(el=>{
+    const id=Number(el.dataset.id);
+    const parentId=el.dataset.parent?Number(el.dataset.parent):null;
+    el.querySelectorAll('.t-mv').forEach(b=>b.onclick=()=>moveTag(parentId,id,Number(b.dataset.dir)));
+    el.querySelector('.t-edit').onclick=()=>{
+      const t=findMgrTag(parentId,id);
+      if(!t)return;
+      tagMask.hidden=true;   // 让位给命名浮层（nameMask 层级更高，先收起更清爽）
+      openNameBox({kind:'tag',mode:'rename',dimKey:tagMgrDim,targetId:t.id,currentName:t.name,parentTagId:parentId});
+    };
+  });
+}
+/** 同层级内上/下移一位：整组全量重写提交（后端要求覆盖该层全部 id） */
+async function moveTag(parentId,tagId,dir){
+  const tree=(Data.dims||{})[tagMgrDim];
+  if(!tree)return;
+  const list=parentId==null?tree.roots.slice():((tree.roots.find(r=>r.id===parentId)?.children)||[]).slice();
+  const ids=list.map(t=>t.id);
+  const i=ids.indexOf(tagId),j=i+dir;
+  if(i<0||j<0||j>=ids.length)return;
+  [ids[i],ids[j]]=[ids[j],ids[i]];
+  try{
+    await Data.reorderTags(tagMgrDim,ids,parentId);
+    refreshTagArrays();refreshAmounts();
+    buildGraph();syncChrome();
+    renderTagMgr();
+    if(!mask.hidden)renderModalChips();   // 记一笔浮层开着则同步候选顺序
+    toast('顺序已更新');
+  }catch(e){
+    toast('排序失败：'+(e.message||e));
+  }
+}
+$('#tagDimSeg').querySelectorAll('.seg').forEach(b=>b.onclick=()=>{
+  tagMgrDim=b.dataset.v;syncTagMgrDim();renderTagMgr();
+});
+$('#tagClose').onclick=$('#tagDone').onclick=()=>tagMask.hidden=true;
+tagMask.addEventListener('click',e=>{if(e.target===tagMask)tagMask.hidden=true});
 
 
 /* ---------- 顶栏/面板 ---------- */
@@ -966,6 +1074,7 @@ function renderLedgerDD(){
     <div class="dd-sep"></div>
     <button class="dd-new" id="ddNewLedger">＋ 新建账本</button>
     <button class="dd-rename" id="ddRenameLedger">✎ 重命名当前账本</button>
+    <button class="dd-rename" id="ddManageTags">⚙ 标签管理</button>
     <button class="dd-danger" id="ddDelLedger">🗑 删除当前账本</button>`;
   menu.querySelectorAll('.dd-item').forEach(b=>b.onclick=async ()=>{
     const id=isNaN(Number(b.dataset.id))?b.dataset.id:Number(b.dataset.id);
@@ -980,6 +1089,8 @@ function renderLedgerDD(){
     menu.hidden=true;
     openNameBox({kind:'ledger',mode:'rename',targetId:cur.id,currentName:cur.name});
   };
+  const mt=menu.querySelector('#ddManageTags');
+  if(mt)mt.onclick=()=>{menu.hidden=true;openTagMgr()};
   const db=menu.querySelector('#ddDelLedger');
   if(db)db.onclick=async ()=>{
     const name=cur?cur.name:'';
@@ -1035,7 +1146,22 @@ const mask=$('#modalMask');
 
 /* ---- 命名浮层（账本/tag 的新建与重命名共用）---- */
 const nameMask=$('#nameMask');
-let nameAction=null; // {kind:'ledger'|'tag', dimKey?, mode:'create'|'rename', targetId?, currentName?}
+let nameAction=null; // {kind:'ledger'|'tag', dimKey?, mode:'create'|'rename', targetId?, currentName?, parentTagId?, parentName?}
+
+/* ---- 标签取色（新建 / 重命名 / 明细改色共用一块色板）----
+   与 data.js 的 hashColor 色板同源；选「自动」= 不传 color → 后端存 null → 按名哈希取色。 */
+const TAG_PALETTE=['#ef4444','#f97316','#eab308','#22c55e','#14b8a6','#3b82f6','#8b5cf6','#ec4899','#06b6d4','#f43f5e'];
+let pickingColor=null; // 命名浮层当前选中的色（null = 自动）
+function renderSwatches(box,current,onPick){
+  box.innerHTML=TAG_PALETTE.map(c=>`<button class="nc-dot${current===c?' on':''}" data-c="${c}" style="background:${c}" title="${c}"></button>`).join('');
+  box.querySelectorAll('.nc-dot').forEach(b=>b.onclick=()=>onPick(b.dataset.c));
+}
+function syncNameSwatches(){
+  renderSwatches($('#ncSwatches'),pickingColor,c=>{pickingColor=c;syncNameSwatches()});
+}
+$('#ncDefault').onclick=()=>{pickingColor=null;syncNameSwatches()};
+$('#ncCustom').oninput=e=>{pickingColor=e.target.value;syncNameSwatches()};
+
 function nameBoxTitle(a){
   if(a.mode==='rename')return '重命名'+(a.kind==='ledger'?'账本':'tag');
   if(a.kind==='ledger')return '新建账本';
@@ -1046,6 +1172,10 @@ function openNameBox(action){
   $('#nameTitle').textContent=nameBoxTitle(action);
   $('#nameInput').value=action.currentName||'';
   $('#nameInput').placeholder=action.kind==='ledger'?'账本名…':'tag 名…';
+  // 取色区只对 tag 有意义；账本没有颜色
+  const isTag=action.kind==='tag';
+  $('#nameColors').hidden=!isTag;
+  if(isTag){pickingColor=null;syncNameSwatches()}
   nameMask.hidden=false;
   setTimeout(()=>{const el=$('#nameInput');el.focus();el.select()},60);
 }
@@ -1079,7 +1209,9 @@ $('#nameOk').onclick=async ()=>{
       }
     }else{ // tag
       if(isRename){
-        await OrbitAPI.updateTag(Data.ledgerId,act.targetId,{name:raw});
+        const patch={name:raw};
+        if(pickingColor)patch.color=pickingColor;   // 没主动选色 → 不动原色
+        await OrbitAPI.updateTag(Data.ledgerId,act.targetId,patch);
         await Data.selectLedger(Data.ledgerId); // 重拉维度
         refreshTagArrays();refreshAmounts();
         if(!mask.hidden)renderModalChips();
@@ -1093,7 +1225,7 @@ $('#nameOk').onclick=async ()=>{
         toast('tag 已重命名为「'+raw+'」');
       }else{
         // 当前账本内建 tag；带 parentTagId 时建为该主 tag 下的副 tag（已重拉维度）
-        const fresh=await Data.createTag(act.dimKey,raw,null,act.parentTagId||null);
+        const fresh=await Data.createTag(act.dimKey,raw,pickingColor,act.parentTagId||null);
         refreshTagArrays();refreshAmounts();
         // 若记一笔浮层正开着：主 tag 建成即选中它；副 tag 建成即勾上它
         if(!mask.hidden){

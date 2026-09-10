@@ -176,6 +176,14 @@ const Data = {
     return t;
   },
 
+  // ===== 重排 tag 顺序（同层级整组全量重写）=====
+  // parentTagId 省略 → 排该维主 tag；给定 → 排该主 tag 下的副 tag
+  async reorderTags(dimensionKey, orderedIds, parentTagId = null) {
+    const dim = await API.reorderTags(this.ledgerId, dimensionKey, orderedIds, parentTagId);
+    await this._loadDims(); // 重拉维度（含新顺序）
+    return dim;
+  },
+
   // —— 私有方法 ——
 
   async _loadDims() {

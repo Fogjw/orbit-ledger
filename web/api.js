@@ -75,6 +75,13 @@ const API = {
   deleteTag: (ledgerId, tagId) =>
     request(`/ledgers/${ledgerId}/tags/${tagId}`, { method: 'DELETE' }),
 
+  // 重排 tag 顺序（整组全量重写；省略 parentTagId = 排该维主 tag，给定 = 排该主 tag 的副 tag）
+  reorderTags: (ledgerId, dimensionKey, orderedIds, parentTagId) =>
+    request(`/ledgers/${ledgerId}/dimensions/${dimensionKey}/tags/order`, {
+      method: 'PATCH',
+      body: { orderedIds, ...(parentTagId ? { parentTagId } : {}) },
+    }),
+
   // 花销相关
 
   // 记一笔

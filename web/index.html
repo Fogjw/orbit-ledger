@@ -149,6 +149,15 @@
         <button class="m-close" id="nameClose">✕</button>
       </div>
       <input class="m-input" id="nameInput" placeholder="名称…" maxlength="20" />
+      <!-- tag 取色（新建/重命名 tag 时显示；不选则用按名哈希的默认色） -->
+      <div class="n-colors" id="nameColors" hidden>
+        <div class="nc-head">
+          <span class="nc-label">标签颜色</span>
+          <button class="chip-add" id="ncDefault" title="不指定，按名称自动取色">自动</button>
+        </div>
+        <div class="nc-swatches" id="ncSwatches"></div>
+        <label class="nc-custom">自定义 <input type="color" id="ncCustom" value="#5ad7ff" /></label>
+      </div>
       <div class="m-foot">
         <button class="btn ghost" id="nameCancel">取消</button>
         <button class="btn primary" id="nameOk">创建</button>
@@ -163,8 +172,17 @@
         <span class="n-title" id="expTitle">花销明细</span>
         <div class="e-head-actions">
           <button class="chip-add" id="expRenameTag">✎ 重命名</button>
+          <button class="chip-add" id="expRecolorTag">◐ 改色</button>
           <button class="m-close" id="expClose">✕</button>
         </div>
+      </div>
+      <div class="e-colors" id="expColors" hidden>
+        <div class="nc-head">
+          <span class="nc-label">标签颜色</span>
+          <button class="chip-add" id="expColorDefault" title="清除覆盖色，回到按名称自动取色">自动</button>
+        </div>
+        <div class="nc-swatches" id="expSwatches"></div>
+        <label class="nc-custom">自定义 <input type="color" id="expCustom" value="#5ad7ff" /></label>
       </div>
       <div class="e-sub" id="expSub"></div>
       <!-- L3：该分类内部的细分分布（本月花销按副 tag 聚合） -->
@@ -178,6 +196,25 @@
         <button class="btn danger" id="expDelTag">删除此 tag</button>
         <div class="spacer"></div>
         <button class="btn primary" id="expDone">完成</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- 标签管理浮层（排序 / 重命名）：顺序即 tags.position，影响记一笔候选与星图节点排布 -->
+  <div class="modal-mask" id="tagMask" hidden>
+    <div class="modal glass t-modal">
+      <div class="m-head">
+        <span class="n-title">标签管理</span>
+        <div class="segment" id="tagDimSeg">
+          <button class="seg active" data-v="category">品类</button>
+          <button class="seg" data-v="context">情境</button>
+        </div>
+        <button class="m-close" id="tagClose">✕</button>
+      </div>
+      <div class="t-tip">用 ↑ ↓ 调整顺序 · 顺序影响记一笔的候选排列与星图节点顺序</div>
+      <div class="t-list" id="tagList"></div>
+      <div class="m-foot">
+        <button class="btn primary" id="tagDone">完成</button>
       </div>
     </div>
   </div>

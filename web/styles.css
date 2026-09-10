@@ -154,6 +154,32 @@ canvas{display:block}
 .m-sub-label{font-size:10.5px;letter-spacing:1.2px;color:var(--dim2);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 .m-chip-sub{padding:5px 11px;font-size:11.5px;border-radius:16px}
 .m-sub-empty{font-size:11px;color:var(--dim2)}
+/* 标签取色板（命名浮层与明细改色共用同一套） */
+.n-colors{margin-top:10px}
+.e-colors{margin:0 0 10px;padding:9px 11px;border-radius:12px;background:rgba(255,255,255,.022);border:1px solid rgba(140,190,255,.12)}
+.nc-head{display:flex;align-items:center;justify-content:space-between;margin-bottom:8px;gap:10px}
+.nc-label{font-size:10.5px;letter-spacing:1.5px;color:var(--dim2)}
+.nc-swatches{display:flex;flex-wrap:wrap;gap:7px;margin-bottom:9px}
+.nc-dot{width:20px;height:20px;border-radius:50%;border:2px solid transparent;cursor:pointer;padding:0;transition:transform .15s,opacity .15s;opacity:.85}
+.nc-dot:hover{opacity:1;transform:scale(1.14)}
+.nc-dot.on{border-color:#fff;box-shadow:0 0 10px rgba(255,255,255,.5);opacity:1}
+.nc-custom{display:flex;align-items:center;gap:8px;font-size:10.5px;color:var(--dim2)}
+.nc-custom input[type=color]{width:30px;height:20px;padding:0;border:1px solid var(--border2);border-radius:6px;background:transparent;cursor:pointer}
+/* 标签管理浮层（排序）：层级取 118 —— 高于记一笔(115)、低于命名浮层(120) */
+#tagMask{z-index:118}
+.t-modal{width:min(430px,calc(100vw - 32px))}
+.t-tip{font-size:10.5px;color:var(--dim2);letter-spacing:.5px;margin-bottom:10px;line-height:1.5}
+.t-list{display:flex;flex-direction:column;gap:4px;max-height:52vh;overflow:auto}
+.t-row{display:flex;align-items:center;gap:9px;padding:7px 10px;border-radius:11px;background:rgba(255,255,255,.03);border:1px solid var(--border)}
+.t-row.t-sub{margin-left:18px;background:rgba(255,255,255,.016);border-style:dashed}
+.t-row.t-unnamed{opacity:.62}
+.t-dot{width:9px;height:9px;border-radius:50%;flex:none}
+.t-name{flex:1;font-size:12.5px;color:var(--text);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.t-row.t-sub .t-name{font-size:12px;color:var(--dim)}
+.t-badge{font-size:9px;letter-spacing:1px;color:var(--dim2);border:1px solid var(--border2);border-radius:6px;padding:1px 5px;flex:none}
+.t-mv,.t-edit{border:0;background:transparent;color:var(--dim2);font-size:12px;cursor:pointer;padding:2px 6px;border-radius:6px;flex:none;transition:all .15s}
+.t-mv:hover:not([disabled]),.t-edit:hover{color:#9be9ff;background:rgba(110,150,255,.12)}
+.t-mv[disabled]{opacity:.2;cursor:default}
 .m-row{display:flex;gap:10px;margin-top:12px}
 .m-row label{flex:1;font-size:11px;color:var(--dim);display:flex;flex-direction:column;gap:6px}
 .m-input{background:rgba(5,8,18,.6);border:1px solid var(--border);border-radius:11px;color:var(--text);font:600 12.5px var(--font);padding:9px 11px;outline:0;width:100%}
