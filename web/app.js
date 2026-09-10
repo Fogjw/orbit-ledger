@@ -1382,25 +1382,18 @@ async function refreshExpList(){
       box.innerHTML='<div class="e-empty">本月该'+(expCtx.isSub?'细分':(expCtx.dimKey==='category'?'品类':'情境'))+'暂无花销</div>';
       return;
     }
+    // 明细行只呈现日期与金额：账单「是什么」属于详情内容（备注/tag），点行进显示视图查看
     box.innerHTML=mine.map(e=>{
       const d=e.date.slice(5).replace('-','/');
       const amt=(e.amount_cents/100);
-      const ctxTag=e.tags.find(t=>t.role==='primary'&&t.dim_key!=='category')?.name;
-      return `<div class="e-row" data-id="${e.id}" data-json="${encodeURIComponent(JSON.stringify(e))}">
+      return `<div class="e-row${e.type==='income'?' income':''}" data-id="${e.id}" data-json="${encodeURIComponent(JSON.stringify(e))}" title="点击查看详情（备注 / 关联 tag）">
         <span class="e-date">${d}</span>
-        <span class="e-note">${(e.note||'')}${ctxTag?' · '+ctxTag:''}</span>
         <span class="e-amt">¥${amt.toLocaleString()}</span>
-        <button class="e-edit" title="编辑这笔">✎</button>
         <button class="e-del" title="删除这笔">✕</button>
       </div>`;
     }).join('');
     box.querySelectorAll('.e-row').forEach(row=>{
-      row.querySelector('.e-edit').onclick=(ev)=>{
-        ev.stopPropagation();
-        const raw=decodeURIComponent(row.dataset.json);
-        const exp=JSON.parse(raw);
-        openExpenseEditor(exp);
-      };
+      row.onclick=()=>openExpenseView(JSON.parse(decodeURIComponent(row.dataset.json)));
       row.querySelector('.e-del').onclick=async (ev)=>{
         ev.stopPropagation();
         const eid=Number(row.dataset.id);
