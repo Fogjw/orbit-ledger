@@ -678,17 +678,17 @@ function timelineFull(){
   return {from:dayNum(`${f.y}-${pad2(f.m)}-01`),to:dayNum(`${l.y}-${pad2(l.m)}-${pad2(lastDay)}`)};
 }
 /** 视口 = 中心（天）+ 像素/天比例。
-    比例由档位固定给出 ⇒ **节点间距恒定、不为了把整年/整月塞进视口而压缩距离**；
-    视口能装下多少节点是结果，不是约束。 */
+    比例按**连续**变焦量在三档之间插值 ⇒ 拖动时视口是平滑缩放的（跟手），
+    而渲染始终只画「最近的那一档」节点，所以不会出现两套节点叠在一起。
+    节点间距由比例决定（月档 64px/月、日档 44px/天），不为塞进视口而压缩。 */
 const PX_PER_MONTH=64, PX_PER_DAY=44, DAYS_PER_MONTH=30.44;
 function viewOf(w){
   const full=timelineFull(), all=Math.max(1,full.to-full.from);
   const PAD=44, vw=Math.max(1,w-PAD*2);
-  const lv=domLevel();
-  const p = lv==='day' ? PX_PER_DAY
-          : lv==='month' ? PX_PER_MONTH/DAYS_PER_MONTH
-          : vw/all;                       // 年档：整段压进宽度，保证全貌可见
-  const half=vw/2/p;                      // 视口半径（天）
+  const z=clamp(TL.z,0,2);
+  const pDay=PX_PER_DAY, pMonth=PX_PER_MONTH/DAYS_PER_MONTH, pYear=vw/all;
+  const p=z<=1 ? lerp(pDay,pMonth,z) : lerp(pMonth,pYear,z-1);
+  const half=vw/2/Math.max(.0001,p);      // 视口半径（天）
   const maxPan=Math.max(0,all/2-half);
   const c=anchorCenter()+clamp(TL.pan||0,-maxPan,maxPan);
   return {c,p,vw,PAD,half};
@@ -909,15 +909,35 @@ function scheduleWindowSync(){
   if(winTimer)clearTimeout(winTimer);
   winTimer=setTimeout(()=>{winTimer=null;syncWindowToSel()},120);
 }
-function applyZoomSnap(){
+/** 已经落到数据层的档位（避免连续拖动时反复触发同一档的切换） */
+let appliedLevel='month';
+/** 变焦量变化后调用：只有**主导档位真的变了**才对齐选中项、换数据、让节点重新入场 */
+function applyLevelChange(quiet){
   const lv=domLevel();
-  if(TL.sel.level!==lv){
-    const idx=idxForLevel(lv);        // 先算（读旧选中时间），再落新档位
-    TL.sel={level:lv,idx};
-    TL.pan=0;
-  }
-  syncRail();
+  if(lv===appliedLevel)return;
+  appliedLevel=lv;
+  const idx=idxForLevel(lv);          // 先算（读旧选中时间），再落新档位
+  TL.sel={level:lv,idx};
+  TL.pan=0;
   scheduleWindowSync();
+  if(!quiet)toast('星轨 · '+LV_NAME[lv]+'视图');
+}
+/** 松手/停止滚动后：把变焦量平滑吸附到最近的档位（不停在中间） */
+let zoomAnim=null;
+function snapZoom(){
+  const to=clamp(Math.round(TL.z),0,2);
+  if(Math.abs(to-TL.z)<0.001){TL.z=to;return}
+  zoomAnim={from:TL.z,to,t0:performance.now(),dur:190};
+}
+/** 每帧推进吸附动画（smoothstep 缓动） */
+function tickZoomAnim(now){
+  if(!zoomAnim)return;
+  const k=clamp((now-zoomAnim.t0)/zoomAnim.dur,0,1);
+  const e=k*k*(3-2*k);
+  TL.z=zoomAnim.from+(zoomAnim.to-zoomAnim.from)*e;
+  syncRail();
+  applyLevelChange(true);
+  if(k>=1){TL.z=zoomAnim.to;zoomAnim=null;syncRail()}
 }
 async function selectTime(kind,id){
   if(kind==='day'){
@@ -939,24 +959,22 @@ async function selectTime(kind,id){
   await syncWindowToSel();
   burst(W/2,H-190,'#9be9ff',14);
 }
+/** 直接落到某一档（初始化 / 点节点 / 回到今天等场合），不带吸附动画 */
 function setZoom(z,quiet){
-  z=clamp(Math.round(z),0,2);       // 只落在三档之一：不允许停在中间态
-  const before=domLevel();
-  TL.z=z;syncRail();
-  const now=domLevel();
-  if(before!==now){                 // 跨档 → 对齐选中项 + 切数据窗口 + 节点重新入场
-    applyZoomSnap();
-    if(!quiet)toast('星轨 · '+LV_NAME[now]+'视图');
-  }
+  zoomAnim=null;
+  TL.z=clamp(Math.round(z),0,2);
+  syncRail();
+  applyLevelChange(quiet);
 }
-/** 滚轮变焦：一次滚动＝跨一档，并做 220ms 节流，
-    免得惯性滚动一下连跳三档（也保证不会停在两档之间） */
-let lastWheel=0;
+/** 滚轮：**连续**累积（跟手不平移档），停止滚动 220ms 后吸附到最近档 */
+let wheelTimer=null;
 function wheelZoom(dy){
-  const now=performance.now();
-  if(now-lastWheel<220)return;
-  lastWheel=now;
-  setZoom(TL.z+(dy>0?1:-1),false);
+  zoomAnim=null;
+  TL.z=clamp(TL.z+(dy>0?0.34:-0.34),0,2);   // 约三格滚轮跨一档
+  syncRail();
+  applyLevelChange(true);
+  clearTimeout(wheelTimer);
+  wheelTimer=setTimeout(snapZoom,220);
 }
 
 /* ---------- 交互 ---------- */
@@ -1451,7 +1469,9 @@ async function switchLedger(id){
     refreshTagArrays();refreshMonths();refreshAmounts();
     TODAY=Math.max(0,MONTHS.length-1);
     const ni=MONTHS.findIndex(m=>m.y===Data._currentMonthY&&m.m===Data._currentMonthM);
-    TL.sel={level:'month',idx:ni>=0?ni:TODAY};TL.pan=0;
+    // 换账本后回到月档：新账本的时间跨度/数据都变了，沿用旧档位容易与选中项对不上
+    TL.z=1;TL.pan=0;appliedLevel='month';
+    TL.sel={level:'month',idx:ni>=0?ni:TODAY};
   }catch(e){toast('切换账本失败：'+(e.message||e))}
   renderLedgerDD();
   buildGraph();syncChrome();
@@ -1544,25 +1564,32 @@ $('#btnToday').onclick=async ()=>{
   toast('回到今天');
 };
 
-/* ---------- 右侧刻度轨：三档吸附切换（上=日 下=月 中=年），与滚轮/点击写同一状态 ---------- */
+/* ---------- 右侧刻度轨：拖动连续跟手，松手吸附到最近档 ---------- */
 const rail=$('#rail'),handle=$('#railHandle');
 function syncRail(){
   if(!handle||!rail)return;
   const r=rail.getBoundingClientRect();
   const h=r.height||1;
-  handle.style.top=clamp(6+TL.z/2*(h-12),4,h-4)+'px';   // z 只会是 0/1/2 → 手柄落到三个档位点
+  handle.style.top=clamp(6+TL.z/2*(h-12),4,h-4)+'px';   // 跟手：变焦量连续，手柄就连续
 }
 let railDrag=false;
 function railSet(e){
   if(!rail)return;
   const r=rail.getBoundingClientRect();
   const t=clamp((e.clientY-r.top)/Math.max(1,r.height),0,1);
-  setZoom(Math.round(t*2),true);   // 拖动即吸附到最近档：松手不会停在两档之间
+  zoomAnim=null;
+  TL.z=t*2;                       // 连续跟手（不在这里 round）
+  syncRail();
+  applyLevelChange(true);         // 跨档时才真正换数据（静默）
 }
 if(rail){
   rail.addEventListener('pointerdown',e=>{railDrag=true;rail.setPointerCapture(e.pointerId);railSet(e)});
   rail.addEventListener('pointermove',e=>{if(railDrag)railSet(e)});
-  rail.addEventListener('pointerup',()=>{if(railDrag){railDrag=false;toast('星轨 · '+LV_NAME[domLevel()]+'视图')}});
+  rail.addEventListener('pointerup',()=>{
+    if(!railDrag)return;
+    railDrag=false;
+    snapZoom();     // 松手吸附到最近档：不停在中间
+  });
 }
 // 刻度轨与星轨上也能滚轮缩放（与图谱区一致）
 for(const el of [$('#railWrap'),$('#orbit')]){
@@ -1893,6 +1920,7 @@ addEventListener('keydown',e=>{if(e.key==='Escape'){mask.hidden=true;goBack()}})
 let last=performance.now();
 function frame(now){
   const dt=Math.min(.05,(now-last)/1000);last=now;tNow=now/1000;
+  tickZoomAnim(now);   // 吸附动画（松手后把变焦量平滑收进最近档）
   tick(dt);
   drawBg(tNow,dt,mouse.x,mouse.y);
   drawGraph(tNow);
