@@ -1068,7 +1068,7 @@ function wheelZoom(dy){
 
 /* ---------- 交互 ---------- */
 const tip=$('#tooltip');
-let mouse={x:.5,y:.5},dragN=null,panDrag=null,downPos=null,downT=0,lastSubClick=0;
+let mouse={x:.5,y:.5},dragN=null,panDrag=null,downPos=null,downT=0;
 /** 点到线段的距离（共享线 hover 命中判定用） */
 function distToSeg(px,py,x1,y1,x2,y2){
   const dx=x2-x1,dy=y2-y1,L2=dx*dx+dy*dy;
@@ -1221,15 +1221,12 @@ gC.addEventListener('pointerup',e=>{
       if(best.kind==='exp'){
         openExpenseView(best.ref);                 // 账单节点 → 先看详情（显示视图）
       }else if(best.kind==='sub'){
-        // 细分节点：单击＝持久高亮（看清它连接了哪些账单），双击＝明细/管理浮层
-        const now=performance.now();
-        if(pinnedId===best.id&&now-lastSubClick<420){
-          openExpenseList({tagId:best.tagId,name:best.ref.name});
-        }else{
-          pinnedId=(pinnedId===best.id)?null:best.id;
-          computeHot();
-        }
-        lastSubClick=now;
+        // 细分节点：单击＝选中高亮 + 打开该细分的账单明细/管理浮层。
+        // 选中的高亮会保留到关闭浮层之后，回来仍能看清它连了哪些账单与共享线；
+        // 点空白处（或换视图）清除。不用双击：双击命中窗口太窄，容易点不进去。
+        pinnedId=best.id;
+        computeHot();
+        openExpenseList({tagId:best.tagId,name:best.ref.name});
       }else if(best.kind==='cat'||best.kind==='inc'){
         openExpenseList(best.ref);
       }
