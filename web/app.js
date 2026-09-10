@@ -66,9 +66,9 @@ function refreshDays(){
   DAY_TODAY=i>=0?i:Math.max(0,DAYS.length-1);
 }
 
-/* 画布平移（相机）：拖空白处移动视角。
-   布局不再把节点硬塞进视口 —— 内容可以超出窗口，靠平移查看，而不是压缩间距。 */
-const CAM={x:0,y:0};
+/* 画布视角：x/y = 平移（屏幕像素），z = 缩放倍数。
+   布局不再把节点硬塞进视口 —— 内容可以超出窗口，靠平移/缩放查看。 */
+const CAM={x:0,y:0,z:1};
 
 /* ---------- 状态 ---------- */
 const S={dim:'category',ledgerId:null,view:'l1',focus:null,hover:null,hoverKind:null};
@@ -511,8 +511,8 @@ function drawGraph(t){
   const hov=S.hover, hovG=(hov&&S.hoverKind!=='month')?hov:null;
   const dimA=id=>!hotNodes?1:(hotNodes.has(id)?1:.13);
   const esc=clamp(enterT,0,1.4);
-  // 画布平移：图谱元素都在世界坐标里绘制，统一加相机偏移
-  g.save();g.translate(CAM.x,CAM.y);
+  // 画布视角：图谱元素都在世界坐标里绘制，统一应用平移 + 缩放
+  g.save();g.translate(CAM.x,CAM.y);g.scale(CAM.z,CAM.z);
 
   // 星座连线 / 二部图边
   for(const l of links){
@@ -933,6 +933,7 @@ function applyLevelChange(quiet){
   const idx=idxForLevel(lv);          // 先算（读旧选中时间），再落新档位
   TL.sel={level:lv,idx};
   TL.pan=0;
+  resetView();                        // 换档位＝换内容，视角归位
   scheduleWindowSync();
   if(!quiet)toast('星轨 · '+LV_NAME[lv]+'视图');
 }
@@ -1054,10 +1055,37 @@ function setHover(h){
   }
 }
 function moveTip(e){tip.style.left=Math.min(innerWidth-250,e.clientX+16)+'px';tip.style.top=(e.clientY+18)+'px'}
-/** 屏幕坐标 → 世界坐标。画布可平移，所有命中判定都必须先换算 */
+/** 视角归位：任何「换内容/换视图」的场合都调用，避免上一处的平移缩放被带过来 */
+function resetView(){
+  CAM.x=0;CAM.y=0;CAM.z=1;
+  const rng=$('#zoomRange'),val=$('#zoomVal');
+  if(rng)rng.value='1';
+  if(val)val.textContent='100%';
+}
+/** 缩放：以视口中心为锚点，中心处的世界点保持不动（不会"跑偏"） */
+function setScale(nz){
+  nz=clamp(nz,0.4,2.6);
+  if(Math.abs(nz-CAM.z)<0.001)return;
+  const cx=W/2, cy=H/2;
+  const wx=(cx-CAM.x)/CAM.z, wy=(cy-CAM.y)/CAM.z;   // 中心对应的世界点
+  CAM.z=nz;
+  CAM.x=cx-wx*CAM.z;
+  CAM.y=cy-wy*CAM.z;
+  const rng=$('#zoomRange'),val=$('#zoomVal');
+  if(rng)rng.value=String(nz);
+  if(val)val.textContent=Math.round(nz*100)+'%';
+}
+(function bindZoomBar(){
+  const rng=$('#zoomRange'),zin=$('#zoomIn'),zout=$('#zoomOut');
+  if(rng)rng.addEventListener('input',()=>setScale(Number(rng.value)));
+  if(zin)zin.onclick=()=>setScale(CAM.z*1.22);
+  if(zout)zout.onclick=()=>setScale(CAM.z/1.22);
+})();
+
+/** 屏幕坐标 → 世界坐标。画布可平移与缩放，所有命中判定都必须先换算 */
 function worldPos(e){
   const r=gC.getBoundingClientRect();
-  return {x:e.clientX-r.left-CAM.x, y:e.clientY-r.top-CAM.y};
+  return {x:(e.clientX-r.left-CAM.x)/CAM.z, y:(e.clientY-r.top-CAM.y)/CAM.z};
 }
 gC.addEventListener('pointermove',e=>{
   mouse={x:e.clientX/W,y:e.clientY/H};moveTip(e);
@@ -1169,7 +1197,7 @@ async function enterDetail(id){
   }
   detailTag=tag;
   S.view='detail';S.focus=id;
-  CAM.x=0;CAM.y=0;   // 换视图：视角归位，平移状态不跨视图沿用
+  resetView();   // 换视图：视角归位，平移状态不跨视图沿用
   // 分类上下文放在返回按钮上（画布中央刻意不画主 tag，避免冗余节点）
   const tot=detailExpenses.reduce((s,e)=>s+e.amount_cents,0);
   $('#btnBack').textContent='← '+tag.name+(detailExpenses.length?(' · ¥'+(tot/100).toLocaleString()):'');
@@ -1180,7 +1208,7 @@ async function enterDetail(id){
 function goBack(){
   if(S.view!=='detail')return;
   S.view='l1';S.focus=null;detailExpenses=[];detailTag=null;
-  CAM.x=0;CAM.y=0;
+  resetView();
   $('#btnBack').textContent='← 主视图';
   $('#btnBack').hidden=true;buildGraph();syncChrome();
 }
@@ -1506,6 +1534,7 @@ async function switchLedger(id){
     const ni=MONTHS.findIndex(m=>m.y===Data._currentMonthY&&m.m===Data._currentMonthM);
     // 换账本后回到月档：新账本的时间跨度/数据都变了，沿用旧档位容易与选中项对不上
     TL.z=1;TL.pan=0;appliedLevel='month';
+    resetView();
     TL.sel={level:'month',idx:ni>=0?ni:TODAY};
   }catch(e){toast('切换账本失败：'+(e.message||e))}
   renderLedgerDD();
@@ -1577,7 +1606,7 @@ addEventListener('keydown',e=>{if(e.key==='Escape'){const m=$('#ledgerMenu');if(
 seg('#dimSeg',v=>{
   S.dim=v;
   // 切维度必然离开下钻（下钻是针对某个具体分类的）
-  if(S.view==='detail'){S.view='l1';S.focus=null;detailExpenses=[];detailTag=null;CAM.x=0;CAM.y=0}
+  if(S.view==='detail'){S.view='l1';S.focus=null;detailExpenses=[];detailTag=null;resetView()}
   $('#btnBack').textContent='← 主视图';
   $('#btnBack').hidden=true;
   refreshAmounts();buildGraph();syncChrome();

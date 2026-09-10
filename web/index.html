@@ -98,6 +98,14 @@
   </footer>
 
   <div class="hint">拖拽星体 · 悬停看关联 · 点击星星下钻 · 滚轮缩放星轨 · 星轨可左右拖</div>
+
+  <!-- 画布缩放条（滚轮已用于星轨的年/月/日切换，故画布缩放走显式控件） -->
+  <div class="zoom-bar glass" id="zoomBar">
+    <button class="zb-btn" id="zoomOut" title="缩小画布">－</button>
+    <input type="range" id="zoomRange" min="0.4" max="2.6" step="0.02" value="1" aria-label="画布缩放" />
+    <button class="zb-btn" id="zoomIn" title="放大画布">＋</button>
+    <span class="zb-val" id="zoomVal">100%</span>
+  </div>
   <div class="tooltip" id="tooltip" hidden></div>
   <div class="toast" id="toast" hidden></div>
 
