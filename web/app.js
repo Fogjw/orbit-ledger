@@ -777,9 +777,9 @@ function viewOf(w){
   const pDay=PX_PER_DAY, pMonth=PX_PER_MONTH/DAYS_PER_MONTH, pYear=vw/all;
   const p=z<=1 ? lerp(pDay,pMonth,z) : lerp(pMonth,pYear,z-1);
   const half=vw/2/Math.max(.0001,p);      // 视口半径（天）
-  const maxPan=Math.max(0,all/2-half);
+  const maxPan=Math.max(0,all/2-half);    // 视口中心相对整体中心的最大偏移天数（0＝该档本就能看到全部时间）
   const c=anchorCenter()+clamp(TL.pan||0,-maxPan,maxPan);
-  return {c,p,vw,PAD,half};
+  return {c,p,vw,PAD,half,maxPan};        // maxPan 一并返回：拖动写回时要用同一套边界
 }
 /** 天序号 → 星轨像素 x */
 function xOfDay(d,w){
@@ -1240,7 +1240,8 @@ gC.addEventListener('wheel',e=>{e.preventDefault();wheelZoom(e.deltaY)},{passive
 /* 星轨：左右拖拽看时间，点击选中 */
 let oDrag=null;
 oC.addEventListener('pointerdown',e=>{
-  oDrag={x:e.clientX,y:e.clientY,pan:TL.pan,moved:false};
+  // lastX＝本次手势中指针的上一个位置：平移按**增量**累积，见 pointermove。
+  oDrag={x:e.clientX,y:e.clientY,lastX:e.clientX,moved:false};
   oC.setPointerCapture&&oC.setPointerCapture(e.pointerId);
 });
 oC.addEventListener('pointermove',e=>{
@@ -1250,9 +1251,13 @@ oC.addEventListener('pointermove',e=>{
     if(Math.abs(dx)>4)oDrag.moved=true;
     if(oDrag.moved){
       // 左右拖动 = 沿统一时间轴平移视口：像素位移 ÷ 当前档位的「像素/天」＝ 天数。
-      // 平移量在 viewOf 内部按数据范围 clamp，不会拖到无数据的地方。
-      const p=viewOf(r.width).p;
-      TL.pan=(oDrag.pan||0)-dx/p;
+      // 每次只按**本次增量**累加，并即时 clamp 到视口允许范围：拖到尽头后多出来的位移
+      // 被边界吸收，而不是悄悄记进 TL.pan —— 否则反向拉时得先把这段看不见的位移抵消掉，
+      // 手感上就是「拖到尽头后，要反着拉同样的距离星轨才动」。
+      const v=viewOf(r.width);
+      const step=e.clientX-oDrag.lastX;
+      oDrag.lastX=e.clientX;
+      TL.pan=clamp((TL.pan||0)-step/v.p,-v.maxPan,v.maxPan);
     }
     return;
   }
