@@ -124,6 +124,9 @@ const API = {
 
   // 导出账本（备份快照）
   exportLedger: (ledgerId) => request(`/ledgers/${ledgerId}/export`),
+
+  // 导入备份快照 → 回读为一个**新账本**（不覆盖、不合并；主键由后端重新分配）
+  importLedger: (snapshot) => request('/ledgers/import', { method: 'POST', body: snapshot }),
 };
 
 // 挂载到全局对象（兼容浏览器和 Node.js）

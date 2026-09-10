@@ -1707,6 +1707,8 @@ function renderLedgerDD(){
     <button class="dd-new" id="ddNewLedger">＋ 新建账本</button>
     <button class="dd-rename" id="ddRenameLedger">✎ 重命名当前账本</button>
     <button class="dd-rename" id="ddManageTags">⚙ 标签管理</button>
+    <button class="dd-new" id="ddExportBackup">⇩ 导出备份</button>
+    <button class="dd-new" id="ddImportBackup">⇧ 导入备份</button>
     <button class="dd-danger" id="ddDelLedger">🗑 删除当前账本</button>`;
   menu.querySelectorAll('.dd-item').forEach(b=>b.onclick=async ()=>{
     const id=isNaN(Number(b.dataset.id))?b.dataset.id:Number(b.dataset.id);
@@ -1723,6 +1725,10 @@ function renderLedgerDD(){
   };
   const mt=menu.querySelector('#ddManageTags');
   if(mt)mt.onclick=()=>{menu.hidden=true;openTagMgr()};
+  const eb=menu.querySelector('#ddExportBackup');
+  if(eb)eb.onclick=()=>{menu.hidden=true;exportBackup()};
+  const ib=menu.querySelector('#ddImportBackup');
+  if(ib)ib.onclick=()=>{menu.hidden=true;importBackup()};
   const db=menu.querySelector('#ddDelLedger');
   if(db)db.onclick=async ()=>{
     const name=cur?cur.name:'';
@@ -1742,6 +1748,50 @@ function renderLedgerDD(){
       toast('账本「'+name+'」已删除');
     }catch(err){toast('删除失败：'+(err.message||err))}
   };
+}
+
+/* ---------- 备份导出 / 导入（D-13：账本全量 JSON 快照） ---------- */
+const BACKUP_EXT='.orbit-backup.json';
+
+/** 导出当前账本 → 浏览器下载一个 JSON 备份文件 */
+async function exportBackup(){
+  const cur=(Data.ledgers||[]).find(l=>String(l.id)===String(S.ledgerId));
+  if(!cur)return;
+  try{
+    const snap=await OrbitAPI.exportLedger(cur.id);
+    const blob=new Blob([JSON.stringify(snap,null,2)],{type:'application/json'});
+    const url=URL.createObjectURL(blob);
+    const a=document.createElement('a');
+    a.href=url;a.download=cur.name+BACKUP_EXT;
+    document.body.appendChild(a);a.click();a.remove();
+    setTimeout(()=>URL.revokeObjectURL(url),1000);
+    toast(`已导出「${cur.name}」· ${snap.expenses.length} 笔`);
+  }catch(e){
+    toast('导出失败：'+(e.message||e));
+  }
+}
+
+/** 选一个备份文件 → 回读为**新账本**（不覆盖、不合并），随后切到该账本。
+    导入的文件可能是任意 JSON，所以解析失败与后端校验失败都要给出可读提示。 */
+function importBackup(){
+  const inp=document.createElement('input');
+  inp.type='file';inp.accept='.json,application/json';
+  inp.onchange=async ()=>{
+    const file=inp.files&&inp.files[0];
+    if(!file)return;
+    try{
+      let snapshot;
+      try{ snapshot=JSON.parse(await file.text()); }
+      catch{ throw new Error('这个文件不是合法的 JSON') }
+      const out=await OrbitAPI.importLedger(snapshot);
+      Data.ledgers=await OrbitAPI.listLedgers();   // 重拉列表（含新账本）
+      await switchLedger(out.ledger.id);           // 切过去并整链重建视图
+      toast(`已导入「${out.ledger.name}」· ${out.counts.expenses} 笔 / ${out.counts.tags} 个标签`);
+    }catch(e){
+      toast('导入失败：'+(e.message||e));
+    }
+  };
+  inp.click();
 }
 
 // 下拉开关：点按钮展开，点外部/Esc 收起
