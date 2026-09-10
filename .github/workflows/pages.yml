@@ -77,5 +77,11 @@ jobs:
       name: github-pages
       url: ${{ steps.deployment.outputs.page_url }}
     steps:
+      # 仓库还没启用 Pages 时自动开启（把 Source 设为 GitHub Actions）。
+      # 不加这一步的话，deploy-pages 会因为「Pages 未启用」直接失败，还得人去 Settings 里点一遍。
+      - uses: actions/configure-pages@v5
+        with:
+          enablement: true
+
       - id: deployment
         uses: actions/deploy-pages@v4
