@@ -12,7 +12,7 @@
 |---|---|---|
 | `server/` | 业务逻辑层 | SQLite 数据层 + 业务规则 + REST + MCP（node:sqlite / Express / node:test）。**详见 [docs/architecture.md](docs/architecture.md)** |
 | `web/` | 前端 | 零依赖 Canvas2D 星图 + 星轨 + 玻璃 UI；消费 `server/` 的 REST（同端口静态托管） |
-| `electron/` | 桌面壳层 | 主进程内嵌同一个本地服务 + 窗口 |
+| `electron/` | 桌面壳层 | 主进程内嵌同一个本地服务 + 窗口；仓库根 `package.json` 是应用清单（`npm start` / `npm run dist`） |
 | `docs/` | 文档 | `architecture.md`（REST/MCP 契约权威） |
 
 ## 运行
@@ -28,15 +28,33 @@ npm run seed:demo  # 生成式演示数据（固定种子、21 个月）
 浏览器打开 http://localhost:5310 即用；数据落在 `server/data/orbit.db`。
 验证实验请起独立实例（`ORBIT_PORT=5311 ORBIT_DB=<临时库>`），不要直接写演示库。
 
-## 运行桌面端（Electron）
+## 桌面端（Electron）
 
 ```bash
-cd electron
-npm install        # 首次下载 Electron 二进制；国内可设 ELECTRON_MIRROR=https://npmmirror.com/mirrors/electron/
-npm start
+npm install        # 仓库根：装 Electron 与打包工具（国内可设 ELECTRON_MIRROR=https://npmmirror.com/mirrors/electron/）
+npm start          # 起窗口：主进程内嵌同一个本地服务，与浏览器访问同一份数据
 ```
 
-主进程内嵌同一个本地服务（`server/src/bootstrap.js`），窗口与浏览器访问**同一份数据**。
+主进程把数据库放到**用户数据目录**（`%APPDATA%/Orbit 星账/orbit.db`）—— 安装后的 app 在只读的 asar 里，
+不能沿开发路径写库；两处数据互不干扰。
+
+窗口菜单（按 Alt 显示）：视图 → 重新载入（Ctrl+R）/ 强制重新载入（Ctrl+Shift+R）/ 开发者工具（F12）。
+
+## 打包成安装包（Windows）
+
+```bash
+npm run make:icon  # assets/icon.svg → assets/icon.png（用 Electron 自己光栅化，项目零图形依赖）
+npm run dist       # electron-builder → release/Orbit-Setup-<版本>.exe
+```
+
+安装包特性：可自选安装目录、创建**桌面快捷方式与开始菜单快捷方式**、卸载入口齐全；`npm run pack` 只产目录不产安装包。
+
+打包会下载 Electron 二进制与 NSIS，受限网络下同样靠镜像：
+
+```bash
+ELECTRON_MIRROR=https://npmmirror.com/mirrors/electron/
+ELECTRON_BUILDER_BINARIES_MIRROR=https://npmmirror.com/mirrors/electron-builder-binaries/
+```
 
 ## 备份与恢复
 
