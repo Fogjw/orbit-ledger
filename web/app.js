@@ -766,9 +766,12 @@ function timelineFull(){
     const t=dayNum(new Date().toISOString().slice(0,10));
     return {from:t-15,to:t+15};
   }
+  // 边界按**整年**取整：年档的节点锚在「该年年中」（7/1，见 yearX 与 anchorCenter），
+  // 而时间轴原先只覆盖有数据的月份 —— 新账本只记了 9 月一笔时，轴的范围是 9/1~9/30，
+  // 7/1 的锚点落在范围之前、也就是画面左侧外面，于是年视图一个节点都看不到
+  //（月档 / 日档的节点都在 9 月内，所以看起来「只有年档缺」）。
   const f=MONTHS[0],l=MONTHS[MONTHS.length-1];
-  const lastDay=new Date(Date.UTC(l.y,l.m,0)).getUTCDate();
-  return {from:dayNum(`${f.y}-${pad2(f.m)}-01`),to:dayNum(`${l.y}-${pad2(l.m)}-${pad2(lastDay)}`)};
+  return {from:dayNum(`${f.y}-01-01`),to:dayNum(`${l.y}-12-31`)};
 }
 /** 视口 = 中心（天）+ 像素/天比例。
     比例按**连续**变焦量在三档之间插值 ⇒ 拖动时视口是平滑缩放的（跟手），

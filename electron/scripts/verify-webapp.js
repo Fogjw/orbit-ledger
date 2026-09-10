@@ -15,6 +15,7 @@ import { dirname, join, extname } from 'node:path';
 const here = dirname(fileURLToPath(import.meta.url));
 const distDir = join(here, '../../webapp/dist');
 const SHOT = join(here, '../../webapp/verify-shot.png');
+const SHOT_YEAR = join(here, '../../webapp/verify-year.png');
 
 // wasm 的 MIME 必须正确，否则 WebAssembly 的流式实例化会被浏览器拒绝
 const MIME = {
@@ -143,6 +144,35 @@ async function main() {
   writeFileSync(SHOT, img.toPNG());
   console.log(`[verify] 截图已存 ${SHOT}`);
 
+  // 切到年档，确认年视图也有节点。
+  // 这里守的是一个修过的 bug：时间轴原先只覆盖「有数据的月份」，而年档节点锚在该年年中（7/1），
+  // 新账本只记了 9 月一笔时锚点落在轴之外 —— 日档月档都有节点，唯独年档空白。
+  await js(`(() => {
+    const c = document.querySelector('#graph');
+    for (let i = 0; i < 4; i++) {
+      c.dispatchEvent(new WheelEvent('wheel', {
+        deltaY: 300, bubbles: true, cancelable: true, clientX: 640, clientY: 400,
+      }));
+    }
+    return true;
+  })()`);
+  await wait(1500);   // 等吸附动画把档位收进「年」
+  const year = JSON.parse(await js(`(() => {
+    const c = document.querySelector('#graph');
+    const ctx = c.getContext('2d');
+    const w = c.width, h = c.height;
+    // 只取画面中央那块：年档的年份节点锚在视口中心附近，节点若跑到画面外，这里就是空的
+    const d = ctx.getImageData(Math.floor(w * 0.25), Math.floor(h * 0.2), Math.floor(w * 0.5), Math.floor(h * 0.6)).data;
+    let lit = 0;
+    for (let i = 3; i < d.length; i += 4 * 37) if (d[i] > 16) lit++;
+    return JSON.stringify({ centerLit: lit });
+  })()`));
+  console.log(`[verify] 年档画面中央着色采样: ${year.centerLit}（>0 说明年节点画在了视口里）`);
+
+  const imgYear = await win.webContents.capturePage();
+  writeFileSync(SHOT_YEAR, imgYear.toPNG());
+  console.log(`[verify] 年档截图已存 ${SHOT_YEAR}`);
+
   if (warnings.length) {
     console.log(`[verify] 页面告警 ${warnings.length} 条（不影响结论）：`);
     for (const w of warnings.slice(0, 5)) console.log('  ~ ' + String(w).split('\n')[0].slice(0, 120));
@@ -154,7 +184,8 @@ async function main() {
     console.log('[verify] 页面无报错');
   }
 
-  const ok = gateShown && state.loadedUi && state.canvasLit > 0 && wrote && errors.length === 0;
+  const ok = gateShown && state.loadedUi && state.canvasLit > 0 && wrote
+    && year.centerLit > 0 && errors.length === 0;
   console.log(`[verify] 结论: ${ok ? '通过' : '未通过'}`);
   win.destroy();
   server.close();

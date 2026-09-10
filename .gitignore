@@ -43,3 +43,6 @@ server/data/
 # 纯前端版：源码入库，构建产物与验证截图不入库
 webapp/dist/
 webapp/verify-shot.png
+webapp/verify-year.png
+# 临时预览目录（把图挂到本地服务上给用户看，用完即删）
+web/_preview/
