@@ -208,7 +208,7 @@ function buildGraph(){
     });
     // 消费轨迹折线：按金额降序连成北斗式折线
     poly=[...nodes].sort((a,b)=>b.amount-a.amount).map(n=>n.id);
-    for(let i=0;i<poly.length-1;i++)links.push({s:poly[i],t:poly[i+1],w:.9,ph:Math.random(),sp:.25});
+    for(let i=0;i<poly.length-1;i++)links.push({id:poly[i]+'>'+poly[i+1],s:poly[i],t:poly[i+1],w:.9,ph:Math.random(),sp:.25});
   }else{
     /* ---- L3 下钻：分类内「花销 × 细分」二部图 ----
        图的**两侧只有两种节点**：外环 = 该分类的副 tag（细分），内环 = 当月经该分类的花销。
@@ -260,7 +260,7 @@ function buildGraph(){
       // 边一：账单 ↔ 其所属细分 —— **全部实线**（这是归属关系）
       for(const id of subIds){
         if(!subById.has(id))continue;
-        links.push({s:'e'+e.id,t:'s'+id,w:1.0,ph:Math.random(),sp:.35});
+        links.push({id:'e'+e.id+'>s'+id,s:'e'+e.id,t:'s'+id,w:1.0,ph:Math.random(),sp:.35});
       }
     });
 
@@ -284,30 +284,48 @@ function buildGraph(){
       });
     }
   }
+  computeHot();   // 图重建后按当前 hover 重算：节点 id 已变，旧集合会失效
 }
 const byId=id=>nodes.find(n=>n.id===id);
-/* focus+context 的关联判定：hover 某节点或**共享线**时，其余无关元素降透明度。
-   下钻图里「花销 ↔ 细分」由 subIds 决定；细分之间无直接关系（互相变暗）。 */
-let hoverShare=null;   // 当前 hover 的共享线对象（含 a/b/exps），供 related 判定
-function related(a,b){
-  if(!a||!b||a===b)return true;
-  const n=byId(b)||byId(a);
-  // hover 共享线：只亮两端细分 + 共享它的那些账单（《需求基线》L2 的 hover 语义）
-  if(hoverShare){
-    if(!n)return false;
-    if(n.kind==='sub')return n.tagId===hoverShare.a||n.tagId===hoverShare.b;
-    if(n.kind==='exp')return (hoverShare.exps||[]).includes(n.ref.id);
-    return false;
+/* ---------- hover 高亮集合 ----------
+   用「集合」而不是两两判定：两两判定会把"邻居的邻居"也判成相关，高亮范围会发散。
+   规则：
+   - hover 节点 N：N 本身 + 与 N **直接相连**的节点，以及它们之间的连线
+   - hover 普通线 L：L 的两端节点 + L 本身
+   - hover 共享线 S：S 本身 + 两端细分 + 共享它的账单 + 那些账单的归属线
+     （即"共享线相连的节点 + 共享的账单节点 + 这些账单的连线"）
+   共享线彼此孤立：hover 一条共享线不会点亮别的共享线。
+   集合为 null 表示当前无 hover（一切正常显示）。 */
+let hotNodes=null, hotLinks=null;
+const linkKey=l=>l.id||(l.s+'|'+l.t);
+function computeHot(){
+  hotNodes=null;hotLinks=null;
+  if(!S.hover)return;
+  hotNodes=new Set();hotLinks=new Set();
+  const n=byId(S.hover);
+  if(n){
+    hotNodes.add(n.id);
+    for(const l of links){
+      if(l.s===n.id||l.t===n.id){
+        hotLinks.add(linkKey(l));
+        hotNodes.add(l.s===n.id?l.t:l.s);
+      }
+    }
+    return;
   }
-  const A=byId(a),B=byId(b);if(!A||!B)return false;
-  const exp=A.kind==='exp'?A:(B.kind==='exp'?B:null);
-  if(exp){
-    const other=A.kind==='exp'?B:A;
-    if(other.kind==='sub')return (exp.subIds||[]).includes(other.tagId);
-    return true;
+  const l=links.find(x=>linkKey(x)===S.hover);
+  if(!l)return;
+  hotLinks.add(linkKey(l));
+  hotNodes.add(l.s);hotNodes.add(l.t);
+  if(!l.shared)return;
+  const exps=new Set(l.exps||[]);
+  for(const l2 of links){
+    if(l2.shared)continue;                        // 其它共享线不亮
+    const expId=l2.s.startsWith('e')?l2.s:l2.t;   // 归属线的账单端
+    if(!exps.has(Number(expId.slice(1))))continue;
+    hotLinks.add(linkKey(l2));
+    hotNodes.add(l2.s);hotNodes.add(l2.t);
   }
-  // 细分之间只有在「被同一笔共享」时才相关（由末尾的 links.some 判定）
-  return links.some(l=>(l.s===a&&l.t===b)||(l.s===b&&l.t===a));
 }
 /* L1：锚点系留真漂浮（星座构图稳定）；下钻：真·力导向（斥力+弹簧+质心引力） */
 let tNow=0;
@@ -425,17 +443,15 @@ function label(text,sub,x,y,a,hot){
 function drawGraph(t){
   g.clearRect(0,0,W,H);
   const hov=S.hover, hovG=(hov&&S.hoverKind!=='month')?hov:null;
-  const dimA=id=>!hovG?1:(related(hovG,id)?1:.13);
+  const dimA=id=>!hotNodes?1:(hotNodes.has(id)?1:.13);
   const esc=clamp(enterT,0,1.4);
 
   // 星座连线 / 二部图边
   for(const l of links){
     const s=byId(l.s),t2=byId(l.t);if(!s||!t2)continue;
-    const selfHot=(S.hoverKind==='link'&&S.hover===l.id);
-    const on=selfHot||(hovG&&(related(hovG,s.id)||related(hovG,t2.id)));
+    const on=!!hotLinks&&hotLinks.has(linkKey(l));
     let a=(l.w>1?.30:.20);
-    if(hovG)a=on?.7:.04;
-    if(selfHot)a=1;   // 被 hover 的共享线本身最亮
+    if(hotNodes)a=on?.78:.05;
     a*=clamp(enterT,0,1);
     if(a<=.01)continue;
     const c1=s.kind==='exp'?'#cdd8f2':s.ref.color;
@@ -443,8 +459,8 @@ function drawGraph(t){
     const gr=g.createLinearGradient(s.x,s.y,t2.x,t2.y);
     gr.addColorStop(0,rgba(c1.startsWith('#')?c1:'#9fb4d8',a));
     gr.addColorStop(1,rgba(c2.startsWith('#')?c2:'#9fb4d8',a));
-    g.strokeStyle=gr;g.lineWidth=selfHot?2.4:(on?1.8:1.1);
-    // 共享线（多笔共享同一细分）用虚线；专属归属用实线
+    g.strokeStyle=gr;g.lineWidth=on?2.2:1.1;
+    // 共享线（被同一笔账单同时挂上的两个细分）用虚线
     if(l.shared)g.setLineDash([3,5]);
     g.beginPath();g.moveTo(s.x,s.y);g.lineTo(t2.x,t2.y);g.stroke();
     g.setLineDash([]);
@@ -452,21 +468,22 @@ function drawGraph(t){
     g.save();g.globalCompositeOperation='lighter';g.globalAlpha=Math.min(1,a*2.6);
     g.fillStyle='#fff';g.beginPath();g.arc(px,py,on?1.9:1.2,0,7);g.fill();g.restore();
   }
-  // 花销 / 情境小星
+  // 花销 / 细分小星
   for(const n of nodes){
     if(n.kind==='cat')continue;
     const sc=easeOutBack(clamp(enterT-n.idx*0.05,0,1));
     if(sc<=0)continue;
+    const hot=!hotNodes||hotNodes.has(n.id);
     const a=dimA(n.id);if(a<=.02)continue;
     const tw=.8+.2*Math.sin(t*2.2+n.seed);
-    const col=n.kind==='exp'?(hovG&&related(hovG,n.id)?n.ctxColor:'#aeb9d4'):n.ref.color;
+    const col=n.kind==='exp'?(hot?n.ctxColor:'#aeb9d4'):n.ref.color;
     drawStar(n.x,n.y,Math.max(.5,n.R*sc),col,tw*a,false);
     g.save();g.globalAlpha=a;g.restore();
-    // 花销节点密集，标签只在 hover 相关时出现；细分节点始终显示（它是这张图的骨架）
+    // 花销节点密集，标签只在被高亮时出现；细分节点始终显示（它是这张图的骨架）
     const isExp=n.kind==='exp';
     const lbText=isExp?((n.ref.note||n.ref.date||'').slice(0,7)||'一笔'):n.ref.name;
-    if(!isExp||(hovG&&related(hovG,n.id))){
-      label(lbText,'¥'+n.amount.toLocaleString(),n.x,n.y+n.R*sc+16,a*(hovG&&!related(hovG,n.id)?.6:1),hovG===n.id);
+    if(!isExp||hot){
+      label(lbText,'¥'+n.amount.toLocaleString(),n.x,n.y+n.R*sc+16,a*(hot?1:.6),hovG===n.id);
     }
   }
   // 主星
@@ -744,11 +761,10 @@ function distToSeg(px,py,x1,y1,x2,y2){
   t=clamp(t,0,1);
   return Math.hypot(px-(x1+t*dx),py-(y1+t*dy));
 }
-/** 命中共享线。只让共享线可 hover —— 归属线太密，纳入命中会频繁误触 */
-function pickShareLink(x,y){
-  let best=null,bd=8;
+/** 命中连线（节点优先命中；线的阈值取小一些，避免密图里频繁误触） */
+function pickLink(x,y){
+  let best=null,bd=6;
   for(const l of links){
-    if(!l.shared)continue;
     const s=byId(l.s),t=byId(l.t);if(!s||!t)continue;
     const d=distToSeg(x,y,s.x,s.y,t.x,t.y);
     if(d<bd){best=l;bd=d}
@@ -757,14 +773,16 @@ function pickShareLink(x,y){
 }
 function setHover(h){
   S.hover=h?h.id:null;S.hoverKind=h?h.kind:null;
-  hoverShare=null;
+  computeHot();
   if(!h){tip.hidden=true;gC.style.cursor='default';document.querySelectorAll('.top-row').forEach(e=>e.classList.remove('hot'));return}
   if(h.kind==='link'){
-    const l=links.find(x=>x.id===h.id);
+    const l=links.find(x=>linkKey(x)===h.id);
     if(!l){tip.hidden=true;return}
-    hoverShare=l;   // 让 related 知道当前高亮的是哪条共享线
     const A=byId(l.s),B=byId(l.t);
-    tip.innerHTML=`<b>共享线</b><div style="color:#8b96b5">${A?A.ref.name:''} ↔ ${B?B.ref.name:''}</div><div style="color:#8b96b5">${(l.exps||[]).length} 笔共享</div>`;
+    const names=(A?A.ref.name:'')+' ↔ '+(B?B.ref.name:'');
+    tip.innerHTML=l.shared
+      ?`<b>共享线</b><div style="color:#8b96b5">${names}</div><div style="color:#8b96b5">${(l.exps||[]).length} 笔共享</div>`
+      :`<b>${names}</b>`;
     tip.hidden=false;gC.style.cursor='pointer';
     document.querySelectorAll('.top-row').forEach(e=>e.classList.remove('hot'));
     return;
@@ -805,8 +823,8 @@ gC.addEventListener('pointermove',e=>{
   if(best){
     setHover({kind:best.kind,id:best.id});
   }else{
-    const l=pickShareLink(x,y);   // 没命中节点时，再看是否压在共享线上
-    setHover(l?{kind:'link',id:l.id}:null);
+    const l=pickLink(x,y);   // 没命中节点时，再看是否压在某条连线上
+    setHover(l?{kind:'link',id:linkKey(l)}:null);
   }
 });
 gC.addEventListener('pointerdown',e=>{
