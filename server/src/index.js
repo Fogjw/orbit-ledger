@@ -1,41 +1,18 @@
-// 服务入口：初始化 DB → 组装 services → 挂载 API → 监听本地端口
-// 形态：本地优先业务服务（未来 Electron 主进程内嵌；浏览器/CORS 直连；MCP 同进程）
-import { openDatabase } from './db/database.js';
-import { migrate } from './db/schema.js';
-import { seedIfEmpty } from './db/seed.js';
-import { createLedgerService } from './services/ledgerService.js';
-import { createTagService } from './services/tagService.js';
-import { createExpenseService } from './services/expenseService.js';
-import { createReportService } from './services/reportService.js';
-import { createExportService } from './services/exportService.js';
-import { createApp } from './api/app.js';
-import { config } from './config.js';
+// 服务入口：装配 + 监听（装配逻辑见 bootstrap.js，Electron 主进程复用同一入口）
+// 形态：本地优先业务服务 —— 浏览器/CORS 直连、MCP 同进程、Electron 主进程内嵌。
+import { startServer } from './bootstrap.js';
 
-// 数据层
-const db = openDatabase(config.dbPath);
-migrate(db);
-const { seeded } = seedIfEmpty(db);
-if (seeded) console.log('[seed] 已注入开发种子数据（生活费账本 + 品类/情境维度）');
+const { port, runtime, close } = await startServer();
 
-// 组装 services + HTTP
-const svc = {
-  ledgers: createLedgerService(db),
-  tags: createTagService(db),
-  expenses: createExpenseService(db),
-  reports: createReportService(db),
-  exports: createExportService(db),
-};
-const app = createApp(svc, { webDir: config.webDir });
+console.log(`[server] Orbit 业务服务 → http://localhost:${port}  (db: ${runtime.dbPath})`);
+console.log(`[server] 前端 → http://localhost:${port}/ （web/；API → /api；MCP → /mcp）`);
+if (runtime.seeded) console.log('[seed] 已注入开发种子数据（生活费账本 + 品类/情境维度）');
 
-const server = app.listen(config.port, () => {
-  console.log(`[server] Orbit 业务服务 → http://localhost:${config.port}  (db: ${config.dbPath})`);
-  console.log(`[server] 前端 → http://localhost:${config.port}/ （web/；API → /api；MCP → /mcp）`);
-});
-
-// 优雅退出（未来 Electron 由主进程统一管理生命周期）
+// 优雅退出（Electron 由主进程统一管理生命周期，见 electron/main.js）
 for (const sig of ['SIGINT', 'SIGTERM']) {
-  process.on(sig, () => {
+  process.on(sig, async () => {
     console.log(`\n[server] 收到 ${sig}，关闭…`);
-    server.close(() => process.exit(0));
+    await close();
+    process.exit(0);
   });
 }

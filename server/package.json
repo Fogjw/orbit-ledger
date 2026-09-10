@@ -8,7 +8,7 @@
     "dev": "node src/index.js",
     "start": "node src/index.js",
     "seed:demo": "node scripts/seed-demo.mjs",
-    "test": "node test/db.test.js && node test/export.test.js && node test/services.test.js && node test/api.test.js && node test/mcp.test.js"
+    "test": "node test/db.test.js && node test/export.test.js && node test/import.test.js && node test/services.test.js && node test/api.test.js && node test/mcp.test.js"
   },
   "engines": {
     "node": ">=22.5.0"

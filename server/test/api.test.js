@@ -8,6 +8,7 @@ import { createTagService } from '../src/services/tagService.js';
 import { createExpenseService } from '../src/services/expenseService.js';
 import { createReportService } from '../src/services/reportService.js';
 import { createExportService } from '../src/services/exportService.js';
+import { createImportService } from '../src/services/importService.js';
 import { createApp } from '../src/api/app.js';
 
 const db = openDatabase(':memory:');
@@ -18,6 +19,7 @@ const svc = {
   expenses: createExpenseService(db),
   reports: createReportService(db),
   exports: createExportService(db),
+  imports: createImportService(db),
 };
 const app = createApp(svc);
 
@@ -324,5 +326,41 @@ describe('API 全流程', () => {
     });
     assert.equal(r.status, 400);
     assert.equal((await j(r)).error, 'MISSING_FIELD');
+  });
+
+  test('导入端点：POST /api/ledgers/import 回读备份为新账本；坏备份 400', async () => {
+    const headers = { 'Content-Type': 'application/json' };
+    const src = await j(await fetch(`${base}/api/ledgers`, {
+      method: 'POST', headers, body: JSON.stringify({ name: '导入源' }),
+    }));
+    const add = await fetch(`${base}/api/ledgers/${src.id}/expenses`, {
+      method: 'POST', headers,
+      body: JSON.stringify({ amountCents: 3300, date: '2026-06-09', primary: { category: '餐饮' } }),
+    });
+    assert.equal(add.status, 201);
+    const snap = await j(await fetch(`${base}/api/ledgers/${src.id}/export`));
+
+    const imported = await fetch(`${base}/api/ledgers/import`, {
+      method: 'POST', headers, body: JSON.stringify(snap),
+    });
+    assert.equal(imported.status, 201);
+    const out = await j(imported);
+    assert.notEqual(out.ledger.id, src.id, '导入为新账本，不覆盖源账本');
+    assert.equal(out.ledger.name, '导入源');
+    assert.equal(out.counts.expenses, snap.expenses.length);
+
+    // 重建出来的明细与源快照一致，且通过 API 可读（账本隔离内自洽）
+    const dst = await j(await fetch(`${base}/api/ledgers/${out.ledger.id}/export`));
+    assert.deepEqual(
+      dst.expenses.map(e => [e.type, e.amount_cents, e.date]).sort(),
+      snap.expenses.map(e => [e.type, e.amount_cents, e.date]).sort()
+    );
+
+    // 坏备份 → 400（而非 500）
+    const badRes = await fetch(`${base}/api/ledgers/import`, {
+      method: 'POST', headers, body: JSON.stringify({ format: 'nope' }),
+    });
+    assert.equal(badRes.status, 400);
+    assert.equal((await j(badRes)).error, 'INVALID_BACKUP');
   });
 });

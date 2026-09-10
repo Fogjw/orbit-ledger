@@ -13,6 +13,15 @@ export function ledgersRouter(svc) {
     res.status(201).json(svc.ledgers.create(name));
   });
 
+  /**
+   * POST /import —— 用备份快照回读为**新账本**（GET /:id/export 的对称面，D-13）
+   * body = 快照本身（与导出的 JSON 同构）；校验失败 → 400 INVALID_BACKUP / BACKUP_INCOMPLETE。
+   * 注意：路由须在 /:id 之前声明，否则 'import' 会被当成账本 id。
+   */
+  r.post('/import', (req, res) => {
+    res.status(201).json(svc.imports.importSnapshot(req.body));
+  });
+
   r.get('/:id', (req, res) => res.json(svc.ledgers.byId(idOf(req.params.id))));
 
   /** GET /:id/export —— 账本全量 JSON 快照（备份，D-13） */

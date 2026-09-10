@@ -24,7 +24,8 @@ export function createApp(svc, opts = {}) {
     next();
   });
 
-  app.use(express.json());
+  // JSON 体上限：默认 100kb 装不下千笔级备份快照（导入回读走同一解析器），抬到 32mb
+  app.use(express.json({ limit: '32mb' }));
 
   app.get('/api/health', (req, res) => res.json({ ok: true }));
   app.use('/api/ledgers', ledgersRouter(svc));
