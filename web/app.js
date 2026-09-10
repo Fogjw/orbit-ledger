@@ -211,23 +211,18 @@ function buildGraph(){
     for(let i=0;i<poly.length-1;i++)links.push({s:poly[i],t:poly[i+1],w:.9,ph:Math.random(),sp:.25});
   }else{
     /* ---- L3 下钻：分类内「花销 × 细分」二部图 ----
-       中心 = 该主 tag；外环 = 它的副 tag（大小 ∝ 细分金额）；
-       内环 = 当月经该主 tag 的花销（大小 ∝ 金额）；连线 = 花销↔其所属细分。
-       花销角度取其各细分角度的圆周均值 ⇒ 同一细分的花销聚成一个扇区、连线短且不糊。 */
+       图的**两侧只有两种节点**：外环 = 该分类的副 tag（细分），内环 = 当月经该分类的花销。
+       刻意**不画主 tag 本身** —— 已经在它的下钻视图里了，再画一个中心主星属于冗余；
+       即便某个副 tag 与主 tag 同名，它这里也只是副 tag 的身份。
+       边 = 花销 ↔ 其所属细分；被多笔共享的细分用虚线（共享线），独占的用实线。 */
     if(!detailTag){S.view='l1';return}
-    const cx0=P(.5,.5).x, cy0=P(.5,.5).y;
+    const ctr=P(.5,.5), cx0=ctr.x, cy0=ctr.y;
     const span=Math.min(X1-X0,Y1-Y0);
     const subs=summarizeSubs(detailExpenses,detailTag.tagId);
-    const totalCents=detailExpenses.reduce((s,e)=>s+e.amount_cents,0);
-
-    // 中心：分类主星
-    const fR=Math.max(15,tagR(totalCents/100)*1.2);
-    nodes.push({kind:'cat',id:detailTag.id,ref:detailTag,tagId:detailTag.tagId,
-      amount:totalCents/100,R:fR,tr:fR,
-      x:cx0,y:cy0,vx:0,vy:0,ax:cx0,ay:cy0,k:0.004,seed:1.3,idx:0,center:true,sats:[]});
+    const subById=new Map(subs.map(s=>[s.tagId,s]));   // 取 count 判断共享线
 
     // 外环：细分节点（按金额降序均布，从正上方起）
-    const R2=span*0.44;
+    const R2=span*0.42;
     const angOf=new Map();
     subs.forEach((s,i)=>angOf.set(s.tagId,(subs.length?i/subs.length:0)*6.28-Math.PI/2));
     subs.forEach((s,i)=>{
@@ -236,29 +231,37 @@ function buildGraph(){
       const ax=cx0+Math.cos(a)*R2, ay=cy0+Math.sin(a)*R2*0.86;
       nodes.push({kind:'sub',id:'s'+s.tagId,tagId:s.tagId,ref:s,amount:s.amount/100,R,tr:R,
         x:ax+(hash01('s'+s.tagId)-.5)*26, y:ay+(hash01('sy'+s.tagId)-.5)*20,
-        vx:0,vy:0,ax,ay,k:0.0018,seed:i*2.1+3,idx:30+i,sats:[]});
-      links.push({s:'s'+s.tagId,t:detailTag.id,w:1.1,ph:Math.random(),sp:.4});
+        vx:0,vy:0,ax,ay,k:0.0018,seed:i*2.1+3,idx:i,sats:[]});
     });
 
-    // 内环：花销节点
+    // 内环：花销节点。先算每笔的目标角度（其所属细分角度的**圆周均值**），
+    // 再在同一扇区内均匀散开 —— 否则同细分的多笔会叠成一条射线。
     const R1=span*0.24;
-    const slot={};
-    detailExpenses.forEach((e,i)=>{
+    const rows=detailExpenses.map((e,i)=>{
       const subIds=e.tags.filter(t=>t.role==='secondary'&&t.parent_tag_id===detailTag.tagId).map(t=>t.tag_id);
-      let a;
       let sx=0,sy=0;
       for(const id of subIds){const ang=angOf.get(id);if(ang===undefined)continue;sx+=Math.cos(ang);sy+=Math.sin(ang)}
-      a=(Math.abs(sx)>1e-6||Math.abs(sy)>1e-6)?Math.atan2(sy,sx):(detailExpenses.length?(i/detailExpenses.length)*6.28:0);
-      const key=Math.round(a*20);
-      slot[key]=(slot[key]||0)+1;
-      const rr=R1*(1+0.14*(slot[key]-1));   // 同扇区的多笔向外错开，避免叠死
+      const aimed=(Math.abs(sx)>1e-6||Math.abs(sy)>1e-6);
+      const a=aimed?Math.atan2(sy,sx):(detailExpenses.length?(i/detailExpenses.length)*6.28:0);
+      return {e,i,subIds,a};
+    });
+    const buckets=new Map();
+    rows.forEach(r=>{const k=r.a.toFixed(3);if(!buckets.has(k))buckets.set(k,[]);buckets.get(k).push(r)});
+    buckets.forEach(list=>{
+      const spread=Math.min(0.95,0.18*list.length);   // 扇区宽度随笔数增长（上限 ~54°）
+      list.forEach((r,j)=>{r.angle=r.a+(list.length>1?(j/(list.length-1)-0.5)*spread:0)});
+    });
+    rows.forEach(({e,i,subIds,angle})=>{
       const yuan=e.amount_cents/100;
-      const ax=cx0+Math.cos(a)*rr, ay=cy0+Math.sin(a)*rr*0.88;
+      const ax=cx0+Math.cos(angle)*R1, ay=cy0+Math.sin(angle)*R1*0.88;
       const er=expR(yuan);
       nodes.push({kind:'exp',id:'e'+e.id,ref:e,cat:detailTag.id,subIds,amount:yuan,R:er,tr:er,
-        x:ax,y:ay,vx:0,vy:0,ax,ay,k:0.0026,seed:i*1.7+1,idx:60+i,ctxColor:'#cdd8f2'});
+        x:ax,y:ay,vx:0,vy:0,ax,ay,k:0.0026,seed:i*1.7+1,idx:subs.length+i*0.25,ctxColor:'#cdd8f2'});
       for(const id of subIds){
-        if(angOf.has(id))links.push({s:'e'+e.id,t:'s'+id,w:0.85,ph:Math.random(),sp:.35});
+        const meta=subById.get(id);
+        if(!meta)continue;
+        const shared=meta.count>1;   // 多笔共享同一细分 → 共享线（虚线）
+        links.push({s:'e'+e.id,t:'s'+id,w:shared?0.85:1.05,shared,ph:Math.random(),sp:.35});
       }
     });
   }
@@ -307,7 +310,7 @@ function tickL1(dt){
 const fMass=n=>n.center?4:(n.kind==='sub'?2:1);
 const fRep=n=>n.center?12000:(n.kind==='exp'?1500:3000);
 function tickDetail(dt){
-  const f=60*dt, cx=gcx(), cy=gcy();
+  const f=60*dt;
   // 万有斥力（被拖住的节点照样施力）
   for(let i=0;i<nodes.length;i++){
     const a=nodes[i];
@@ -332,10 +335,11 @@ function tickDetail(dt){
     if(!s.pin){s.vx+=ux*F/fMass(s);s.vy+=uy*F/fMass(s)}
     if(!t.pin){t.vx-=ux*F/fMass(t);t.vy-=uy*F/fMass(t)}
   }
-  // 质心引力 + 微扰（活着） + 阻尼 + 积分
+  // 锚点系留 + 微扰（活着） + 阻尼 + 积分
+  // 注：下钻图**不用质心引力** —— 细分节点已不连中心，引力会把它们拽离外环糊到中间。
+  // 锚定让 buildGraph 算好的扇区布局稳定，斥力与弹簧只做有机微调（L1 同款思路）。
   for(const n of nodes){
-    const gv=n.center?0.012:0.004;
-    n.vx+=(cx-n.x)*gv*f;n.vy+=(cy-n.y)*gv*f;
+    n.vx+=(n.ax-n.x)*n.k*60*dt;n.vy+=(n.ay-n.y)*n.k*60*dt;
     n.vx+=(hash01(n.id+((tNow*0.9)|0))-.5)*.03;n.vy+=(hash01(n.id+'y'+((tNow*0.9)|0))-.5)*.03;
     n.vx*=.86;n.vy*=.86;
     const sp=Math.hypot(n.vx,n.vy),mx=3;
@@ -407,8 +411,8 @@ function drawGraph(t){
     gr.addColorStop(0,rgba(c1.startsWith('#')?c1:'#9fb4d8',a));
     gr.addColorStop(1,rgba(c2.startsWith('#')?c2:'#9fb4d8',a));
     g.strokeStyle=gr;g.lineWidth=on?1.8:1.1;
-    // 与占位 tag（未分类）相连的线用虚线，视觉上区分"真实归属"与"兜底"
-    if((s.ref&&s.ref.is_unnamed)||(t2.ref&&t2.ref.is_unnamed))g.setLineDash([3,4]);
+    // 共享线（多笔共享同一细分）用虚线；专属归属用实线
+    if(l.shared)g.setLineDash([3,5]);
     g.beginPath();g.moveTo(s.x,s.y);g.lineTo(t2.x,t2.y);g.stroke();
     g.setLineDash([]);
     const px=lerp(s.x,t2.x,l.ph),py=lerp(s.y,t2.y,l.ph);
@@ -820,6 +824,9 @@ async function enterDetail(id){
   }
   detailTag=tag;
   S.view='detail';S.focus=id;
+  // 分类上下文放在返回按钮上（画布中央刻意不画主 tag，避免冗余节点）
+  const tot=detailExpenses.reduce((s,e)=>s+e.amount_cents,0);
+  $('#btnBack').textContent='← '+tag.name+(detailExpenses.length?(' · ¥'+(tot/100).toLocaleString()):'');
   $('#btnBack').hidden=false;
   buildGraph();syncChrome();
   toast('下钻 · '+tag.name+'（'+detailExpenses.length+' 笔）');
@@ -827,6 +834,7 @@ async function enterDetail(id){
 function goBack(){
   if(S.view!=='detail')return;
   S.view='l1';S.focus=null;detailExpenses=[];detailTag=null;
+  $('#btnBack').textContent='← 主视图';
   $('#btnBack').hidden=true;buildGraph();syncChrome();
 }
 $('#btnBack').onclick=goBack;
@@ -1215,6 +1223,7 @@ seg('#dimSeg',v=>{
   S.dim=v;
   // 切维度必然离开下钻（下钻是针对某个具体分类的）
   if(S.view==='detail'){S.view='l1';S.focus=null;detailExpenses=[];detailTag=null}
+  $('#btnBack').textContent='← 主视图';
   $('#btnBack').hidden=true;
   refreshAmounts();buildGraph();syncChrome();
   toast(v==='category'?'维度 · 品类（这是什么钱）':'维度 · 情境（和谁 / 什么场景）')});
