@@ -1,7 +1,7 @@
 // Orbit 星账 · Electron 主进程
 // 形态（技术选型 §2）：**主进程内嵌本地 HTTP 服务**，窗口只是它的一个客户端 ——
 // 于是「浏览器直连」与「桌面窗口」天然共享同一份数据、同一套接口，不需要 IPC 桥。
-import { app, BrowserWindow, dialog, shell } from 'electron';
+import { app, BrowserWindow, dialog, Menu, shell } from 'electron';
 import { startServer } from '../server/src/bootstrap.js';
 
 let srv = null;   // startServer 的返回值（含 url / close）
@@ -41,8 +41,28 @@ async function boot() {
   console.log(`[electron] 窗口已载入 ${srv.url}`);
 }
 
+/**
+ * 应用菜单：窗口只是本地页面的壳，前端一改就得能立刻看到新版本，所以必须留重载入口。
+ * autoHideMenuBar 下菜单栏默认藏起（按 Alt 显示），但快捷键始终生效。
+ */
+function buildMenu() {
+  return Menu.buildFromTemplate([
+    { label: '文件', submenu: [{ role: 'quit', label: '退出' }] },
+    {
+      label: '视图',
+      submenu: [
+        { role: 'reload', label: '重新载入', accelerator: 'CmdOrCtrl+R' },
+        { role: 'forceReload', label: '强制重新载入（忽略缓存）', accelerator: 'CmdOrCtrl+Shift+R' },
+        { type: 'separator' },
+        { role: 'toggleDevTools', label: '开发者工具（控制台）', accelerator: 'F12' },
+      ],
+    },
+    { label: '窗口', submenu: [{ role: 'minimize', label: '最小化' }, { role: 'close', label: '关闭窗口' }] },
+  ]);
+}
+
 app.whenReady()
-  .then(boot)
+  .then(() => { Menu.setApplicationMenu(buildMenu()); return boot(); })
   .catch((err) => {
     dialog.showErrorBox('Orbit 启动失败', String(err?.stack ?? err));
     app.quit();
