@@ -1,0 +1,58 @@
+{
+  "name": "orbit-ledger",
+  "productName": "Orbit 星账",
+  "private": true,
+  "version": "1.0.0",
+  "description": "Orbit 星账 · 本地优先的图谱化记账软件（Electron 桌面端 + 浏览器直连 + MCP 同进程）",
+  "type": "module",
+  "main": "electron/main.js",
+  "scripts": {
+    "start": "electron .",
+    "make:icon": "electron electron/scripts/make-icon.js",
+    "pack": "electron-builder --win --dir",
+    "dist": "electron-builder --win nsis"
+  },
+  "devDependencies": {
+    "electron": "^44.3.0",
+    "electron-builder": "^26.15.3"
+  },
+  "build": {
+    "appId": "com.fogjw.orbit-ledger",
+    "productName": "Orbit 星账",
+    "directories": {
+      "buildResources": "assets",
+      "output": "release"
+    },
+    "files": [
+      "electron/**/*",
+      "web/**/*",
+      "server/src/**/*",
+      "server/package.json",
+      "server/node_modules/**/*",
+      "!server/test/**/*",
+      "!server/scripts/**/*",
+      "!server/data/**/*",
+      "!**/*.map"
+    ],
+    "win": {
+      "target": [
+        {
+          "target": "nsis",
+          "arch": [
+            "x64"
+          ]
+        }
+      ],
+      "icon": "assets/icon.png"
+    },
+    "nsis": {
+      "oneClick": false,
+      "perMachine": false,
+      "allowToChangeInstallationDirectory": true,
+      "createDesktopShortcut": true,
+      "createStartMenuShortcut": true,
+      "shortcutName": "Orbit 星账",
+      "artifactName": "Orbit-Setup-${version}.exe"
+    }
+  }
+}

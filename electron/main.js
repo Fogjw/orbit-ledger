@@ -2,19 +2,23 @@
 // 形态（技术选型 §2）：**主进程内嵌本地 HTTP 服务**，窗口只是它的一个客户端 ——
 // 于是「浏览器直连」与「桌面窗口」天然共享同一份数据、同一套接口，不需要 IPC 桥。
 import { app, BrowserWindow, dialog, Menu, shell } from 'electron';
+import { join } from 'node:path';
 import { startServer } from '../server/src/bootstrap.js';
 
 let srv = null;   // startServer 的返回值（含 url / close）
 let win = null;
 
 async function boot() {
+  // 数据库必须落在**用户数据目录**：安装后 app 在只读的 asar 里，
+  // 沿默认路径（server/data/）会写不进去。首次启动这里是空库，服务会自动建默认账本与维度。
+  const dbPath = join(app.getPath('userData'), 'orbit.db');
   // 首选默认端口；被占用（例如浏览器版服务已在跑）则退到系统分配端口 ——
   // 桌面端总能起来，而不是给用户一个「端口被占」的死局。
   try {
-    srv = await startServer();
+    srv = await startServer({ dbPath });
   } catch (err) {
     console.warn('[electron] 默认端口不可用，改用系统分配端口：', err?.message ?? err);
-    srv = await startServer({ port: 0 });
+    srv = await startServer({ dbPath, port: 0 });
   }
 
   win = new BrowserWindow({

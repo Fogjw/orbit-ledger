@@ -21,22 +21,8 @@
   <!-- 顶部工具栏 -->
   <header class="topbar glass">
     <div class="brand">
-      <span class="logo">
-        <svg viewBox="0 0 32 32" width="26" height="26">
-          <defs>
-            <radialGradient id="lg" cx="40%" cy="35%" r="80%">
-              <stop offset="0%" stop-color="#fff"/>
-              <stop offset="35%" stop-color="#9be9ff"/>
-              <stop offset="100%" stop-color="#2f6fe0" stop-opacity="0"/>
-            </radialGradient>
-          </defs>
-          <ellipse cx="16" cy="16" rx="13" ry="6.5" fill="none" stroke="rgba(140,190,255,.55)" stroke-width="1.2" transform="rotate(-18 16 16)"/>
-          <ellipse cx="16" cy="16" rx="13" ry="6.5" fill="none" stroke="rgba(140,190,255,.18)" stroke-width="4" transform="rotate(-18 16 16)"/>
-          <circle cx="16" cy="16" r="5" fill="url(#lg)"/>
-          <circle cx="26" cy="10" r="1.6" fill="#fff"/>
-          <circle cx="7" cy="22" r="1.1" fill="#bcd6ff" opacity=".8"/>
-        </svg>
-      </span>
+      <!-- 应用 logo：与桌面端窗口/安装包图标同一份图形（web/logo.svg），不再各处内联 -->
+      <span class="logo"><img src="logo.svg" alt="Orbit" width="26" height="26" /></span>
       <span class="brand-text">Orbit <em>星账</em></span>
     </div>
 
