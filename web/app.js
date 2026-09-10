@@ -268,9 +268,9 @@ function buildGraph(){
         seed:hash01(c.id)*7,idx:i,
         sats:[0,1].map(k=>({a0:hash01(c.id+k)*6.28,d:2.1+hash01(c.id+'d'+k)*.9,s:.8+hash01(c.id+'s'+k),sp:(.3+hash01(c.id+'v'+k)*.4)*(k?1:-1)}))});
     });
-    // 收入节点：底部独立一排，绿色圆环 + 向上箭头（需求基线 §5.3：
-    // 「收入为独立样式节点，不混入花销节点」）。只显示本期有收入的类目。
-    const inc=INCOMES.filter(c=>c.amount>0);
+    // 收入节点：底部独立一排，四角尖星（需求基线 §5.3：「收入为独立样式节点，
+    // 不混入花销节点」）。只显示本期有收入的类目，按金额降序排 —— 与支出同序
+    const inc=INCOMES.filter(c=>c.amount>0).sort((a,b)=>b.amount-a.amount);
     inc.forEach((c,i)=>{
       const nx=inc.length===1?0.5:(0.18+0.64*(i/(inc.length-1)));
       const p=P(nx,0.95);
@@ -283,6 +283,11 @@ function buildGraph(){
     // 消费轨迹折线：按金额降序连成北斗式折线
     poly=[...nodes].filter(n=>n.kind==='cat').sort((a,b)=>b.amount-a.amount).map(n=>n.id);
     for(let i=0;i<poly.length-1;i++)links.push({id:poly[i]+'>'+poly[i+1],s:poly[i],t:poly[i+1],w:.9,ph:Math.random(),sp:.25});
+    // 收入类目也串成一条轨迹线（支出主 tag 被串起来了，收入同理，只是单独一条）
+    const incIds=inc.map(c=>c.id);
+    for(let i=0;i<incIds.length-1;i++){
+      links.push({id:incIds[i]+'>'+incIds[i+1],s:incIds[i],t:incIds[i+1],w:.9,ph:Math.random(),sp:.25});
+    }
   }else{
     /* ---- L3 下钻：分类内「花销 × 细分」二部图 ----
        图的**两侧只有两种节点**：外环 = 该分类的副 tag（细分），内环 = 当月经该分类的花销。
@@ -1080,12 +1085,15 @@ function setHover(h){
     const l=links.find(x=>linkKey(x)===h.id);
     if(!l){tip.hidden=true;return}
     const A=byId(l.s),B=byId(l.t);
-    // 归属线的一端是**账单节点**（花销对象没有 name），所以只取 tag 那一端的名字；
-    // 共享线两端都是细分，才显示「A ↔ B」
+    // 归属线的一端是**账单节点**（花销对象没有 name），这类只显示 tag 那一端的名字；
+    // 共享线与类目轨迹线（两端都是标签）则显示「A ↔ B」
     const tagEnd=(A&&A.kind!=='exp')?A:((B&&B.kind!=='exp')?B:null);
+    const hasExp=(A&&A.kind==='exp')||(B&&B.kind==='exp');
     tip.innerHTML=l.shared
       ?`<b>共享线</b><div style="color:#8b96b5">${A?A.ref.name:''} ↔ ${B?B.ref.name:''}</div><div style="color:#8b96b5">${(l.exps||[]).length} 笔共享</div>`
-      :`<b>${tagEnd?tagEnd.ref.name:'一笔花销'}</b>`;
+      :(hasExp
+        ? `<b>${tagEnd?tagEnd.ref.name:'一笔花销'}</b>`
+        : `<b>${A?A.ref.name:''} ↔ ${B?B.ref.name:''}</b>`);
     tip.hidden=false;gC.style.cursor='pointer';
     document.querySelectorAll('.top-row').forEach(e=>e.classList.remove('hot'));
     return;
