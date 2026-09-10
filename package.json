@@ -18,7 +18,8 @@
   "devDependencies": {
     "electron": "^44.3.0",
     "electron-builder": "^26.15.3",
-    "esbuild": "^0.28.2"
+    "esbuild": "^0.28.2",
+    "sql.js": "^1.14.2"
   },
   "build": {
     "appId": "com.fogjw.orbit-ledger",
@@ -61,8 +62,5 @@
       "shortcutName": "Orbit 星账",
       "artifactName": "Orbit-Setup-${version}.exe"
     }
-  },
-  "dependencies": {
-    "sql.js": "^1.14.2"
   }
 }
