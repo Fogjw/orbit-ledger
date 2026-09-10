@@ -490,20 +490,27 @@ function burst(x,y,color,n=26){
   for(let i=0;i<n;i++){const a=Math.random()*6.28,v=1+Math.random()*3.4;
     bursts.push({x,y,vx:Math.cos(a)*v,vy:Math.sin(a)*v-1,r:1+Math.random()*2.2,c:Math.random()<.3?'#ffffff':color,life:.8+Math.random()*.6})}
 }
-/** 收入节点：绿色圆环 + 向上箭头（需求基线 §5.3 指定的独立样式，
-    刻意区别于「无硬边的星体」，让人一眼看出这不是花销） */
-function drawIncomeNode(x,y,R,color,tw){
+/** 收入星：**四角尖星（内凹）**，与支出的圆润星体形成形状对比。
+    两者都是「星」，只是长的形状不同 —— 比绿圈加箭头更贴合「星账」的意象，
+    也更容易一眼分辨「这颗是进账」。 */
+function drawIncomeStar(x,y,R,color,tw){
   g.save();g.globalCompositeOperation='lighter';
-  const hs=R*4.4;
-  g.globalAlpha=.42*tw;g.drawImage(glowSprite(color),x-hs/2,y-hs/2,hs,hs);
-  g.globalAlpha=.92*tw;
-  g.strokeStyle=color;g.lineWidth=Math.max(1.2,R*.13);
-  g.beginPath();g.arc(x,y,R,0,7);g.stroke();                 // 圆环
-  g.lineWidth=Math.max(1.1,R*.11);g.lineCap='round';
-  g.beginPath();                                              // 向上箭头
-  g.moveTo(x,y+R*.42);g.lineTo(x,y-R*.46);
-  g.moveTo(x-R*.36,y-R*.06);g.lineTo(x,y-R*.46);g.lineTo(x+R*.36,y-R*.06);
-  g.stroke();
+  const hs=R*4.8;
+  g.globalAlpha=.5*tw;g.drawImage(glowSprite(color),x-hs/2,y-hs/2,hs,hs);
+  const k=R*.26;                                   // 内凹控制点：越小越尖
+  const gr=g.createRadialGradient(x,y,0,x,y,R);
+  gr.addColorStop(0,'rgba(255,255,255,1)');
+  gr.addColorStop(.42,'rgba(255,255,255,.92)');
+  gr.addColorStop(.6,color);
+  gr.addColorStop(1,rgba(color,0));
+  g.globalAlpha=.96*tw;g.fillStyle=gr;
+  g.beginPath();
+  g.moveTo(x,y-R);                                 // 上尖
+  g.quadraticCurveTo(x+k,y-k,x+R,y);               // 右上（内凹）
+  g.quadraticCurveTo(x+k,y+k,x,y+R);               // 右下（内凹）
+  g.quadraticCurveTo(x-k,y+k,x-R,y);               // 左下（内凹）
+  g.quadraticCurveTo(x-k,y-k,x,y-R);               // 左上（内凹）
+  g.closePath();g.fill();
   g.restore();
 }
 function drawStar(x,y,R,color,tw,spiky){
@@ -590,7 +597,7 @@ function drawGraph(t){
     const tw=.8+.2*Math.sin(t*2.2+n.seed);
     const col=n.kind==='exp'?(hot?n.ctxColor:'#aeb9d4'):n.ref.color;
     if(n.kind==='inc'){
-      drawIncomeNode(n.x,n.y,Math.max(.5,n.R*sc),col,tw*a);   // 收入：圆环 + 箭头
+      drawIncomeStar(n.x,n.y,Math.max(.5,n.R*sc),col,tw*a);   // 收入：四角尖星
     }else{
       // 细分节点是「标签」身份，给星芒；花销节点保持素净（数量多，加芒会糊）
       drawStar(n.x,n.y,Math.max(.5,n.R*sc),col,tw*a,n.kind==='sub');
@@ -1182,13 +1189,13 @@ gC.addEventListener('pointerup',e=>{
     if(!best){
       if(S.view==='detail')goBack();               // 点空白 → 回主视图
     }else if(S.view==='l1'){
-      if(best.kind==='cat')enterDetail(best.id);   // L1 主星 → L3 下钻
+      // L1：支出品类与收入类目都能下钻（结构完全一致，差别只在节点样式）
+      if(best.kind==='cat'||best.kind==='inc')enterDetail(best.id);
     }else{
-      // L3 下钻内：花销→编辑该笔；细分→该细分明细；中心→本类明细/管理
+      // L3 下钻内：花销→编辑该笔；细分→该细分明细；类目→本类明细
       if(best.kind==='exp')openExpenseEditor(best.ref);
       else if(best.kind==='sub')openExpenseList({tagId:best.tagId,name:best.ref.name});
-      else if(best.kind==='cat')openExpenseList(best.ref);
-      else if(best.kind==='inc')openExpenseList(best.ref);   // 收入类目 → 该收入的逐笔明细
+      else if(best.kind==='cat'||best.kind==='inc')openExpenseList(best.ref);
     }
   }
 });
@@ -1234,7 +1241,7 @@ oC.addEventListener('pointerleave',()=>{oDrag=null;setHover(null)});
  * 先拉当月经该主 tag 的花销再切视图：渲染帧里不发请求。
  */
 async function enterDetail(id){
-  const tag=(CATS.concat(CTXS)).find(c=>c.id===id);
+  const tag=CATS.concat(CTXS,INCOMES).find(c=>c.id===id);   // 收入类目也能下钻
   if(!tag)return;
   const {from,to}=Data.monthRange;
   try{

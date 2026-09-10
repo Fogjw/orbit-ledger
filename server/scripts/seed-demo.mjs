@@ -49,6 +49,16 @@ if (!ids['餐饮']) {
 }
 
 // ---------- 1. 标签体系 ----------
+// 先把**收入类目**建出来（根级主 tag）—— 它们的副 tag 也走同一套 SUBTAGS 机制，
+// 所以父必须先存在，否则下面挂副 tag 时会因为找不到父而跳过。
+for (const [name, color] of [
+  ['收入·生活费', '#6fe3a8'], ['收入·工资', '#22c55e'],
+  ['收入·红包', '#84cc16'], ['收入·转账', '#14b8a6'],
+]) {
+  await call('POST', '/ledgers/1/tags', { dimensionKey: 'category', name, color });
+}
+ids = await tagIds();   // 重取，带上刚建的收入类目
+
 // 副 tag 挂在主 tag 下（S6-v3）：本主 tag 的账单才可选它。
 // 「餐饮」刻意做成**两个可交叉的组**：餐段（早/午/晚/夜宵，互斥）× 用餐方式（堂食/外卖/自己做，互斥）
 //   ⇒ 一笔可以是「午餐 + 外卖」，共享线才有真实语义；
@@ -64,6 +74,11 @@ const SUBTAGS = {
   '日用': [['超市', '#6fe3a8'], ['日用百货', '#14b8a6']],
   '学习': [['书籍', '#f43f5e'], ['课程', '#eab308']],
   '居住': [['房租', '#ff7a9e'], ['水电', '#0ea5e9']],
+  // 收入类目同样有细分（完全对标支出，只是星形不同）
+  '收入·生活费': [['家用', '#6fe3a8'], ['零花', '#34d399']],
+  '收入·工资': [['月薪', '#22c55e'], ['奖金', '#84cc16'], ['补贴', '#4ade80']],
+  '收入·红包': [['节日', '#f43f5e'], ['亲友', '#fb7185']],
+  '收入·转账': [['收款', '#14b8a6'], ['还款', '#0ea5e9']],
 };
 
 /** 演示数据的合理性约束：同组细分不该同时出现在一笔账单上。
@@ -88,10 +103,6 @@ for (const [parent, subs] of Object.entries(SUBTAGS)) {
 for (const [name, color] of [['加班', '#8b5cf6'], ['出差', '#0ea5e9'], ['旅行', '#f97316']]) {
   await call('POST', '/ledgers/1/tags', { dimensionKey: 'context', name, color });
 }
-// 收入类目（根级主 tag）
-await call('POST', '/ledgers/1/tags', { dimensionKey: 'category', name: '收入·生活费', color: '#6fe3a8' });
-await call('POST', '/ledgers/1/tags', { dimensionKey: 'category', name: '收入·工资', color: '#22c55e' });
-await call('POST', '/ledgers/1/tags', { dimensionKey: 'category', name: '收入·红包', color: '#84cc16' });
 
 // ---------- 2. 逐日生成 ----------
 /* 常见搭配：让「共享线」集中在少数几对上，而不是散成几百条只出现一次的细线。
@@ -201,11 +212,17 @@ while (d <= end) {
   // 每月固定项
   if (day === 1) {
     SEED.push([iso, yuan(1200, 1800), { category: '居住' }, subTags('居住', '房租', 0.20)]);
-    SEED.push([iso, yuan(2500, 3500), { category: '收入·生活费' }, []]);
+    // 收入同样带细分（家用/零花）—— 与支出完全同构，只是星形不同
+    SEED.push([iso, yuan(2500, 3500), { category: '收入·生活费' }, subTags('收入·生活费', '家用', 0.7)]);
   }
   if (day === 5) SEED.push([iso, yuan(60, 220), { category: '居住' }, subTags('居住', '水电', 0.20)]);
-  if (day === 15 && rand() < 0.7) SEED.push([iso, yuan(50, 500), { category: '收入·工资' }, []]);
-  if (rand() < 0.05) SEED.push([iso, yuan(20, 800), { category: '收入·红包' }, []]);
+  if (day === 15 && rand() < 0.7) {
+    const main = rand() < 0.72 ? '月薪' : (rand() < 0.6 ? '奖金' : '补贴');
+    const lo = main === '月薪' ? 1200 : 200, hi = main === '月薪' ? 3200 : 900;
+    SEED.push([iso, yuan(lo, hi), { category: '收入·工资' }, subTags('收入·工资', main, 0.35)]);
+  }
+  if (rand() < 0.05) SEED.push([iso, yuan(20, 800), { category: '收入·红包' }, subTags('收入·红包', pick(['节日', '亲友']), 0.3)]);
+  if (rand() < 0.06) SEED.push([iso, yuan(50, 1500), { category: '收入·转账' }, subTags('收入·转账', pick(['收款', '还款']), 0.3)]);
 
   d = new Date(d.getTime() + 86400000);
 }
