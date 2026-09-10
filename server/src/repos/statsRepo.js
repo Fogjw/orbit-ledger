@@ -42,30 +42,78 @@ export function createStatsRepo(db) {
       return out;
     },
 
-    /** 月份序列（YYYY-MM → 金额），粒度日/月/年切换的数据基础 */
-    monthlySeries(ledgerId, { from = null, to = null, type = null } = {}) {
-      let sql = `
-        SELECT substr(e.date, 1, 7) AS month, e.type, SUM(e.amount_cents) AS amount_cents
-        FROM expenses e WHERE e.ledger_id = ?`;
+    /**
+     * 月份序列（YYYY-MM → 金额）。
+     * 附带 top_name / top_color = 该月该 type 下金额最大的指定维度 primary tag，
+     * 供星轨「颜色 = 该月花销最大 tag 色」上色（需求基线 §5.2）。
+     * @param {string} [topDimKey='category'] 取哪个维度的 tag 作为主导色
+     */
+    monthlySeries(ledgerId, { from = null, to = null, type = null, topDimKey = 'category' } = {}) {
       const args = [ledgerId];
-      if (from) { sql += ' AND e.date >= ?'; args.push(from); }
-      if (to) { sql += ' AND e.date <= ?'; args.push(to); }
-      if (type) { sql += ' AND e.type = ?'; args.push(type); }
-      sql += ' GROUP BY month, e.type ORDER BY month';
-      return plainAll(db.prepare(sql).all(...args));
+      let where = ' WHERE e.ledger_id = ?';
+      if (from) { where += ' AND e.date >= ?'; args.push(from); }
+      if (to) { where += ' AND e.date <= ?'; args.push(to); }
+      if (type) { where += ' AND e.type = ?'; args.push(type); }
+      const sql = `
+        SELECT m.month, m.type, m.amount_cents, top.name AS top_name, top.color AS top_color
+        FROM (
+          SELECT substr(e.date, 1, 7) AS month, e.type, SUM(e.amount_cents) AS amount_cents
+          FROM expenses e${where}
+          GROUP BY month, e.type
+        ) m
+        LEFT JOIN (
+          SELECT month, type, name, color FROM (
+            SELECT substr(e2.date, 1, 7) AS month, e2.type AS type, t.name AS name, t.color AS color,
+                   ROW_NUMBER() OVER (
+                     PARTITION BY substr(e2.date, 1, 7), e2.type
+                     ORDER BY SUM(e2.amount_cents) DESC, t.id
+                   ) AS rn
+            FROM expenses e2
+            JOIN expense_tag_links l2 ON l2.expense_id = e2.id AND l2.role = 'primary'
+            JOIN tags t ON t.id = l2.tag_id
+            JOIN dimensions d2 ON d2.id = t.dimension_id
+            WHERE e2.ledger_id = ? AND d2.key = ?
+            GROUP BY month, e2.type, t.id
+          ) WHERE rn = 1
+        ) top ON top.month = m.month AND top.type = m.type
+        ORDER BY m.month`;
+      return plainAll(db.prepare(sql).all(...args, ledgerId, topDimKey));
     },
 
-    /** 每日序列（date → 金额），日粒度视图/星轨日节点 */
-    dailySeries(ledgerId, { from = null, to = null, type = null } = {}) {
-      let sql = `
-        SELECT e.date, e.type, SUM(e.amount_cents) AS amount_cents
-        FROM expenses e WHERE e.ledger_id = ?`;
+    /**
+     * 每日序列（date → 金额），日粒度视图/星轨日节点。
+     * 同样附带 top_name / top_color（该日该 type 的金额最大 tag）。
+     */
+    dailySeries(ledgerId, { from = null, to = null, type = null, topDimKey = 'category' } = {}) {
       const args = [ledgerId];
-      if (from) { sql += ' AND e.date >= ?'; args.push(from); }
-      if (to) { sql += ' AND e.date <= ?'; args.push(to); }
-      if (type) { sql += ' AND e.type = ?'; args.push(type); }
-      sql += ' GROUP BY e.date, e.type ORDER BY e.date';
-      return plainAll(db.prepare(sql).all(...args));
+      let where = ' WHERE e.ledger_id = ?';
+      if (from) { where += ' AND e.date >= ?'; args.push(from); }
+      if (to) { where += ' AND e.date <= ?'; args.push(to); }
+      if (type) { where += ' AND e.type = ?'; args.push(type); }
+      const sql = `
+        SELECT d.date, d.type, d.amount_cents, top.name AS top_name, top.color AS top_color
+        FROM (
+          SELECT e.date AS date, e.type AS type, SUM(e.amount_cents) AS amount_cents
+          FROM expenses e${where}
+          GROUP BY e.date, e.type
+        ) d
+        LEFT JOIN (
+          SELECT date, type, name, color FROM (
+            SELECT e2.date AS date, e2.type AS type, t.name AS name, t.color AS color,
+                   ROW_NUMBER() OVER (
+                     PARTITION BY e2.date, e2.type
+                     ORDER BY SUM(e2.amount_cents) DESC, t.id
+                   ) AS rn
+            FROM expenses e2
+            JOIN expense_tag_links l2 ON l2.expense_id = e2.id AND l2.role = 'primary'
+            JOIN tags t ON t.id = l2.tag_id
+            JOIN dimensions d2 ON d2.id = t.dimension_id
+            WHERE e2.ledger_id = ? AND d2.key = ?
+            GROUP BY e2.date, e2.type, t.id
+          ) WHERE rn = 1
+        ) top ON top.date = d.date AND top.type = d.type
+        ORDER BY d.date`;
+      return plainAll(db.prepare(sql).all(...args, ledgerId, topDimKey));
     },
   };
 }

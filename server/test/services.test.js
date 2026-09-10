@@ -417,6 +417,27 @@ describe('聚合', () => {
     assert.equal(view.monthly.find(m => m.month === '2026-06').amount_cents, 5000);
     assert.equal(view.daily.length, 2);
   });
+
+  test('日/月序列带主导 tag（颜色 = 该期金额最大的品类）', () => {
+    const { svc } = setup();
+    const l = svc.ledgers.create('X');
+    // 同一天两笔：餐饮 1000、交通 5000 → 主导应为交通
+    svc.expenses.add({ ledgerId: l.id, amountCents: 1000, date: '2026-06-01', primary: { category: '餐饮' } });
+    svc.expenses.add({ ledgerId: l.id, amountCents: 5000, date: '2026-06-01', primary: { category: '交通' } });
+    // 另一天只有餐饮
+    svc.expenses.add({ ledgerId: l.id, amountCents: 800, date: '2026-06-02', primary: { category: '餐饮' } });
+
+    const view = svc.reports.windowView(l.id, { type: 'expense' });
+    const d1 = view.daily.find(d => d.date === '2026-06-01');
+    assert.equal(d1.amount_cents, 6000);
+    assert.equal(d1.top_name, '交通', '当天金额最大的品类');
+    assert.ok(d1.top_color, '带颜色（无自定义色时为 null，此处种子 tag 有色）');
+    assert.equal(view.daily.find(d => d.date === '2026-06-02').top_name, '餐饮');
+
+    const m = view.monthly.find(x => x.month === '2026-06');
+    assert.equal(m.top_name, '交通', '当月金额最大的品类');
+    assert.ok(m.top_color);
+  });
 });
 
 // S6-v3：tag 两级化（主 tag → 副 tag）。核心规则：一笔账单的副 tag 只能取自它自己的主 tag，
