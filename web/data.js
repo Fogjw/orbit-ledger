@@ -40,8 +40,9 @@ function monthStart(y, m) {
 const Data = {
   ledgers: [],
   ledgerId: null,
-  cats: [],
-  ctxs: [],
+  cats: [],   // 品类维**主 tag**（副 tag 见 dims.category.roots[i].children）
+  ctxs: [],   // 情境维**主 tag**
+  dims: {},   // dimKey → { id, name, all, roots }；roots[i].children = 该主 tag 的副 tag
   months: [],
   days: [],
   monthAmounts: {},
@@ -168,8 +169,9 @@ const Data = {
   },
 
   // ===== 当前账本内建 tag（建后刷新本地维度缓存）=====
-  async createTag(dimensionKey, name, color) {
-    const t = await API.createTag(this.ledgerId, { dimensionKey, name, color });
+  // parentTagId 给定 → 建为该主 tag 下的副 tag（S6-v3 两级结构）
+  async createTag(dimensionKey, name, color, parentTagId = null) {
+    const t = await API.createTag(this.ledgerId, { dimensionKey, name, color, parentTagId });
     await this._loadDims(); // 重拉维度（含新建 tag）
     return t;
   },
@@ -178,17 +180,24 @@ const Data = {
 
   async _loadDims() {
     const { dimensions } = await API.getLedgerDims(this.ledgerId);
+    this.dims = {};
     this.cats = [];
     this.ctxs = [];
     for (const dim of dimensions) {
-      const mapped = (dim.tags || []).map(t => ({
+      const all = (dim.tags || []).map(t => ({
         id: t.id,
         name: t.name,
         color: t.color || hashColor(t.name),
         is_unnamed: !!t.is_unnamed,
+        parent_tag_id: t.parent_tag_id ?? null,
       }));
-      if (dim.key === 'category') this.cats = mapped;
-      else if (dim.key === 'context') this.ctxs = mapped;
+      // tag 是两级结构（S6-v3）：主 tag 之下挂副 tag。
+      // cats/ctxs 只保留**主 tag** —— 副 tag 不能混进维度取值，否则星图会多出细分节点。
+      const roots = all.filter(t => t.parent_tag_id === null);
+      for (const r of roots) r.children = all.filter(t => t.parent_tag_id === r.id);
+      this.dims[dim.key] = { id: dim.id, name: dim.name, all, roots };
+      if (dim.key === 'category') this.cats = roots;
+      else if (dim.key === 'context') this.ctxs = roots;
     }
   },
 

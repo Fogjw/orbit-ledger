@@ -56,11 +56,11 @@ const API = {
 
   // Tag 相关
 
-  // 创建 tag
-  createTag: (ledgerId, { dimensionKey, name, color }) =>
+  // 创建 tag（带 parentTagId 则在它下面建副 tag）
+  createTag: (ledgerId, { dimensionKey, name, color, parentTagId }) =>
     request(`/ledgers/${ledgerId}/tags`, {
       method: 'POST',
-      body: { dimensionKey, name, color },
+      body: { dimensionKey, name, color, ...(parentTagId ? { parentTagId } : {}) },
     }),
 
   // 更新 tag（部分更新）

@@ -112,8 +112,23 @@
       <div class="m-amount"><span>¥</span><input id="mAmount" value="88" inputmode="decimal" /></div>
       <div class="m-label">品类 <button class="chip-add" id="btnAddCat" title="新建品类 tag">＋ 新建</button></div>
       <div class="m-chips" id="mCats"></div>
+      <!-- 副 tag（细分）：选中主 tag 后出现，可多选；切换主 tag 会清空 -->
+      <div class="m-subwrap" id="mCatsSub" hidden>
+        <div class="m-sub-head">
+          <span class="m-sub-label" id="mCatsSubLabel"></span>
+          <button class="chip-add" id="mCatsSubAdd" title="在该主 tag 下新建细分 tag">＋ 新建细分</button>
+        </div>
+        <div class="m-chips" id="mCatsSubChips"></div>
+      </div>
       <div class="m-label">情境 <button class="chip-add" id="btnAddCtx" title="新建情境 tag">＋ 新建</button></div>
       <div class="m-chips" id="mCtx"></div>
+      <div class="m-subwrap" id="mCtxSub" hidden>
+        <div class="m-sub-head">
+          <span class="m-sub-label" id="mCtxSubLabel"></span>
+          <button class="chip-add" id="mCtxSubAdd" title="在该主 tag 下新建细分 tag">＋ 新建细分</button>
+        </div>
+        <div class="m-chips" id="mCtxSubChips"></div>
+      </div>
       <div class="m-row">
         <label>日期 <input type="date" value="2026-06-14" class="m-input" /></label>
         <label>账本 <select class="m-input"><option>生活费</option><option>私人</option></select></label>
@@ -152,6 +167,12 @@
         </div>
       </div>
       <div class="e-sub" id="expSub"></div>
+      <!-- L3：该分类内部的细分分布（本月花销按副 tag 聚合） -->
+      <div class="e-dist" id="expDist" hidden>
+        <div class="d-head">细分分布</div>
+        <div class="d-rows" id="expDistRows"></div>
+        <div class="d-tip" id="expDistTip" hidden>一笔可挂多个细分，占比之和可能超过 100%</div>
+      </div>
       <div class="e-list" id="expList"></div>
       <div class="m-foot e-foot">
         <button class="btn danger" id="expDelTag">删除此 tag</button>

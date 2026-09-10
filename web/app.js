@@ -24,10 +24,17 @@ const DAYS=[]; // 本任务只做月视图，日序列留空即不画
 const YEARS=[]; // 年视图留空
 const DAY_TODAY=0;
 const tagAmountMap={category:{},context:{}};
+/* 副 tag 索引：父主 tag id → 该主 tag 下的副 tag 数组（记一笔多选的数据源） */
+let SUBS={};
+const toRenderTag=t=>({id:'t'+t.id,name:t.name,color:t.color,is_unnamed:t.is_unnamed,tagId:t.id});
 function refreshTagArrays(){
   if(!Data)return;
-  CATS=(Data.cats||[]).map(t=>({id:'t'+t.id,name:t.name,color:t.color,is_unnamed:t.is_unnamed,tagId:t.id}));
-  CTXS=(Data.ctxs||[]).map(t=>({id:'t'+t.id,name:t.name,color:t.color,is_unnamed:t.is_unnamed,tagId:t.id}));
+  CATS=(Data.cats||[]).map(toRenderTag);
+  CTXS=(Data.ctxs||[]).map(toRenderTag);
+  SUBS={};
+  for(const tree of Object.values(Data.dims||{})){
+    for(const root of (tree.roots||[]))SUBS[root.id]=(root.children||[]).map(toRenderTag);
+  }
 }
 function refreshAmounts(){
   if(!Data)return;
@@ -44,9 +51,9 @@ function refreshMonths(){
 const S={dim:'category',ledgerId:null,view:'l1',focus:null,hover:null,hoverKind:null};
 const TL={z:1,scroll:1,sel:{level:'month',idx:0}};
 const catList=()=>S.dim==='category'?CATS:CTXS;
-const ctxByName=n=>CTXS.find(c=>c.name===n)||CTXS[0]||{name:n||'未标注',color:'#7a8299'};
+const ctxByName=n=>CTXS.find(c=>c.name===n)||CTXS[0]||{name:n||'未分类',color:'#7a8299'};
 /* 下钻外环另一端：按名跨表解析（真实 tag 名） */
-const tagByName=n=>CATS.find(c=>c.name===n)||CTXS.find(c=>c.name===n)||CTXS[0]||{name:n||'未标注',color:'#7a8299'};
+const tagByName=n=>CATS.find(c=>c.name===n)||CTXS.find(c=>c.name===n)||CTXS[0]||{name:n||'未分类',color:'#7a8299'};
 
 /* 当前维度各 tag 金额（渲染id → 元），只含金额>0 */
 function amountsForTime(){
@@ -389,7 +396,7 @@ function drawGraph(t){
     const R=Math.max(.5,n.R*sc), tw=.85+.15*Math.sin(t*1.8+n.seed);
     const isH=hovG===n.id;
     drawStar(n.x,n.y,R,n.ref.color,tw*a,R>13||n.center||isH);
-    if(n.ref.dashed){ // 未标注：虚线 dim 环
+    if(n.ref.dashed){ // 占位 tag（未分类）：虚线 dim 环
       g.save();g.globalAlpha=a*.5;g.strokeStyle='#8b93a8';g.setLineDash([4,4]);g.lineWidth=1;
       g.beginPath();g.arc(n.x,n.y,R+5,0,7);g.stroke();g.restore();
     }
@@ -750,10 +757,53 @@ async function openExpenseList(tag){
   expCtx={tagId:tag.tagId, dimKey, name:tag.name};
   $('#expTitle').textContent=(dimKey==='category'?'品类 · ':'情境 · ')+tag.name;
   $('#expDelTag').textContent='删除「'+tag.name+'」';
+  $('#expDist').hidden=true;   // 分布区等数据回来再决定显示
   expMask.hidden=false;
   await refreshExpList();
 }
 /** 拉当前月该 tag 的 expense（primary 匹配）+ 该 tag 副标（其它维被标注的 tag 也在 primary 或 secondary 中出现时如何处理？只列 primary=该tag 的）*/
+/* 副 tag 颜色（取自本地副 tag 索引）
+   注：副 tag 索引以主 tag id 为键，故需逐组查找 */
+function tagColor(tagId){
+  for(const arr of Object.values(SUBS)){
+    const hit=arr.find(s=>s.tagId===tagId);
+    if(hit)return hit.color;
+  }
+  return '#7a8299';
+}
+/* L3：分类内「花销 × 标签」汇总（《需求基线》§4 L3）——
+   把本月该主 tag 的花销按副 tag 聚合，看这一类钱具体花在哪。
+   一笔可挂多个副 tag，金额会分别计入各细分，故占比之和可能 >100%（有提示）。 */
+function renderSubDistribution(mine){
+  const wrap=$('#expDist'),rowsBox=$('#expDistRows'),tip=$('#expDistTip');
+  if(!expCtx||!mine.length){wrap.hidden=true;rowsBox.innerHTML='';return}
+  const total=mine.reduce((s,e)=>s+e.amount_cents,0);
+  const dist=new Map();
+  for(const e of mine){
+    for(const t of e.tags){
+      if(t.role!=='secondary'||t.parent_tag_id!==expCtx.tagId)continue;
+      const cur=dist.get(t.tag_id)||{name:t.name,color:tagColor(t.tag_id),isUnnamed:!!t.is_unnamed,amount:0,count:0};
+      cur.amount+=e.amount_cents;
+      cur.count++;
+      dist.set(t.tag_id,cur);
+    }
+  }
+  if(!dist.size){wrap.hidden=true;rowsBox.innerHTML='';return}
+  const list=[...dist.entries()].map(([id,v])=>({id,...v})).sort((a,b)=>b.amount-a.amount);
+  wrap.hidden=false;
+  rowsBox.innerHTML=list.map(d=>{
+    const pct=total?Math.round(d.amount/total*100):0;
+    return `<div class="d-row${d.isUnnamed?' unnamed':''}">
+      <span class="d-name">${d.name}</span>
+      <div class="d-bar"><i style="width:${Math.max(2,pct)}%;background:${d.color}"></i></div>
+      <span class="d-amt">¥${(d.amount/100).toLocaleString()}</span>
+      <span class="d-cnt">${d.count}笔</span>
+      <span class="d-pct">${pct}%</span>
+    </div>`;
+  }).join('');
+  const sumPct=list.reduce((s,d)=>s+(total?d.amount/total*100:0),0);
+  tip.hidden=sumPct<=101;
+}
 async function refreshExpList(){
   const box=$('#expList');
   if(!expCtx)return;
@@ -764,6 +814,7 @@ async function refreshExpList(){
     const {items=[]}=await OrbitAPI.listExpenses(Data.ledgerId,{from,to});
     // 匹配：该 tag 作为 primary（category 维按 primary；context 同）——也包含副 tag 提及？只列 primary
     const mine=items.filter(e=>e.tags.some(t=>t.role==='primary'&&t.tag_id===expCtx.tagId));
+    renderSubDistribution(mine);   // L3：细分分布（无副 tag 数据时自动隐藏）
     if(!mine.length){box.innerHTML='<div class="e-empty">本月该'+ (expCtx.dimKey==='category'?'品类':'情境') +'暂无花销</div>';return}
     box.innerHTML=mine.map(e=>{
       const d=e.date.slice(5).replace('-','/');
@@ -805,7 +856,7 @@ async function refreshExpList(){
 $('#expClose').onclick=()=>expMask.hidden=true;
 $('#expDone').onclick=()=>expMask.hidden=true;
 expMask.addEventListener('click',e=>{if(e.target===expMask)expMask.hidden=true});
-// 删除整个 tag（后端保护：被引用则 409 提示先删花销；未标注锁定）
+// 删除整个 tag（后端保护：被引用则 409 提示先删花销；「未分类」占位锁定）
 $('#expDelTag').onclick=async ()=>{
   if(!expCtx)return;
   if(!confirm('删除 tag「'+expCtx.name+'」？\n（若仍有花销使用会被拒绝，需先删除或转移）'))return;
@@ -986,8 +1037,9 @@ const mask=$('#modalMask');
 const nameMask=$('#nameMask');
 let nameAction=null; // {kind:'ledger'|'tag', dimKey?, mode:'create'|'rename', targetId?, currentName?}
 function nameBoxTitle(a){
-  const what=a.kind==='ledger'?'账本':(a.dimKey==='category'?'品类 tag':'情境 tag');
-  return a.mode==='rename'?'重命名'+what:'新建'+what;
+  if(a.mode==='rename')return '重命名'+(a.kind==='ledger'?'账本':'tag');
+  if(a.kind==='ledger')return '新建账本';
+  return a.parentTagId?('在「'+(a.parentName||'')+'」下新建细分'):(a.dimKey==='category'?'新建品类 tag':'新建情境 tag');
 }
 function openNameBox(action){
   nameAction=action;
@@ -1040,16 +1092,19 @@ $('#nameOk').onclick=async ()=>{
         }
         toast('tag 已重命名为「'+raw+'」');
       }else{
-        await Data.createTag(act.dimKey,raw);   // 当前账本内建 tag，已重拉维度
+        // 当前账本内建 tag；带 parentTagId 时建为该主 tag 下的副 tag（已重拉维度）
+        const fresh=await Data.createTag(act.dimKey,raw,null,act.parentTagId||null);
         refreshTagArrays();refreshAmounts();
-        // 若记一笔浮层正开着，重渲染 chips 并默认选中新 tag
+        // 若记一笔浮层正开着：主 tag 建成即选中它；副 tag 建成即勾上它
         if(!mask.hidden){
-          const target=act.dimKey==='category'?CATS:CTXS;
-          const fresh=target[target.length-1];
-          if(fresh){
-            renderModalChips();
-            document.querySelectorAll((act.dimKey==='category'?'#mCats ':'#mCtx ')+'.m-chip').forEach(b=>b.classList.toggle('on',b.dataset.tagId===String(fresh.tagId)));
+          const st=modalSel[act.dimKey];
+          if(act.parentTagId){
+            if(st.primary===act.parentTagId)st.subs.add(fresh.id);
+          }else{
+            st.primary=fresh.id;
+            st.subs.clear();   // 换了主 tag，原副 tag 不再属于本笔
           }
+          renderModalChips();
         }
         toast('tag · '+raw+' 已创建');
       }
@@ -1081,38 +1136,89 @@ function syncModalLedgerOptions(){
   sel.value=String(S.ledgerId);
   if(!sel.value)sel.selectedIndex=0;
 }
+/* 记一笔浮层的选择状态（单一真相源：渲染与提交都读它，不靠 DOM class 反推） */
+let modalSel={category:{primary:null,subs:new Set()},context:{primary:null,subs:new Set()}};
+function resetModalSel(){
+  modalSel={category:{primary:null,subs:new Set()},context:{primary:null,subs:new Set()}};
+}
+/* 主 tag：点击选中，再点一次取消（= 不选 → 后端落「未分类」）；换主 tag 会清空该维副 tag */
+function bindPrimaryChips(sel,dimKey){
+  document.querySelectorAll(sel+' .m-chip').forEach(b=>b.onclick=e=>{
+    e.preventDefault();
+    const id=Number(b.dataset.tagId),st=modalSel[dimKey];
+    st.primary=(st.primary===id)?null:id;
+    st.subs.clear();          // 主 tag 变了，原副 tag 不再属于本笔
+    renderModalChips();
+  });
+}
+/* 副 tag：仅选中主 tag 后出现，多选。占位「未分类」不进候选（不选即等于它），
+   但编辑时若本笔确实挂着占位则保留显示，避免一编辑就丢。 */
+function renderSubRow(dimKey){
+  const isCat=dimKey==='category';
+  const wrap=isCat?$('#mCatsSub'):$('#mCtxSub');
+  const label=isCat?$('#mCatsSubLabel'):$('#mCtxSubLabel');
+  const box=isCat?$('#mCatsSubChips'):$('#mCtxSubChips');
+  const addBtn=isCat?$('#mCatsSubAdd'):$('#mCtxSubAdd');
+  const st=modalSel[dimKey];
+  if(st.primary==null){wrap.hidden=true;box.innerHTML='';return}
+  const parent=(isCat?CATS:CTXS).find(c=>c.tagId===st.primary);
+  const subs=(SUBS[st.primary]||[]).filter(s=>!s.is_unnamed||st.subs.has(s.tagId));
+  wrap.hidden=false;
+  label.textContent='「'+(parent?parent.name:'')+'」的细分';
+  box.innerHTML=subs.length
+    ?subs.map(s=>`<button class="m-chip m-chip-sub${st.subs.has(s.tagId)?' on':''}" data-tag-id="${s.tagId}"><i style="background:${s.color}"></i>${s.name}</button>`).join('')
+    :'<span class="m-sub-empty">暂无细分，可新建</span>';
+  box.querySelectorAll('.m-chip').forEach(b=>b.onclick=e=>{
+    e.preventDefault();
+    const id=Number(b.dataset.tagId);
+    if(st.subs.has(id))st.subs.delete(id);else st.subs.add(id);
+    renderSubRow(dimKey);
+  });
+  addBtn.onclick=()=>openNameBox({kind:'tag',dimKey,parentTagId:st.primary,parentName:parent?parent.name:''});
+}
 function renderModalChips(){
   // 收入时品类候选只留名字含「收入」的 tag
   const catList0=modalIsIncome?CATS.filter(c=>c.name.includes('收入')):CATS;
-  // 编辑预选：当前编辑对象的品类/情境 primary tag id
-  const preCat=editingExpense?editingExpense._preCat:null;
-  const preCtx=editingExpense?editingExpense._preCtx:null;
   if(!catList0.length){
-    $('#mCats').innerHTML='<div style="color:#8b96b5;font-size:12px">暂无收入类目，请先在品类维新建「收入·…」tag</div>';
+    $('#mCats').innerHTML='<div style="color:#8b96b5;font-size:12px">暂无收入类目，可先新建「收入·…」；不选则记为「未分类」</div>';
   }else{
-    $('#mCats').innerHTML=catList0.map((c,i)=>`<button class="m-chip${(preCat===c.tagId)||(!preCat&&i===0)?' on':''}" data-tag-id="${c.tagId}"><i style="background:${c.color}"></i>${c.name}</button>`).join('');
+    $('#mCats').innerHTML=catList0.map(c=>`<button class="m-chip${modalSel.category.primary===c.tagId?' on':''}" data-tag-id="${c.tagId}"><i style="background:${c.color}"></i>${c.name}</button>`).join('');
   }
-  $('#mCtx').innerHTML=CTXS.map((c,i)=>`<button class="m-chip${(preCtx===c.tagId)||(!preCtx&&i===1)?' on':''}" data-tag-id="${c.tagId}">${c.name}</button>`).join('');
-  document.querySelectorAll('#mCats .m-chip,#mCtx .m-chip').forEach(b=>b.onclick=e=>{e.preventDefault();
-    [...b.parentElement.children].forEach(x=>x.classList.remove('on'));b.classList.add('on')});
+  $('#mCtx').innerHTML=CTXS.map(c=>`<button class="m-chip${modalSel.context.primary===c.tagId?' on':''}" data-tag-id="${c.tagId}"><i style="background:${c.color}"></i>${c.name}</button>`).join('');
+  bindPrimaryChips('#mCats','category');
+  bindPrimaryChips('#mCtx','context');
+  renderSubRow('category');
+  renderSubRow('context');
   document.querySelectorAll('.m-tab').forEach(b=>b.onclick=()=>{
     document.querySelectorAll('.m-tab').forEach(x=>x.classList.remove('active'));b.classList.add('active');
     // 收入 tab 联动品类重渲染
     modalIsIncome=b.textContent.trim()==='收入';
+    // 切类型后原品类若不在新候选里，清掉（连同其副 tag），避免提交出语义不符的品类
+    const list=modalIsIncome?CATS.filter(c=>c.name.includes('收入')):CATS;
+    if(!list.some(c=>c.tagId===modalSel.category.primary)){
+      modalSel.category.primary=null;modalSel.category.subs.clear();
+    }
     renderModalChips();
   });
 }
-let editingExpense=null; // 编辑中的花销（含 amount_cents/date/note/tags 原始数据 + _preCat/_preCtx 预选）
+let editingExpense=null; // 编辑中的花销（含 amount_cents/date/note/tags 原始数据；选中态见 modalSel）
 /** 打开编辑模式（从花销明细行进入） */
 function openExpenseEditor(exp){
   editingExpense=exp;
   const tags=exp.tags||[];
-  // primary: category 与 context（取 dim_key）
+  const isIncome=exp.type==='income';
+  // 主 tag：占位「未分类」视为"没选"（is_unnamed）—— 保存时回落到同一占位，不产生额外语义
   const catP=tags.find(t=>t.role==='primary'&&t.dim_key==='category');
   const ctxP=tags.find(t=>t.role==='primary'&&t.dim_key==='context');
-  const isIncome=exp.type==='income';
-  editingExpense._preCat=catP?catP.tag_id:null;
-  editingExpense._preCtx=ctxP&&!ctxP.is_unnamed?ctxP.tag_id:null; // 未标注则不预选（语义=不传）
+  resetModalSel();
+  modalSel.category.primary=(catP&&!catP.is_unnamed)?catP.tag_id:null;
+  modalSel.context.primary=(ctxP&&!ctxP.is_unnamed)?ctxP.tag_id:null;
+  // 副 tag：按所属维度回填；占位不回填（保存时会自动补回）
+  for(const t of tags){
+    if(t.role!=='secondary'||t.is_unnamed)continue;
+    if(t.dim_key==='category')modalSel.category.subs.add(t.tag_id);
+    else if(t.dim_key==='context')modalSel.context.subs.add(t.tag_id);
+  }
   // 类型 tab
   document.querySelectorAll('.m-tab').forEach(x=>x.classList.toggle('active',x.textContent.trim()===(isIncome?'收入':'支出')));
   modalIsIncome=isIncome;
@@ -1131,7 +1237,7 @@ $('#btnAdd').onclick=()=>{
   mask.hidden=false;
   editingExpense=null;
   $('#modalMode').textContent='记一笔';
-  // 打开时回到当前账本的真实 tags 与默认类型
+  // 打开时回到当前账本的真实 tags 与默认类型；不预选任何 tag（不选=「未分类」）
   modalIsIncome=false;
   document.querySelectorAll('.m-tab').forEach(x=>x.classList.toggle('active',x.textContent.trim()==='支出'));
   syncModalLedgerOptions();
@@ -1140,6 +1246,7 @@ $('#btnAdd').onclick=()=>{
   if(di){di.value=new Date().toISOString().slice(0,10)}
   const rm=document.querySelector('.m-remark');if(rm)rm.value='';
   $('#mAmount').value='88';
+  resetModalSel();
   renderModalChips();
 };
 $('#modalClose').onclick=$('#modalCancel').onclick=()=>mask.hidden=true;
@@ -1157,23 +1264,15 @@ $('#modalSave').onclick=async ()=>{
   if(!/^\d{4}-\d{2}-\d{2}$/.test(date)){toast('日期无效');return}
   // 账本：默认当前账本，浮层 select 被改则用其值
   const ledgerId=resolveModalLedgerId();
-  // 品类（必填）：优先用数字 tag id
-  const catChip=document.querySelector('#mCats .m-chip.on');
-  const category=catChip?(catChip.dataset.tagId?Number(catChip.dataset.tagId):catChip.textContent.trim()):'';
-  if(!category){toast(isIncome?'暂无收入类目，请先新建「收入·…」tag':'请选择品类');return}
-  // 情境（可选）：「未标注」不传，后端自动落未标注
-  const ctxChip=document.querySelector('#mCtx .m-chip.on');
-  const ctxName=ctxChip?ctxChip.textContent.trim():'';
-  const context=(ctxChip&&ctxName&&ctxName!=='未标注')?(ctxChip.dataset.tagId?Number(ctxChip.dataset.tagId):ctxName):undefined;
+  // 主 tag：不选也能提交 —— 缺省的维度由后端落到「未分类」占位
+  const primary={};
+  if(modalSel.category.primary!=null)primary.category=modalSel.category.primary;
+  if(modalSel.context.primary!=null)primary.context=modalSel.context.primary;
+  // 副 tag：两维选中的合并传（后端按 parent 校验归属；没选的维度会自动补「未分类」）
+  const tags=[...modalSel.category.subs,...modalSel.context.subs];
   // 备注
   const note=document.querySelector('.m-remark')?.value.trim()||undefined;
-  const payload={type,amountCents,date,note,primary:{category},tags:[]};
-  if(context!==undefined)payload.primary.context=context;
-  if(isIncome){
-    // 收入时品类必须用「收入·…」tag
-    const nm=catChip?catChip.textContent.trim():'';
-    if(!nm.includes('收入')){toast('收入请选择「收入·生活费」类目（可先在品类维建收入 tag）');return}
-  }
+  const payload={type,amountCents,date,note,primary,tags};
   try{
     if(editingExpense){
       // 编辑：PUT 全量替换（保持原 ledger_id）

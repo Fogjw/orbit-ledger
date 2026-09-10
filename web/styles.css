@@ -148,6 +148,12 @@ canvas{display:block}
 .m-chip i{width:8px;height:8px;border-radius:50%;display:inline-block}
 .m-chip:hover{border-color:rgba(140,190,255,.5)}
 .m-chip.on{background:rgba(110,150,255,.16);border-color:#7ea8ff;box-shadow:0 0 12px rgba(110,150,255,.3)}
+/* 副 tag（细分）区：随主 tag 选择出现，视觉上从属于上方主 tag；限高防浮层溢出 */
+.m-subwrap{margin-top:9px;padding:9px 11px;border-radius:12px;background:rgba(255,255,255,.022);border:1px dashed rgba(140,190,255,.18);max-height:134px;overflow-y:auto}
+.m-sub-head{display:flex;align-items:center;justify-content:space-between;margin-bottom:7px;gap:10px}
+.m-sub-label{font-size:10.5px;letter-spacing:1.2px;color:var(--dim2);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.m-chip-sub{padding:5px 11px;font-size:11.5px;border-radius:16px}
+.m-sub-empty{font-size:11px;color:var(--dim2)}
 .m-row{display:flex;gap:10px;margin-top:12px}
 .m-row label{flex:1;font-size:11px;color:var(--dim);display:flex;flex-direction:column;gap:6px}
 .m-input{background:rgba(5,8,18,.6);border:1px solid var(--border);border-radius:11px;color:var(--text);font:600 12.5px var(--font);padding:9px 11px;outline:0;width:100%}
@@ -159,6 +165,18 @@ canvas{display:block}
 .e-modal{width:min(460px,calc(100vw - 32px))}
 .e-head-actions{display:flex;align-items:center;gap:8px;margin-left:auto}
 .e-sub{font-size:11px;color:var(--dim);letter-spacing:1px;margin-bottom:10px}
+/* L3：分类内细分分布（花销 × 副 tag） */
+.e-dist{margin:0 0 10px;padding:10px 12px;border-radius:12px;background:rgba(255,255,255,.022);border:1px solid rgba(140,190,255,.12)}
+.d-head{font-size:10.5px;letter-spacing:2px;color:var(--dim2);margin-bottom:8px}
+.d-row{display:grid;grid-template-columns:74px 1fr 64px 38px 36px;align-items:center;gap:9px;padding:3px 0;font-size:11.5px}
+.d-name{color:var(--text);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.d-bar{height:5px;border-radius:3px;background:rgba(255,255,255,.06);overflow:hidden}
+.d-bar i{display:block;height:100%;border-radius:3px;opacity:.85}
+.d-amt{text-align:right;color:var(--text)}
+.d-cnt,.d-pct{text-align:right;color:var(--dim2);font-size:10.5px}
+.d-row.unnamed .d-name{color:var(--dim2)}
+.d-row.unnamed .d-bar i{opacity:.35}
+.d-tip{margin-top:7px;font-size:10px;color:var(--dim2);line-height:1.5}
 .e-list{display:flex;flex-direction:column;gap:6px;max-height:46vh;overflow:auto}
 .e-row{display:flex;align-items:center;gap:10px;padding:9px 12px;background:rgba(255,255,255,.03);border:1px solid var(--border);border-radius:12px}
 .e-row .e-date{font-size:11px;color:var(--dim2);width:64px;flex:none}
