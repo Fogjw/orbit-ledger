@@ -9,8 +9,8 @@
   "scripts": {
     "start": "electron .",
     "make:icon": "electron electron/scripts/make-icon.js",
-    "pack": "electron-builder --win --dir",
-    "dist": "electron-builder --win nsis"
+    "pack": "electron-builder --win --dir --publish never",
+    "dist": "electron-builder --win nsis --publish never"
   },
   "devDependencies": {
     "electron": "^44.3.0",
