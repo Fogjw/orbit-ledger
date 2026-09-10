@@ -45,8 +45,8 @@ function normalizeWindow(win = {}) {
  * @returns {Promise<object>} 与 web/api.js 同形的 API 对象
  */
 export async function createLocalApi(opts = {}) {
-  const { bytes = null, locateFile, persist } = opts;
-  const db = await openBrowserDatabase(bytes, { locateFile });
+  const { bytes = null, locateFile, wasmBinary, persist } = opts;
+  const db = await openBrowserDatabase(bytes, { locateFile, wasmBinary });
   migrate(db);
 
   const svc = {

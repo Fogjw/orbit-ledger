@@ -19,7 +19,14 @@ let sqlPromise = null;
  */
 export function initSqlite(opts = {}) {
   if (!sqlPromise) {
-    sqlPromise = initSqlJs(opts.locateFile ? { locateFile: opts.locateFile } : undefined);
+    const cfg = {};
+    // 优先用调用方**自己取回来的** wasm 字节，不让 emscripten 去猜路径：
+    // 它在 Electron 渲染进程里会因为存在 process 而误判成 Node 环境，转而用 fs 去读
+    // http(s) 地址，最后报「both async and sync fetching of the wasm failed」。
+    // 由我们自己 fetch 再喂进去，任何宿主环境下的行为都一致。
+    if (opts.wasmBinary) cfg.wasmBinary = opts.wasmBinary;
+    else if (opts.locateFile) cfg.locateFile = opts.locateFile;
+    sqlPromise = initSqlJs(cfg);
   }
   return sqlPromise;
 }

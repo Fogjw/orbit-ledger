@@ -10,12 +10,15 @@
     "start": "electron .",
     "make:icon": "electron electron/scripts/make-icon.js",
     "shots": "electron electron/scripts/make-shots.js",
+    "build:web": "node webapp/build.mjs",
+    "verify:web": "electron electron/scripts/verify-webapp.js",
     "pack": "electron-builder --win --dir --publish never",
     "dist": "electron-builder --win nsis --publish never"
   },
   "devDependencies": {
     "electron": "^44.3.0",
-    "electron-builder": "^26.15.3"
+    "electron-builder": "^26.15.3",
+    "esbuild": "^0.28.2"
   },
   "build": {
     "appId": "com.fogjw.orbit-ledger",
@@ -26,6 +29,7 @@
     },
     "files": [
       "assets/**/*",
+      "core/**/*",
       "electron/**/*",
       "web/**/*",
       "server/src/**/*",
