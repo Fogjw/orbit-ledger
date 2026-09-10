@@ -1274,7 +1274,7 @@ oC.addEventListener('pointerleave',()=>{oDrag=null;setHover(null)});
  * §9 路线图更明确写着它「替换花销列表」。
  * 先拉当月经该主 tag 的花销再切视图：渲染帧里不发请求。
  */
-async function enterDetail(id){
+async function enterDetail(id,opts={}){
   const tag=CATS.concat(CTXS,INCOMES).find(c=>c.id===id);   // 收入类目也能下钻
   if(!tag)return;
   const {from,to}=Data.monthRange;
@@ -1294,16 +1294,68 @@ async function enterDetail(id){
   $('#btnBack').textContent='← '+tag.name+(detailExpenses.length?(' · ¥'+(tot/100).toLocaleString()):'');
   $('#btnBack').hidden=false;
   buildGraph();syncChrome();
+  if(opts.history!==false)pushView();   // 一次下钻＝一条浏览器历史
   toast('下钻 · '+tag.name+'（'+detailExpenses.length+' 笔）');
 }
-function goBack(){
+function goBack(opts={}){
   if(S.view!=='detail')return;
   S.view='l1';S.focus=null;detailExpenses=[];detailTag=null;pinnedId=null;
   resetView();
   $('#btnBack').textContent='← 主视图';
   $('#btnBack').hidden=true;buildGraph();syncChrome();
+  if(opts.history!==false)pushView();   // 退出下钻同样是一条历史
 }
 $('#btnBack').onclick=goBack;
+
+/* ---------- 浏览器前进/后退 = 视图前进/后退 ----------
+   一次「视图切换」＝ 账本 / 维度 / 主视图↔下钻 三者之一发生变化，各占一条浏览器历史；
+   弹窗与星轨浏览位置（档位、选中期、平移）**不进历史** —— 那是同一视图内的局部动作，
+   尤其星轨拖动是连续的，进历史会瞬间把历史刷爆。
+   启动时先立一条基线（见 boot ），所以站内第一次后退是回主视图，而不是退出站点。 */
+/** 当前视图快照（历史里存的就是它） */
+function viewState(){
+  return {orbit:1,ledgerId:S.ledgerId,dim:S.dim,view:S.view,focus:S.focus};
+}
+const vkey=x=>x==null?'':String(x);
+/** 两个视图快照是否等价 */
+function sameView(a,b){
+  return !!(a&&b&&a.orbit&&b.orbit)&&vkey(a.ledgerId)===vkey(b.ledgerId)
+      &&a.dim===b.dim&&a.view===b.view&&vkey(a.focus)===vkey(b.focus);
+}
+/** 视图切换后记账：一次切换＝一条历史。
+    popstate 恢复路径上必须传 {history:false}，否则后退自己又记一条，历史会越堆越深。
+    与当前条目等价的快照**不入栈**（重复点同一个维度按钮、快速双击同一个类目都会走到这里）——
+    否则历史里会出现两条一模一样的视图，后退一步「什么都不发生」，看上去就是后退不灵。 */
+function pushView(){
+  const next=viewState();
+  if(sameView(history.state,next))return;
+  history.pushState(next,'');
+}
+/** 收掉所有浮层：视图要变了，浮层留着会出现「内容与背后视图对不上」 */
+function closeOverlays(){
+  closeExpenseView();                          // 账单详情
+  closeNameBox();                              // 命名浮层
+  mask.hidden=true;                            // 记一笔
+  expMask.hidden=true;                         // 花销明细
+  tagMask.hidden=true;                         // 标签管理
+  const m=$('#ledgerMenu');if(m)m.hidden=true; // 账本下拉
+}
+let viewSeq=0;   // 连点后退时丢弃过期结果（恢复里有 await，可能交错）
+async function applyView(s){
+  if(!s||!s.orbit)return;                      // 不是本站状态：交给浏览器自己处理
+  const seq=++viewSeq;
+  closeOverlays();
+  // 顺序要紧：账本 → 维度 → 层级。下钻依赖新账本的 tag 数据；且切维度会强制回到主视图。
+  const ledgerChanged=s.ledgerId!=null&&String(s.ledgerId)!==String(S.ledgerId);
+  if(ledgerChanged)await switchLedger(s.ledgerId,{history:false});
+  if(seq!==viewSeq)return;
+  if(s.dim&&s.dim!==S.dim)setDim(s.dim,{history:false});
+  // 「同一个下钻」也要在账本刚换过时重新拉数：下钻内容是按账本 + 当月取的
+  const same=!ledgerChanged&&S.view==='detail'&&vkey(S.focus)===vkey(s.focus);
+  if(s.view==='detail'&&s.focus!=null){if(!same)await enterDetail(s.focus,{history:false})}
+  else goBack({history:false});
+}
+addEventListener('popstate',e=>{applyView(e.state)});
 
 /* ===== 花销明细浮层（删花销 / 删 tag） ===== */
 const expMask=$('#expMask');
@@ -1606,11 +1658,13 @@ function renderTop(){
   const topName=items[0]?items[0].name:'—';
   $('#insightBox').innerHTML=`✨ 本月 <b>${topName}</b> 是最大支出星系`;
 }
+/** 程序化同步段控选中态（不触发回调）：浏览器前进/后退恢复视图时用 */
+function setSegActive(id,v){$(id).querySelectorAll('.seg').forEach(b=>b.classList.toggle('active',b.dataset.v===v))}
 function seg(id,fn){$(id).querySelectorAll('.seg').forEach(b=>b.onclick=()=>{
-  $(id).querySelectorAll('.seg').forEach(x=>x.classList.remove('active'));b.classList.add('active');fn(b.dataset.v)})}
+  setSegActive(id,b.dataset.v);fn(b.dataset.v)})}
 
 /** 切换账本（下拉项 / 新建后共用）：重拉数据并整链刷新 */
-async function switchLedger(id){
+async function switchLedger(id,opts={}){
   if(String(id)===String(S.ledgerId)&&Data.cats.length)return;
   S.ledgerId=id;
   try{
@@ -1625,6 +1679,7 @@ async function switchLedger(id){
   }catch(e){toast('切换账本失败：'+(e.message||e))}
   renderLedgerDD();
   buildGraph();syncChrome();
+  if(opts.history!==false)pushView();   // 换账本＝换视图
   const cur=(Data.ledgers||[]).find(l=>String(l.id)===String(S.ledgerId));
   toast('账本 · '+(cur?cur.name:''));
 }
@@ -1689,14 +1744,19 @@ $('#ledgerBtn').onclick=(e)=>{e.stopPropagation();const m=$('#ledgerMenu');m.hid
 document.addEventListener('click',()=>{const m=$('#ledgerMenu');if(m)m.hidden=true});
 addEventListener('keydown',e=>{if(e.key==='Escape'){const m=$('#ledgerMenu');if(m)m.hidden=true}});
 
-seg('#dimSeg',v=>{
-  S.dim=v;
+/** 切维度：段控点击与浏览器前进/后退共用同一条路径 */
+function setDim(v,opts={}){
+  if(v==null)return;
+  S.dim=v;setSegActive('#dimSeg',v);
   // 切维度必然离开下钻（下钻是针对某个具体分类的）
   if(S.view==='detail'){S.view='l1';S.focus=null;detailExpenses=[];detailTag=null;resetView()}
   $('#btnBack').textContent='← 主视图';
   $('#btnBack').hidden=true;
   refreshAmounts();buildGraph();syncChrome();
-  toast(v==='category'?'维度 · 品类（这是什么钱）':'维度 · 情境（和谁 / 什么场景）')});
+  if(opts.history!==false)pushView();   // 换维度＝换视图
+  toast(v==='category'?'维度 · 品类（这是什么钱）':'维度 · 情境（和谁 / 什么场景）');
+}
+seg('#dimSeg',v=>setDim(v));
 /** 「回到今天」按当前档位落地：日→今天那天 / 月→最新月 / 年→最新年 */
 $('#btnToday').onclick=async ()=>{
   const lv=domLevel();
@@ -1810,6 +1870,7 @@ $('#nameOk').onclick=async ()=>{
         TL.sel={level:'month',idx:ni>=0?ni:TODAY};
         renderLedgerDD();
         buildGraph();syncChrome();
+        pushView();   // 新建后自动切到新账本：同样算一次视图切换
         toast('账本 · '+raw+' 已创建');
       }
     }else{ // tag
@@ -2094,6 +2155,7 @@ $('#modalSave').onclick=async ()=>{
       await Data.selectLedger(ledgerId);
       refreshTagArrays();refreshMonths();refreshAmounts();
       renderLedgerDD();
+      pushView();   // 记到了别的账本：随着记账把视图也切走了，算一次视图切换
     }else{
       await Data.afterChange();
       refreshMonths();refreshAmounts();
@@ -2163,6 +2225,7 @@ async function boot(){
   renderLedgerDD();
   buildGraph();syncChrome();syncRail&&syncRail();
   requestAnimationFrame(frame);
+  history.replaceState(viewState(),'');   // 视图历史基线：站内首次后退＝回主视图，而不是退出站点
   toast('欢迎来到 Orbit 星账 · 真实数据已加载');
 }
 boot();
