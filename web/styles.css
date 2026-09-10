@@ -132,7 +132,9 @@ canvas{display:block}
 .ledger-dd{position:relative}
 .led-btn{display:flex;align-items:center;gap:6px;max-width:150px}
 .led-btn .led-name{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
-.dd-menu{position:absolute;top:calc(100% + 8px);left:0;z-index:60;min-width:200px;max-height:320px;overflow:auto;border-radius:14px;padding:6px;animation:dropL .25s cubic-bezier(.2,.9,.3,1.1)}
+/* 高度按视口给：原来固定 320px，账本一多就把「导出/导入备份、删除账本」挤出滚动区，
+   视觉上等于这些入口不存在 */
+.dd-menu{position:absolute;top:calc(100% + 8px);left:0;z-index:60;min-width:200px;max-height:min(72vh,560px);overflow:auto;border-radius:14px;padding:6px;animation:dropL .25s cubic-bezier(.2,.9,.3,1.1)}
 .dd-item{display:flex;align-items:center;gap:9px;width:100%;padding:9px 11px;border:0;background:transparent;color:var(--text);font:600 13px var(--font);border-radius:10px;cursor:pointer;text-align:left;transition:background .15s}
 .dd-item:hover{background:rgba(120,170,255,.1)}
 .dd-item.active{background:rgba(110,150,255,.16)}
