@@ -124,7 +124,6 @@ canvas{display:block}
 .m-label{display:flex;align-items:center;justify-content:space-between}
 .chip-add{border:1px dashed var(--border2);background:transparent;color:var(--dim);font:600 10.5px var(--font);letter-spacing:1px;border-radius:14px;padding:3px 9px;cursor:pointer;transition:all .18s}
 .chip-add:hover{color:#fff;border-color:rgba(140,190,255,.55);box-shadow:0 0 10px rgba(90,180,255,.2)}
-.seg-add{border-style:dashed;padding:6px 10px;font-size:11px;letter-spacing:1px}
 /* 账本下拉 */
 .ledger-dd{position:relative}
 .led-btn{display:flex;align-items:center;gap:6px;max-width:150px}

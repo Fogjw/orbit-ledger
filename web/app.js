@@ -1764,7 +1764,6 @@ $('#nameOk').onclick=async ()=>{
     toast('操作失败：'+(e.message||e));
   }
 };
-$('#btnAddLedger').onclick=()=>openNameBox({kind:'ledger'});
 $('#btnAddCat').onclick=()=>openNameBox({kind:'tag',dimKey:'category'});
 $('#btnAddCtx').onclick=()=>openNameBox({kind:'tag',dimKey:'context'});
 
