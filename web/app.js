@@ -51,9 +51,6 @@ function refreshMonths(){
 const S={dim:'category',ledgerId:null,view:'l1',focus:null,hover:null,hoverKind:null};
 const TL={z:1,scroll:1,sel:{level:'month',idx:0}};
 const catList=()=>S.dim==='category'?CATS:CTXS;
-const ctxByName=n=>CTXS.find(c=>c.name===n)||CTXS[0]||{name:n||'未分类',color:'#7a8299'};
-/* 下钻外环另一端：按名跨表解析（真实 tag 名） */
-const tagByName=n=>CATS.find(c=>c.name===n)||CTXS.find(c=>c.name===n)||CTXS[0]||{name:n||'未分类',color:'#7a8299'};
 
 /* 当前维度各 tag 金额（渲染id → 元），只含金额>0 */
 function amountsForTime(){
@@ -77,8 +74,30 @@ function prevTotal(){
   if(Data&&typeof Data.prevMonthTotal==='number'&&Data.prevMonthTotal>0)return Data.prevMonthTotal;
   return selTotal()*0.9;
 }
-/* 下钻相关 T4 再补：此处给空桩，保证不崩 */
-function expensesFor(catId,catAmount){return []}
+/* ---------- L3 下钻数据 ----------
+   下钻（分类内「花销 × 细分」二部图）需要「当月经该主 tag 的全部花销」，
+   进下钻前拉一次缓存于此，避免在渲染帧里发请求。 */
+let detailExpenses=[];   // 当月该分类的 expense 列表（含 tags 明细）
+let detailTag=null;      // 当前下钻的主 tag
+
+/**
+ * 汇总某主 tag 下各副 tag 的金额/笔数。
+ * 浮层的「细分分布」与下钻二部图共用这一份口径，避免两处算法漂移。
+ * 注：一笔可挂多个副 tag，金额会分别计入各细分，故各项之和可能大于总额。
+ */
+function summarizeSubs(mine,parentTagId){
+  const dist=new Map();
+  for(const e of mine){
+    for(const t of e.tags){
+      if(t.role!=='secondary'||t.parent_tag_id!==parentTagId)continue;
+      const cur=dist.get(t.tag_id)||{tagId:t.tag_id,name:t.name,color:tagColor(t.tag_id),is_unnamed:!!t.is_unnamed,amount:0,count:0};
+      cur.amount+=e.amount_cents;
+      cur.count++;
+      dist.set(t.tag_id,cur);
+    }
+  }
+  return [...dist.values()].sort((a,b)=>b.amount-a.amount);
+}
 
 /* ---------- Canvas ---------- */
 const bgC=$('#bg'),gC=$('#graph'),oC=$('#orbit');
@@ -159,8 +178,6 @@ const expR=a=>2.4+Math.sqrt(a)*0.12;
 const ctxR=()=>9;
 
 function buildGraph(){
-  // 本任务只做 L1：任何 detail 请求静默回到 L1
-  if(S.view!=='l1'){S.view='l1';S.focus=null;const bb=$('#btnBack');if(bb)bb.hidden=true}
   nodes=[];links=[];poly=[];enterT=0;S.hover=null;S.hoverKind=null;if(typeof tip!=='undefined'&&tip)tip.hidden=true;
   const amts=amountsForTime(),items=catList();
   const X0=gx0(),X1=gx1(),Y0=gy0(),Y1=gy1();
@@ -191,41 +208,58 @@ function buildGraph(){
     });
     // 消费轨迹折线：按金额降序连成北斗式折线
     poly=[...nodes].sort((a,b)=>b.amount-a.amount).map(n=>n.id);
-    poly.forEach(()=>{});
     for(let i=0;i<poly.length-1;i++)links.push({s:poly[i],t:poly[i+1],w:.9,ph:Math.random(),sp:.25});
   }else{
-    // detail 已禁用：永不进入（静默降级）
-    return;
-    const f=items.find(c=>c.id===S.focus)||items[0];
-    if(!f){return}
-    S.focus=f.id;
-    const c0=P(.5,.5);
-    const fR=tagR(amts[f.id]||100)*1.3;
-    nodes.push({kind:'cat',id:f.id,ref:f,amount:amts[f.id]||100,R:fR,tr:fR,
-      x:c0.x,y:c0.y,vx:0,vy:0,ax:c0.x,ay:c0.y,k:0.004,seed:1.3,idx:0,center:true,sats:[]});
-    const exps=expensesFor(f.id,amts[f.id]||100);
-    const R1=Math.min(X1-X0,Y1-Y0)*0.30;
-    exps.forEach((e,i)=>{
-      const a=i/exps.length*6.28-1.2, er=expR(e.amount);
-      const col=tagByName(e.ctx).color;
-      nodes.push({kind:'exp',id:e.id,ref:e,cat:f.id,ctxColor:col,amount:e.amount,R:er,tr:er,
-        x:c0.x+Math.cos(a)*R1,y:c0.y+Math.sin(a)*R1*.86,
-        vx:(hash01(e.id)-.5)*.5,vy:(hash01(e.id+'y')-.5)*.5,
-        ax:c0.x+Math.cos(a)*R1,ay:c0.y+Math.sin(a)*R1*.86,k:0.0022,seed:i*1.7,idx:i+1});
-      links.push({s:e.id,t:f.id,w:1.3,rest:135,ph:Math.random(),sp:.5});
+    /* ---- L3 下钻：分类内「花销 × 细分」二部图 ----
+       中心 = 该主 tag；外环 = 它的副 tag（大小 ∝ 细分金额）；
+       内环 = 当月经该主 tag 的花销（大小 ∝ 金额）；连线 = 花销↔其所属细分。
+       花销角度取其各细分角度的圆周均值 ⇒ 同一细分的花销聚成一个扇区、连线短且不糊。 */
+    if(!detailTag){S.view='l1';return}
+    const cx0=P(.5,.5).x, cy0=P(.5,.5).y;
+    const span=Math.min(X1-X0,Y1-Y0);
+    const subs=summarizeSubs(detailExpenses,detailTag.tagId);
+    const totalCents=detailExpenses.reduce((s,e)=>s+e.amount_cents,0);
+
+    // 中心：分类主星
+    const fR=Math.max(15,tagR(totalCents/100)*1.2);
+    nodes.push({kind:'cat',id:detailTag.id,ref:detailTag,tagId:detailTag.tagId,
+      amount:totalCents/100,R:fR,tr:fR,
+      x:cx0,y:cy0,vx:0,vy:0,ax:cx0,ay:cy0,k:0.004,seed:1.3,idx:0,center:true,sats:[]});
+
+    // 外环：细分节点（按金额降序均布，从正上方起）
+    const R2=span*0.44;
+    const angOf=new Map();
+    subs.forEach((s,i)=>angOf.set(s.tagId,(subs.length?i/subs.length:0)*6.28-Math.PI/2));
+    subs.forEach((s,i)=>{
+      const a=angOf.get(s.tagId);
+      const R=Math.max(7,Math.min(19,5.5+Math.sqrt(s.amount/100)*0.5));
+      const ax=cx0+Math.cos(a)*R2, ay=cy0+Math.sin(a)*R2*0.86;
+      nodes.push({kind:'sub',id:'s'+s.tagId,tagId:s.tagId,ref:s,amount:s.amount/100,R,tr:R,
+        x:ax+(hash01('s'+s.tagId)-.5)*26, y:ay+(hash01('sy'+s.tagId)-.5)*20,
+        vx:0,vy:0,ax,ay,k:0.0018,seed:i*2.1+3,idx:30+i,sats:[]});
+      links.push({s:'s'+s.tagId,t:detailTag.id,w:1.1,ph:Math.random(),sp:.4});
     });
-    // 情境标签外环（二部图的另一端）
-    const ctxSeen={};
-    exps.forEach(e=>{ctxSeen[e.ctx]=ctxSeen[e.ctx]||{sum:0,n:0};ctxSeen[e.ctx].sum+=e.amount;ctxSeen[e.ctx].n++});
-    const names=Object.keys(ctxSeen), R2=Math.min(X1-X0,Y1-Y0)*0.47;
-    names.forEach((nm,i)=>{
-      const a=i/names.length*6.28+0.5, ref=tagByName(nm);
-      const id='x-'+nm;
-      nodes.push({kind:'ctx',id,ref:{...ref,amount:ctxSeen[nm].sum},amount:ctxSeen[nm].sum,R:ctxR(),tr:ctxR(),
-        x:c0.x+Math.cos(a)*R2,y:c0.y+Math.sin(a)*R2*.8,
-        vx:(hash01(id)-.5)*.4,vy:(hash01(id+'y')-.5)*.4,
-        ax:c0.x+Math.cos(a)*R2,ay:c0.y+Math.sin(a)*R2*.8,k:0.0016,seed:i*2.3+4,idx:20+i});
-      exps.forEach(e=>{if(e.ctx===nm)links.push({s:e.id,t:id,w:.7,rest:105,ph:Math.random(),sp:.3})});
+
+    // 内环：花销节点
+    const R1=span*0.24;
+    const slot={};
+    detailExpenses.forEach((e,i)=>{
+      const subIds=e.tags.filter(t=>t.role==='secondary'&&t.parent_tag_id===detailTag.tagId).map(t=>t.tag_id);
+      let a;
+      let sx=0,sy=0;
+      for(const id of subIds){const ang=angOf.get(id);if(ang===undefined)continue;sx+=Math.cos(ang);sy+=Math.sin(ang)}
+      a=(Math.abs(sx)>1e-6||Math.abs(sy)>1e-6)?Math.atan2(sy,sx):(detailExpenses.length?(i/detailExpenses.length)*6.28:0);
+      const key=Math.round(a*20);
+      slot[key]=(slot[key]||0)+1;
+      const rr=R1*(1+0.14*(slot[key]-1));   // 同扇区的多笔向外错开，避免叠死
+      const yuan=e.amount_cents/100;
+      const ax=cx0+Math.cos(a)*rr, ay=cy0+Math.sin(a)*rr*0.88;
+      const er=expR(yuan);
+      nodes.push({kind:'exp',id:'e'+e.id,ref:e,cat:detailTag.id,subIds,amount:yuan,R:er,tr:er,
+        x:ax,y:ay,vx:0,vy:0,ax,ay,k:0.0026,seed:i*1.7+1,idx:60+i,ctxColor:'#cdd8f2'});
+      for(const id of subIds){
+        if(angOf.has(id))links.push({s:'e'+e.id,t:'s'+id,w:0.85,ph:Math.random(),sp:.35});
+      }
     });
   }
 }
@@ -233,8 +267,13 @@ const byId=id=>nodes.find(n=>n.id===id);
 function related(a,b){
   if(!a||!b||a===b)return true;
   const A=byId(a),B=byId(b);if(!A||!B)return false;
-  if(A.kind==='exp'&&B.kind!=='exp')return A.cat===B.id||('x-'+A.ref.ctx)===B.id;
-  if(B.kind==='exp'&&A.kind!=='exp')return B.cat===A.id||('x-'+B.ref.ctx)===A.id;
+  const exp=A.kind==='exp'?A:(B.kind==='exp'?B:null);
+  if(exp){
+    const other=A.kind==='exp'?B:A;
+    if(other.kind==='sub')return (exp.subIds||[]).includes(other.tagId);
+    return true;   // 花销与中心分类节点天然相关
+  }
+  if(A.kind==='sub'&&B.kind==='sub')return false;   // 细分之间无直接关系，互相变暗
   return links.some(l=>(l.s===a&&l.t===b)||(l.s===b&&l.t===a));
 }
 /* L1：锚点系留真漂浮（星座构图稳定）；下钻：真·力导向（斥力+弹簧+质心引力） */
@@ -265,7 +304,7 @@ function tickL1(dt){
     if(d<min){const p=(min-d)*.05/d;a.x-=dx*p;a.y-=dy*p;b.x+=dx*p;b.y+=dy*p}
   }
 }
-const fMass=n=>n.center?4:(n.kind==='ctx'?2:1);
+const fMass=n=>n.center?4:(n.kind==='sub'?2:1);
 const fRep=n=>n.center?12000:(n.kind==='exp'?1500:3000);
 function tickDetail(dt){
   const f=60*dt, cx=gcx(), cy=gcy();
@@ -362,13 +401,14 @@ function drawGraph(t){
     if(hovG)a=on?.7:.04;
     a*=clamp(enterT,0,1);
     if(a<=.01)continue;
-    const c1=s.kind==='exp'?'#cdd8f2':(s.kind==='ctx'?s.ref.color:s.ref.color);
-    const c2=t2.kind==='exp'?'#cdd8f2':(t2.kind==='ctx'?t2.ref.color:t2.ref.color);
+    const c1=s.kind==='exp'?'#cdd8f2':s.ref.color;
+    const c2=t2.kind==='exp'?'#cdd8f2':t2.ref.color;
     const gr=g.createLinearGradient(s.x,s.y,t2.x,t2.y);
     gr.addColorStop(0,rgba(c1.startsWith('#')?c1:'#9fb4d8',a));
     gr.addColorStop(1,rgba(c2.startsWith('#')?c2:'#9fb4d8',a));
     g.strokeStyle=gr;g.lineWidth=on?1.8:1.1;
-    if(s.ref&&s.ref.dashed||t2.ref&&t2.ref.dashed)g.setLineDash([3,4]);
+    // 与占位 tag（未分类）相连的线用虚线，视觉上区分"真实归属"与"兜底"
+    if((s.ref&&s.ref.is_unnamed)||(t2.ref&&t2.ref.is_unnamed))g.setLineDash([3,4]);
     g.beginPath();g.moveTo(s.x,s.y);g.lineTo(t2.x,t2.y);g.stroke();
     g.setLineDash([]);
     const px=lerp(s.x,t2.x,l.ph),py=lerp(s.y,t2.y,l.ph);
@@ -385,7 +425,12 @@ function drawGraph(t){
     const col=n.kind==='exp'?(hovG&&related(hovG,n.id)?n.ctxColor:'#aeb9d4'):n.ref.color;
     drawStar(n.x,n.y,Math.max(.5,n.R*sc),col,tw*a,false);
     g.save();g.globalAlpha=a;g.restore();
-    label(n.ref.name,'¥'+n.amount.toLocaleString(),n.x,n.y+n.R*sc+16,a*(hovG&&!related(hovG,n.id)?.6:1),hovG===n.id);
+    // 花销节点密集，标签只在 hover 相关时出现；细分节点始终显示（它是这张图的骨架）
+    const isExp=n.kind==='exp';
+    const lbText=isExp?((n.ref.note||n.ref.date||'').slice(0,7)||'一笔'):n.ref.name;
+    if(!isExp||(hovG&&related(hovG,n.id))){
+      label(lbText,'¥'+n.amount.toLocaleString(),n.x,n.y+n.R*sc+16,a*(hovG&&!related(hovG,n.id)?.6:1),hovG===n.id);
+    }
   }
   // 主星
   for(const n of nodes){
@@ -396,7 +441,7 @@ function drawGraph(t){
     const R=Math.max(.5,n.R*sc), tw=.85+.15*Math.sin(t*1.8+n.seed);
     const isH=hovG===n.id;
     drawStar(n.x,n.y,R,n.ref.color,tw*a,R>13||n.center||isH);
-    if(n.ref.dashed){ // 占位 tag（未分类）：虚线 dim 环
+    if(n.ref.is_unnamed){ // 占位 tag（未分类）：虚线 dim 环（需求基线 D-05 的"视觉弱化"）
       g.save();g.globalAlpha=a*.5;g.strokeStyle='#8b93a8';g.setLineDash([4,4]);g.lineWidth=1;
       g.beginPath();g.arc(n.x,n.y,R+5,0,7);g.stroke();g.restore();
     }
@@ -625,6 +670,14 @@ async function selectTime(kind,id){
     if(ni>=0)TL.sel.idx=ni;
     TODAY=Math.max(0,MONTHS.length-1);
   }catch(e){toast('切换月份失败：'+(e.message||e))}
+  // 下钻视图里切月：按新月份重拉该分类的花销，避免图上是上月数据
+  if(S.view==='detail'&&detailTag){
+    const {from,to}=Data.monthRange;
+    try{
+      const {items=[]}=await OrbitAPI.listExpenses(Data.ledgerId,{from,to});
+      detailExpenses=items.filter(e=>e.tags.some(t=>t.role==='primary'&&t.tag_id===detailTag.tagId));
+    }catch(e){detailExpenses=[]}
+  }
   buildGraph();syncChrome();
   burst(W/2,H-190,'#9be9ff',14);
 }
@@ -650,12 +703,19 @@ let mouse={x:.5,y:.5},dragN=null,downPos=null,downT=0;
 function setHover(h){
   S.hover=h?h.id:null;S.hoverKind=h?h.kind:null;
   if(!h){tip.hidden=true;gC.style.cursor='default';document.querySelectorAll('.top-row').forEach(e=>e.classList.remove('hot'));return}
-  if(h.kind==='cat'||h.kind==='exp'||h.kind==='ctx'){
+  if(h.kind==='cat'||h.kind==='exp'||h.kind==='sub'){
     const n=byId(h.id);if(!n){tip.hidden=true;return}
-    const sub=n.kind==='cat'
-      ?`${Number(n.amount||0).toLocaleString()} 元`
-      :n.kind==='exp'?`${n.amount} 元 · ${n.ref.ctx}`:`${Number(n.amount||0).toLocaleString()} 元 · 关联标签`;
-    tip.innerHTML=`<b>${n.ref.name}</b><div class="tt-amt">¥${Number(n.amount||0).toLocaleString()}</div><div style="color:#8b96b5">${sub}</div>`;
+    const title=n.kind==='exp'?(n.ref.note||'一笔花销'):n.ref.name;
+    let sub;
+    if(n.kind==='cat'){
+      sub=S.view==='detail'?`本类合计 · ${detailExpenses.length} 笔`:'本月合计';
+    }else if(n.kind==='exp'){
+      const p=(n.ref.tags||[]).filter(t=>t.role==='primary').map(t=>t.name).join(' / ');
+      sub=n.ref.date+(p?' · '+p:'');
+    }else{
+      sub=`${n.ref.count} 笔`;
+    }
+    tip.innerHTML=`<b>${title}</b><div class="tt-amt">¥${Number(n.amount||0).toLocaleString()}</div><div style="color:#8b96b5">${sub}</div>`;
     tip.hidden=false;gC.style.cursor='default';
     const cid=n.kind==='cat'?n.id:(n.kind==='exp'?n.cat:null);
     document.querySelectorAll('.top-row').forEach(e=>e.classList.toggle('hot',e.dataset.id===cid));
@@ -690,15 +750,21 @@ gC.addEventListener('pointerup',e=>{
   dragN=null;
   if(moved<6&&quick){
     const r=gC.getBoundingClientRect(),x=e.clientX-r.left,y=e.clientY-r.top;
-    let best=null,bd=1e9,any=false;
+    let best=null,bd=1e9;
     for(const n of nodes){
       const d=Math.hypot(n.x-x,n.y-y);
-      if(d<=n.R+9)any=true;
-      if(n.kind!=='cat')continue;
-      if(d<=n.R+12&&d<bd){best=n;bd=d}
+      if(d<=n.R+9&&d<bd){best=n;bd=d}
     }
-    if(best&&S.view==='l1'){enterDetail(best.id);}
-    else if(!any&&S.view==='detail')goBack(); // 兼容：detail 已禁用
+    if(!best){
+      if(S.view==='detail')goBack();               // 点空白 → 回主视图
+    }else if(S.view==='l1'){
+      if(best.kind==='cat')enterDetail(best.id);   // L1 主星 → L3 下钻
+    }else{
+      // L3 下钻内：花销→编辑该笔；细分→该细分明细；中心→本类明细/管理
+      if(best.kind==='exp')openExpenseEditor(best.ref);
+      else if(best.kind==='sub')openExpenseList({tagId:best.tagId,name:best.ref.name});
+      else if(best.kind==='cat')openExpenseList(best.ref);
+    }
   }
 });
 gC.addEventListener('pointerleave',()=>{setHover(null);dragN=null});
@@ -736,26 +802,52 @@ oC.addEventListener('pointerup',e=>{
 });
 oC.addEventListener('pointerleave',()=>{oDrag=null;setHover(null)});
 
-/** 打开花销明细浮层：某品类/情境 tag 在当月的逐笔花销 + 删除能力 */
+/**
+ * 进入 L3 下钻 ——《需求基线》§4：点击 L1 节点展开该分类内部「花销 × 标签」二部图；
+ * §9 路线图更明确写着它「替换花销列表」。
+ * 先拉当月经该主 tag 的花销再切视图：渲染帧里不发请求。
+ */
 async function enterDetail(id){
   const tag=(CATS.concat(CTXS)).find(c=>c.id===id);
   if(!tag)return;
-  await openExpenseList(tag);
+  const {from,to}=Data.monthRange;
+  try{
+    const {items=[]}=await OrbitAPI.listExpenses(Data.ledgerId,{from,to});
+    detailExpenses=items.filter(e=>e.tags.some(t=>t.role==='primary'&&t.tag_id===tag.tagId));
+  }catch(e){
+    detailExpenses=[];
+    toast('加载花销失败：'+(e.message||e));
+  }
+  detailTag=tag;
+  S.view='detail';S.focus=id;
+  $('#btnBack').hidden=false;
+  buildGraph();syncChrome();
+  toast('下钻 · '+tag.name+'（'+detailExpenses.length+' 笔）');
 }
 function goBack(){
   if(S.view!=='detail')return;
-  S.view='l1';S.focus=null;$('#btnBack').hidden=true;buildGraph();syncChrome();
+  S.view='l1';S.focus=null;detailExpenses=[];detailTag=null;
+  $('#btnBack').hidden=true;buildGraph();syncChrome();
 }
 $('#btnBack').onclick=goBack;
 
 /* ===== 花销明细浮层（删花销 / 删 tag） ===== */
 const expMask=$('#expMask');
 let expCtx=null; // {tagId, dimKey, name}
+/** 打开花销明细浮层：某 tag（主 tag 或它的副 tag）在当月的逐笔花销 + 编辑/删除 */
 async function openExpenseList(tag){
-  // 推断 tag 所属维度（CATS=category / CTXS=context）
-  const dimKey=CATS.some(c=>c.tagId===tag.tagId)?'category':(CTXS.some(c=>c.tagId===tag.tagId)?'context':S.dim);
-  expCtx={tagId:tag.tagId, dimKey, name:tag.name};
-  $('#expTitle').textContent=(dimKey==='category'?'品类 · ':'情境 · ')+tag.name;
+  const isMain=CATS.some(c=>c.tagId===tag.tagId)||CTXS.some(c=>c.tagId===tag.tagId);
+  let dimKey=S.dim;
+  if(CATS.some(c=>c.tagId===tag.tagId))dimKey='category';
+  else if(CTXS.some(c=>c.tagId===tag.tagId))dimKey='context';
+  else{
+    // 副 tag：从其所属维度树定位维度
+    for(const [key,tree] of Object.entries(Data.dims||{})){
+      if((tree.all||[]).some(t=>t.id===tag.tagId)){dimKey=key;break}
+    }
+  }
+  expCtx={tagId:tag.tagId, dimKey, name:tag.name, isSub:!isMain};
+  $('#expTitle').textContent=(isMain?(dimKey==='category'?'品类 · ':'情境 · '):'细分 · ')+tag.name;
   $('#expDelTag').textContent='删除「'+tag.name+'」';
   $('#expDist').hidden=true;   // 分布区等数据回来再决定显示
   expMask.hidden=false;
@@ -776,24 +868,15 @@ function tagColor(tagId){
    一笔可挂多个副 tag，金额会分别计入各细分，故占比之和可能 >100%（有提示）。 */
 function renderSubDistribution(mine){
   const wrap=$('#expDist'),rowsBox=$('#expDistRows'),tip=$('#expDistTip');
-  if(!expCtx||!mine.length){wrap.hidden=true;rowsBox.innerHTML='';return}
+  // 副 tag 自身没有下级细分；无数据也不显示
+  if(!expCtx||expCtx.isSub||!mine.length){wrap.hidden=true;rowsBox.innerHTML='';return}
   const total=mine.reduce((s,e)=>s+e.amount_cents,0);
-  const dist=new Map();
-  for(const e of mine){
-    for(const t of e.tags){
-      if(t.role!=='secondary'||t.parent_tag_id!==expCtx.tagId)continue;
-      const cur=dist.get(t.tag_id)||{name:t.name,color:tagColor(t.tag_id),isUnnamed:!!t.is_unnamed,amount:0,count:0};
-      cur.amount+=e.amount_cents;
-      cur.count++;
-      dist.set(t.tag_id,cur);
-    }
-  }
-  if(!dist.size){wrap.hidden=true;rowsBox.innerHTML='';return}
-  const list=[...dist.entries()].map(([id,v])=>({id,...v})).sort((a,b)=>b.amount-a.amount);
+  const list=summarizeSubs(mine,expCtx.tagId);   // 与下钻二部图共用同一份汇聚口径
+  if(!list.length){wrap.hidden=true;rowsBox.innerHTML='';return}
   wrap.hidden=false;
   rowsBox.innerHTML=list.map(d=>{
     const pct=total?Math.round(d.amount/total*100):0;
-    return `<div class="d-row${d.isUnnamed?' unnamed':''}">
+    return `<div class="d-row${d.is_unnamed?' unnamed':''}">
       <span class="d-name">${d.name}</span>
       <div class="d-bar"><i style="width:${Math.max(2,pct)}%;background:${d.color}"></i></div>
       <span class="d-amt">¥${(d.amount/100).toLocaleString()}</span>
@@ -813,9 +896,13 @@ async function refreshExpList(){
   try{
     const {items=[]}=await OrbitAPI.listExpenses(Data.ledgerId,{from,to});
     // 匹配：该 tag 作为 primary（category 维按 primary；context 同）——也包含副 tag 提及？只列 primary
-    const mine=items.filter(e=>e.tags.some(t=>t.role==='primary'&&t.tag_id===expCtx.tagId));
-    renderSubDistribution(mine);   // L3：细分分布（无副 tag 数据时自动隐藏）
-    if(!mine.length){box.innerHTML='<div class="e-empty">本月该'+ (expCtx.dimKey==='category'?'品类':'情境') +'暂无花销</div>';return}
+    // 主 tag 匹配 primary；副 tag 匹配 secondary
+    const mine=items.filter(e=>e.tags.some(t=>t.tag_id===expCtx.tagId&&t.role===(expCtx.isSub?'secondary':'primary')));
+    renderSubDistribution(mine);   // L3：细分分布（无副 tag 数据或本身是副 tag 时自动隐藏）
+    if(!mine.length){
+      box.innerHTML='<div class="e-empty">本月该'+(expCtx.isSub?'细分':(expCtx.dimKey==='category'?'品类':'情境'))+'暂无花销</div>';
+      return;
+    }
     box.innerHTML=mine.map(e=>{
       const d=e.date.slice(5).replace('-','/');
       const amt=(e.amount_cents/100);
@@ -1012,6 +1099,13 @@ function syncChrome(){
   const pv=prevTotal(),d=pv>0?(tot-pv)/pv*100:0;
   $('#pDelta').textContent=`${d>=0?'▲':'▼'} ${Math.abs(d).toFixed(1)}% vs 上期`;
   $('#tlTip').textContent='星轨 · 月视图（点击星星切换月份）';
+  // 底部操作提示随视图切换（下钻视图的可用操作与 L1 不同）
+  const hintEl=document.querySelector('.hint');
+  if(hintEl){
+    hintEl.textContent=(S.view==='detail')
+      ?'点花销星编辑该笔 · 点细分星看明细 · 点中心星看本类 · 点空白或「← 主视图」返回'
+      :'拖拽星体 · 悬停看关联 · 点击星星下钻 · 滚轮缩放星轨 · 星轨可左右拖';
+  }
   renderTop();
 }
 function renderTop(){
@@ -1117,7 +1211,12 @@ $('#ledgerBtn').onclick=(e)=>{e.stopPropagation();const m=$('#ledgerMenu');m.hid
 document.addEventListener('click',()=>{const m=$('#ledgerMenu');if(m)m.hidden=true});
 addEventListener('keydown',e=>{if(e.key==='Escape'){const m=$('#ledgerMenu');if(m)m.hidden=true}});
 
-seg('#dimSeg',v=>{S.dim=v;S.view='l1';S.focus=null;$('#btnBack').hidden=true;refreshAmounts();buildGraph();syncChrome();
+seg('#dimSeg',v=>{
+  S.dim=v;
+  // 切维度必然离开下钻（下钻是针对某个具体分类的）
+  if(S.view==='detail'){S.view='l1';S.focus=null;detailExpenses=[];detailTag=null}
+  $('#btnBack').hidden=true;
+  refreshAmounts();buildGraph();syncChrome();
   toast(v==='category'?'维度 · 品类（这是什么钱）':'维度 · 情境（和谁 / 什么场景）')});
 $('#btnToday').onclick=async ()=>{
   try{
