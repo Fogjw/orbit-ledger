@@ -4,7 +4,7 @@
 
 - **产品名**：Orbit（中文「星账」）——星轨（Orbit）是产品视觉核心
 - **定位**：本地优先（Local-First）个人记账；Electron 桌面端 + 浏览器直连 + MCP（同进程同端口）
-- **需求与设计文档**：Obsidian 知识库 `pm` 库 `10-项目/账单图谱/`（需求基线、技术选型）
+- **架构与接口**：[docs/architecture.md](docs/architecture.md) —— 分层、数据模型、业务规则与 REST / MCP 契约
 
 ## 结构
 
