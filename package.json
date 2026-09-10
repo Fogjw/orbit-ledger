@@ -57,5 +57,8 @@
       "shortcutName": "Orbit 星账",
       "artifactName": "Orbit-Setup-${version}.exe"
     }
+  },
+  "dependencies": {
+    "sql.js": "^1.14.2"
   }
 }
