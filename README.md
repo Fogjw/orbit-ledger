@@ -72,3 +72,18 @@ ELECTRON_BUILDER_BINARIES_MIRROR=https://npmmirror.com/mirrors/electron-builder-
 - 后端：记账事务 / 正交双维度 / 两级 tag（主→副）/ 统计聚合 / 导出导入 / MCP —— 全部落地并测试锁定。
 - 前端：L1 星图、星轨三档吸附与画布平移、L3 下钻二部图、记账与 tag 管理、浏览器前进后退导航视图 —— 全链路接真实 REST。
 - 桌面：Electron 壳层（主进程内嵌服务）。
+
+## 持续集成与发布
+
+- **CI**（`.github/workflows/ci.yml`）：push / PR 触发 —— 后端全量回归（`server && npm test`）+ 前端与壳层脚本语法检查。
+- **Release**（`.github/workflows/release.yml`）：推 `v*` 标签触发 —— Windows runner 上打包 NSIS 安装包，
+  上传构建产物并自动创建带安装包的 Release；也可在 Actions 页面手动触发，只验证打包链路。
+
+发版流程（版本号写在仓库根 `package.json`，workflow 会校验 tag 与它一致）：
+
+```bash
+npm version 1.0.1 --no-git-tag-version   # 或直接手改 package.json 的 version
+git add package.json && git commit -m "chore: 发布 1.0.1"
+git tag v1.0.1
+git push origin main --tags
+```

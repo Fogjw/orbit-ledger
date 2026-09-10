@@ -1,0 +1,79 @@
+# 发布：推 `v*` 标签时在 Windows runner 上打包 NSIS 安装包，上传产物并创建 Release
+# 触发方式：
+#   git tag v1.0.1 && git push origin v1.0.1     # 正式发布
+#   或在 Actions 页面手动 workflow_dispatch      # 只验证打包链路，不创建 Release
+# 版本一致性：tag（去掉 v）必须等于仓库根 package.json 的 version，否则直接失败 ——
+# 免得装出来的包和 Release 名字对不上。
+name: Release
+
+on:
+  push:
+    tags: ['v*']
+  workflow_dispatch:
+
+permissions:
+  contents: write   # 创建 Release / 上传附件需要
+
+jobs:
+  windows-installer:
+    name: 打包 Windows 安装包
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+          cache: npm
+          cache-dependency-path: |
+            package-lock.json
+            server/package-lock.json
+
+      - name: 校验 tag 与 package.json 版本一致
+        if: startsWith(github.ref, 'refs/tags/v')
+        shell: bash
+        run: |
+          tag="${GITHUB_REF_NAME#v}"
+          pkg=$(node -p "require('./package.json').version")
+          echo "tag=$tag  package.json=$pkg"
+          if [ "$tag" != "$pkg" ]; then
+            echo "::error::tag $tag 与 package.json 的版本 $pkg 不一致"
+            exit 1
+          fi
+
+      # 根依赖 = Electron + electron-builder（应用清单在仓库根）
+      - name: 安装应用依赖
+        run: npm ci
+
+      # 服务依赖会被一起打进安装包（见 package.json 的 build.files）
+      - name: 安装服务依赖
+        working-directory: server
+        run: npm ci
+
+      # 图标 assets/icon.png 已入库，CI 不需要再跑 make:icon（那需要 GUI 渲染）
+      - name: 打包（NSIS 安装包）
+        run: npm run dist
+
+      - name: 收集产物
+        shell: bash
+        run: ls -lh release/*.exe release/*.blockmap release/*.yml 2>/dev/null || ls -lh release/
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: orbit-windows-installer
+          path: |
+            release/*.exe
+            release/*.blockmap
+            release/latest.yml
+          if-no-files-found: error
+
+      - name: 创建 Release 并附上安装包
+        if: startsWith(github.ref, 'refs/tags/v')
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh release create "$GITHUB_REF_NAME" \
+            release/*.exe \
+            --title "Orbit 星账 $GITHUB_REF_NAME" \
+            --generate-notes

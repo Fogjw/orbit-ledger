@@ -1,0 +1,60 @@
+# 持续集成：每次 push / PR 都跑一遍后端全量回归与前端脚本语法检查
+# 设计取舍：
+#  - 跑在 ubuntu 上：node:sqlite 跨平台，测试不依赖 GUI 或 Windows，几分钟内出结果
+#  - 不在这里打包 Electron：Windows 打包要下载 ~230MB 运行时 + NSIS，留给 release.yml（按 tag 触发）
+#  - 金额守恒是全项目的正确性生死线，所以后端测试是必过项，不做「允许失败」
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+concurrency:
+  # 同一分支的新提交取消上一次未跑完的任务，避免排队堆积
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  server-test:
+    name: 后端全量回归
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+          cache: npm
+          cache-dependency-path: server/package-lock.json
+
+      - name: 安装服务依赖
+        working-directory: server
+        run: npm ci
+
+      # 五个测试文件串行（脚本用 && 串联，首个失败即中断后续）
+      # 覆盖：Σ 守恒 / 账本隔离 / 事务回滚 / 迁移 / 导出导入 / REST / MCP 真实协议
+      - name: 全量回归（node:test）
+        working-directory: server
+        run: npm test
+
+  web-syntax:
+    name: 前端与壳层脚本语法检查
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+
+      # 前端是普通 <script>（零依赖、无构建），没有测试框架，
+      # 但语法错误曾经导致整页静默失效，所以在这里用 node --check 兜住这一类回归
+      - name: node --check
+        run: |
+          set -e
+          for f in web/*.js electron/*.js electron/scripts/*.js; do
+            echo "checking $f"
+            node --check "$f"
+          done
