@@ -74,6 +74,39 @@ await call('POST', '/ledgers/1/tags', { dimensionKey: 'category', name: '收入�
 await call('POST', '/ledgers/1/tags', { dimensionKey: 'category', name: '收入·红包', color: '#84cc16' });
 
 // ---------- 2. 逐日生成 ----------
+/* 常见搭配：让「共享线」集中在少数几对副 tag 上，而不是散成几百条只出现一次的细线。
+   下钻图里一条共享线被越多笔共享，越能看出规律。 */
+const PAIR_BIAS = {
+  '餐饮': [['晚餐', '夜宵'], ['夜宵', '奢侈一把'], ['午餐', '奢侈一把'], ['早餐', '午餐'], ['晚餐', '奢侈一把']],
+  '交通': [['公交', '地铁'], ['地铁', '打车'], ['地铁', '高铁']],
+  '娱乐': [['电影', '游戏'], ['电影', '演出']],
+  '日用': [['超市', '日用百货']],
+  '学习': [['书籍', '课程']],
+  '居住': [['房租', '水电']],
+};
+
+/**
+ * 构造一笔账单的副 tag 列表：主细分 + 概率追加同主 tag 下的搭子。
+ * 副 tag 必须挂在本笔主 tag 下（S6-v3），故只用同一个主 tag 的细分池。
+ * @param {string} cat 主 tag 名
+ * @param {string} mainSub 本笔的主要细分
+ * @param {number} extraChance 追加第二个细分的概率
+ */
+function subTags(cat, mainSub, extraChance) {
+  const out = [mainSub];
+  if (rand() >= extraChance) return out;
+  const pool = (SUBTAGS[cat] || []).map(s => s[0]).filter(n => n !== mainSub);
+  if (!pool.length) return out;
+  const bias = (PAIR_BIAS[cat] || []).find(p => p.includes(mainSub));
+  const partner = bias ? bias.find(n => n !== mainSub) : null;
+  if (partner && pool.includes(partner) && rand() < 0.72) out.push(partner);
+  else out.push(pick(pool));
+  // 少数笔挂三个细分
+  const rest = pool.filter(n => !out.includes(n));
+  if (rest.length && rand() < 0.16) out.push(pick(rest));
+  return out;
+}
+
 const today = new Date().toISOString().slice(0, 10);
 const CTX_WORK = ['通勤', '独处', '加班'];
 const CTX_WEEKEND = ['和朋友', '和对象', '独处', '旅行'];
@@ -82,36 +115,35 @@ const CTX_ANY = ['和朋友', '独处', '和对象', '加班', '出差', '旅行
 /** 一笔：[date, amountCents, primary, subTagNames] */
 function meals(iso) {
   const out = [];
-  const slot = [['早餐', 6, 15], ['午餐', 12, 35], ['晚餐', 15, 60]];
+  const slot = [['早餐', 6, 15, 0.34], ['午餐', 12, 35, 0.40], ['晚餐', 15, 60, 0.46]];
   // 早/午/晚按概率出现（不是每天都三餐齐全，更像真实记账）
-  for (const [name, lo, hi] of slot) {
+  for (const [name, lo, hi, extra] of slot) {
     if (rand() < 0.72) {
       const ctx = name === '早餐' ? pick(['独处', '通勤']) : pick(CTX_ANY);
-      out.push([iso, yuan(lo, hi), { category: '餐饮', context: ctx }, [name]]);
+      out.push([iso, yuan(lo, hi), { category: '餐饮', context: ctx }, subTags('餐饮', name, extra)]);
     }
   }
   // 夜宵：周末与加班后更常见
-  if (rand() < 0.22) out.push([iso, yuan(20, 80), { category: '餐饮', context: pick(['和朋友', '加班', '独处']) }, ['夜宵']]);
-  // 偶尔奢侈一把：同时挂晚餐/夜宵 → 制造多副 tag 共存（下钻图里的共享线）
-  if (rand() < 0.07) {
-    const withMeal = rand() < 0.6 ? [pick(['晚餐', '夜宵']), '奢侈一把'] : ['奢侈一把'];
-    out.push([iso, yuan(120, 420), { category: '餐饮', context: pick(['和朋友', '和对象']) }, withMeal]);
+  if (rand() < 0.22) out.push([iso, yuan(20, 80), { category: '餐饮', context: pick(['和朋友', '加班', '独处']) }, subTags('餐饮', '夜宵', 0.55)]);
+  // 奢侈一把：常与晚餐/夜宵同挂，是最容易看出共享线的一类
+  if (rand() < 0.09) {
+    out.push([iso, yuan(120, 420), { category: '餐饮', context: pick(['和朋友', '和对象']) }, subTags('餐饮', '奢侈一把', 0.6)]);
   }
   return out;
 }
 function transport(iso, weekend) {
-  if (weekend) return [iso, yuan(20, 60), { category: '交通', context: pick(CTX_WEEKEND) }, ['打车']];
+  if (weekend) return [iso, yuan(20, 60), { category: '交通', context: pick(CTX_WEEKEND) }, subTags('交通', '打车', 0.30)];
   const r = rand();
-  if (r < 0.62) return [iso, yuan(3, 10), { category: '交通', context: '通勤' }, ['地铁']];
-  if (r < 0.88) return [iso, yuan(2, 6), { category: '交通', context: '通勤' }, ['公交']];
-  if (r < 0.95) return [iso, yuan(20, 60), { category: '交通', context: pick(CTX_ANY) }, ['打车']];
-  return [iso, yuan(80, 420), { category: '交通', context: pick(['出差', '旅行']) }, ['高铁']];
+  if (r < 0.55) return [iso, yuan(3, 10), { category: '交通', context: '通勤' }, subTags('交通', '地铁', 0.34)];
+  if (r < 0.82) return [iso, yuan(2, 6), { category: '交通', context: '通勤' }, subTags('交通', '公交', 0.34)];
+  if (r < 0.94) return [iso, yuan(20, 60), { category: '交通', context: pick(CTX_ANY) }, subTags('交通', '打车', 0.30)];
+  return [iso, yuan(80, 420), { category: '交通', context: pick(['出差', '旅行']) }, subTags('交通', '高铁', 0.30)];
 }
 function fun(iso, weekend) {
   const r = rand();
-  if (r < 0.55) return [iso, yuan(30, 80), { category: '娱乐', context: pick(CTX_WEEKEND) }, ['电影']];
-  if (r < 0.88) return [iso, yuan(30, 200), { category: '娱乐', context: pick(['独处', '和朋友']) }, ['游戏']];
-  return [iso, yuan(100, 420), { category: '娱乐', context: pick(['和朋友', '和对象', '旅行']) }, ['演出']];
+  if (r < 0.5) return [iso, yuan(30, 80), { category: '娱乐', context: pick(CTX_WEEKEND) }, subTags('娱乐', '电影', 0.34)];
+  if (r < 0.85) return [iso, yuan(30, 200), { category: '娱乐', context: pick(['独处', '和朋友']) }, subTags('娱乐', '游戏', 0.30)];
+  return [iso, yuan(100, 420), { category: '娱乐', context: pick(['和朋友', '和对象', '旅行']) }, subTags('娱乐', '演出', 0.34)];
 }
 
 const SEED = [];
@@ -127,14 +159,14 @@ while (d <= end) {
   if (!weekend && rand() < 0.85) SEED.push(transport(iso, false));
   if (weekend && rand() < 0.6) SEED.push(transport(iso, true));
   if (rand() < (weekend ? 0.5 : 0.16)) SEED.push(fun(iso, weekend));
-  if (rand() < 0.22) SEED.push([iso, yuan(20, 150), { category: '日用', context: pick(['独处', '和朋友']) }, [pick(['超市', '日用百货'])]]);
-  if (rand() < 0.09) SEED.push([iso, yuan(20, 600), { category: '学习', context: '独处' }, [pick(['书籍', '课程'])]]);
+  if (rand() < 0.22) SEED.push([iso, yuan(20, 150), { category: '日用', context: pick(['独处', '和朋友']) }, subTags('日用', pick(['超市', '日用百货']), 0.40)]);
+  if (rand() < 0.09) SEED.push([iso, yuan(20, 600), { category: '学习', context: '独处' }, subTags('学习', pick(['书籍', '课程']), 0.30)]);
   // 每月固定项
   if (day === 1) {
-    SEED.push([iso, yuan(1200, 1800), { category: '居住' }, ['房租']]);
+    SEED.push([iso, yuan(1200, 1800), { category: '居住' }, subTags('居住', '房租', 0.20)]);
     SEED.push([iso, yuan(2500, 3500), { category: '收入·生活费' }, []]);
   }
-  if (day === 5) SEED.push([iso, yuan(60, 220), { category: '居住' }, ['水电']]);
+  if (day === 5) SEED.push([iso, yuan(60, 220), { category: '居住' }, subTags('居住', '水电', 0.20)]);
   if (day === 15 && rand() < 0.7) SEED.push([iso, yuan(50, 500), { category: '收入·工资' }, []]);
   if (rand() < 0.05) SEED.push([iso, yuan(20, 800), { category: '收入·红包' }, []]);
 
@@ -153,7 +185,9 @@ for (const [date, amountCents, primary, tags] of SEED) {
 // ---------- 4. 摘要 ----------
 const stats = await call('GET', '/ledgers/1/stats');
 const totals = stats.data.totals || {};
+const multi = SEED.filter(s => s[3] && s[3].length > 1).length;
 console.log(`生成 ${SEED.length} 笔，成功 ${sent}，失败 ${failed}`);
+console.log(`其中多副 tag 账单 ${multi} 笔（${Math.round(multi / SEED.length * 100)}%）—— 下钻图的共享线由这些产生`);
 console.log(`累计支出 ¥${Math.round((totals.expense || 0) / 100).toLocaleString()}，收入 ¥${Math.round((totals.income || 0) / 100).toLocaleString()}`);
 const monthly = (stats.data.monthly || []).filter(m => m.type === 'expense');
 console.log(`覆盖 ${monthly.length} 个月：${monthly[0]?.month} ~ ${monthly[monthly.length - 1]?.month}`);

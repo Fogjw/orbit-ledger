@@ -320,9 +320,11 @@ function buildGraph(){
       }
     }
     for(const {a,b,exps} of pairMap.values()){
+      // 被共享的笔数越多，线越显眼（w 1.0~3.0）—— 一眼看出哪对细分最常一起出现
+      const k=Math.min(1,(exps.length||1)/8);
       links.push({
         id:'share:'+a+':'+b,s:'s'+a,t:'s'+b,shared:true,a,b,exps,
-        w:1.6,ph:Math.random(),sp:.2,   // 只作视觉连接，不参与物理（见 tickDetail）
+        w:1+k*2,ph:Math.random(),sp:.2,   // 只作视觉连接，不参与物理（见 tickDetail）
       });
     }
   }
@@ -502,7 +504,9 @@ function drawGraph(t){
   for(const l of links){
     const s=byId(l.s),t2=byId(l.t);if(!s||!t2)continue;
     const on=!!hotLinks&&hotLinks.has(linkKey(l));
-    let a=(l.w>1?.30:.20);
+    // 线宽与透明度都随 w：归属线固定 1.0；共享线 1.0~3.0（被共享越多越显眼）
+    const base=l.w||1;
+    let a=0.16+Math.max(0,base-1)*0.09;
     if(hotNodes)a=on?.78:.05;
     a*=clamp(enterT,0,1);
     if(a<=.01)continue;
@@ -511,7 +515,7 @@ function drawGraph(t){
     const gr=g.createLinearGradient(s.x,s.y,t2.x,t2.y);
     gr.addColorStop(0,rgba(c1.startsWith('#')?c1:'#9fb4d8',a));
     gr.addColorStop(1,rgba(c2.startsWith('#')?c2:'#9fb4d8',a));
-    g.strokeStyle=gr;g.lineWidth=on?2.2:1.1;
+    g.strokeStyle=gr;g.lineWidth=on?2.6:(0.9+Math.max(0,base-1)*0.75);
     // 共享线（被同一笔账单同时挂上的两个细分）用虚线
     if(l.shared)g.setLineDash([3,5]);
     g.beginPath();g.moveTo(s.x,s.y);g.lineTo(t2.x,t2.y);g.stroke();
