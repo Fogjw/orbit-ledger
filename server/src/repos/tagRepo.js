@@ -151,6 +151,16 @@ export function createTagRepo(db) {
     },
 
     /**
+     * 同一层级内重排 tag（整组全量重写 position = 0..n-1）。
+     * 用「按下标整体重写」而非单条 UPDATE：避免部分更新留下重复/断层的 position。
+     * 调用方须在事务内使用，并已校验 orderedIds 恰好覆盖该层级全部 tag。
+     */
+    reorderTags(orderedIds) {
+      const stmt = db.prepare('UPDATE tags SET position = ? WHERE id = ?');
+      orderedIds.forEach((id, i) => stmt.run(i, id));
+    },
+
+    /**
      * 同一作用域内是否已存在同名 tag（改名/建 tag 查重用）。
      * 作用域 = (维度, 父)：parentTagId 为 null 时查根级主 tag，否则查该父下的副 tag。
      * @param {number|null} parentTagId

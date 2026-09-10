@@ -1,5 +1,6 @@
 // tag 业务服务：维度内建 tag / 改名改色 / 删除保护 / 维度视图
 import { createTagRepo } from '../repos/tagRepo.js';
+import { transaction } from '../db/database.js';
 import { BizError } from './ledgerService.js';
 
 export function createTagService(db) {
@@ -79,6 +80,47 @@ export function createTagService(db) {
       }
       tags.updateTag(tagId, { name, color });
       return tags.tagById(ledgerId, tagId);
+    },
+
+    /**
+     * 重排某层级内 tag 顺序（tags.position）。
+     * 语义：**整组全量重写** —— orderedIds 必须恰好覆盖该层级的全部 tag，
+     * 否则会留下重复/断层的 position，故宁可报错也不做部分更新。
+     * 层级由 parentTagId 指定：null = 该维主 tag 层；非 null = 该主 tag 的副 tag 层。
+     * @param {number[]} orderedIds 目标顺序的完整 id 列表
+     * @returns 该维度最新视图（含新顺序）
+     */
+    reorder(ledgerId, dimensionKey, parentTagId, orderedIds) {
+      const dim = tags.dimensionByKey(ledgerId, dimensionKey);
+      if (!dim) throw new BizError(`账本无维度「${dimensionKey}」`, 'DIMENSION_NOT_FOUND', 404);
+
+      let parentId = null;
+      if (parentTagId !== null && parentTagId !== undefined) {
+        const parent = tags.tagById(ledgerId, parentTagId);
+        if (!parent) throw new BizError(`父 tag 不存在或不属于该账本: ${parentTagId}`, 'NOT_FOUND', 404);
+        if (parent.dimension_id !== dim.id) {
+          throw new BizError(`父 tag「${parent.name}」不属于维度「${dimensionKey}」`, 'PARENT_DIMENSION_MISMATCH', 400);
+        }
+        parentId = parent.id;
+      }
+
+      const scope = (tags.dimensions(ledgerId).find(d => d.id === dim.id)?.tags || [])
+        .filter(t => (t.parent_tag_id ?? null) === parentId);
+      const want = new Set(scope.map(t => t.id));
+      const got = new Set(orderedIds);
+      if (got.size !== orderedIds.length) {
+        throw new BizError('orderedIds 含重复 id', 'INVALID_FIELD', 400);
+      }
+      if (want.size !== got.size || [...want].some(id => !got.has(id))) {
+        throw new BizError(
+          `orderedIds 须恰好覆盖该层级的全部 tag（期望 ${want.size} 个，收到 ${got.size} 个）`,
+          'INCOMPLETE_ORDER',
+          400
+        );
+      }
+
+      transaction(db, () => tags.reorderTags(orderedIds));
+      return tags.dimensions(ledgerId).find(d => d.id === dim.id);
     },
 
     /**

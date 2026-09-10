@@ -613,3 +613,86 @@ describe('副 tag 绑定主 tag（两级结构 + 归属校验）', () => {
   });
 });
 
+// S6：tags.position。语义是「整组全量重写」，故"只传一部分"必须报错而非部分更新
+// —— 否则会留下重复/断层的 position。
+describe('tag 排序（维度内 position）', () => {
+  /** 取某层级当前顺序的 tag id */
+  const idsOf = (svc, ledgerId, dimKey, parentTagId = null) =>
+    svc.tags.dimensions(ledgerId).find(d => d.key === dimKey).tags
+      .filter(t => (t.parent_tag_id ?? null) === parentTagId).map(t => t.id);
+
+  test('主 tag 重排：顺序生效，金额统计一分不变', () => {
+    const { svc } = setup();
+    const l = svc.ledgers.create('生活费');
+    svc.expenses.add({ ledgerId: l.id, amountCents: 3500, date: '2026-06-01', primary: { category: '餐饮' } });
+    const before = idsOf(svc, l.id, 'category');
+    const beforeSum = svc.reports.windowView(l.id, { type: 'expense' }).totals.expense;
+
+    const reversed = [...before].reverse();
+    svc.tags.reorder(l.id, 'category', null, reversed);
+
+    assert.deepEqual(idsOf(svc, l.id, 'category'), reversed, '新顺序生效');
+    assert.equal(svc.reports.windowView(l.id, { type: 'expense' }).totals.expense, beforeSum, '重排不碰金额');
+  });
+
+  test('副 tag 重排：只影响同父内的顺序', () => {
+    const { svc } = setup();
+    const l = svc.ledgers.create('X');
+    const food = mainTagId(svc, l.id, 'category', '餐饮');
+    const traffic = mainTagId(svc, l.id, 'category', '交通');
+    for (const n of ['早餐', '午餐', '晚餐']) {
+      svc.tags.create(l.id, { dimensionKey: 'category', name: n, parentTagId: food });
+    }
+    svc.tags.create(l.id, { dimensionKey: 'category', name: '地铁', parentTagId: traffic });
+
+    const subBefore = idsOf(svc, l.id, 'category', food);
+    const metro = idsOf(svc, l.id, 'category', traffic);
+    assert.equal(subBefore.length, 3);
+
+    const reversed = [...subBefore].reverse();
+    svc.tags.reorder(l.id, 'category', food, reversed);
+
+    assert.deepEqual(idsOf(svc, l.id, 'category', food), reversed, '副 tag 新顺序生效');
+    assert.deepEqual(idsOf(svc, l.id, 'category', traffic), metro, '别的父不受影响');
+    assert.ok(idsOf(svc, l.id, 'category').includes(food), '主 tag 层顺序未被打乱');
+  });
+
+  test('整组全量语义：少传/重复/跨层级/父不法 → 一律拒绝', () => {
+    const { svc } = setup();
+    const l = svc.ledgers.create('X');
+    const food = mainTagId(svc, l.id, 'category', '餐饮');
+    svc.tags.create(l.id, { dimensionKey: 'category', name: '午餐', parentTagId: food });
+    const all = idsOf(svc, l.id, 'category');
+    const subs = idsOf(svc, l.id, 'category', food);
+
+    assert.throws(() => svc.tags.reorder(l.id, 'category', null, all.slice(0, -1)), { code: 'INCOMPLETE_ORDER', status: 400 }, '少传');
+    assert.throws(() => svc.tags.reorder(l.id, 'category', null, [all[0], all[0], ...all.slice(1)]), { code: 'INVALID_FIELD', status: 400 }, '重复 id');
+    assert.throws(() => svc.tags.reorder(l.id, 'category', null, [...all, ...subs]), { code: 'INCOMPLETE_ORDER', status: 400 }, '副 tag 混进主 tag 层');
+    const friend = mainTagId(svc, l.id, 'context', '和朋友');
+    assert.throws(() => svc.tags.reorder(l.id, 'category', friend, subs), { code: 'PARENT_DIMENSION_MISMATCH', status: 400 }, '父属于别的维度');
+    assert.throws(() => svc.tags.reorder(l.id, 'category', 999999, subs), { code: 'NOT_FOUND', status: 404 }, '父不存在');
+    assert.throws(() => svc.tags.reorder(l.id, 'location', null, all), { code: 'DIMENSION_NOT_FOUND', status: 404 }, '未知维度');
+  });
+
+  test('跨账本隔离：把 A 的 tag id 放进 B 的重排 → 拒绝，且 B 顺序不变', () => {
+    const { svc } = setup();
+    const a = svc.ledgers.create('A');
+    const b = svc.ledgers.create('B');
+    const aIds = idsOf(svc, a.id, 'category');
+    const bBefore = idsOf(svc, b.id, 'category');
+    assert.throws(() => svc.tags.reorder(b.id, 'category', null, aIds), { code: 'INCOMPLETE_ORDER', status: 400 });
+    assert.deepEqual(idsOf(svc, b.id, 'category'), bBefore, 'B 的顺序未被改动');
+  });
+
+  test('position 真正落库为 0..n-1（重写而非累加）', () => {
+    const { db, svc } = setup();
+    const l = svc.ledgers.create('X');
+    const all = idsOf(svc, l.id, 'category');
+    svc.tags.reorder(l.id, 'category', null, [...all].reverse());
+    const rows = db.prepare(`SELECT id, position FROM tags WHERE id IN (${all.join(',')}) ORDER BY position`).all();
+    assert.deepEqual(rows.map(r => r.id), [...all].reverse(), '库里顺序 = 传入顺序');
+    assert.deepEqual(rows.map(r => r.position), all.map((_, i) => i), 'position 归一为 0..n-1');
+  });
+});
+
+

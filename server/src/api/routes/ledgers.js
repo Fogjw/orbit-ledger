@@ -48,6 +48,26 @@ export function ledgersRouter(svc) {
     res.status(204).end();
   });
 
+  /**
+   * PATCH /:id/dimensions/:key/tags/order —— 重排 tag 顺序（tags.position）
+   * body { orderedIds: number[], parentTagId?: number }
+   * 省略 parentTagId = 排该维主 tag；给定 = 排该主 tag 下的副 tag。
+   * 整组全量重写：orderedIds 必须恰好覆盖该层级全部 tag。
+   */
+  r.patch('/:id/dimensions/:key/tags/order', (req, res) => {
+    const ledgerId = idOf(req.params.id);
+    const body = req.body ?? {};
+    if (!Array.isArray(body.orderedIds) || body.orderedIds.length === 0) {
+      throw new BizError('缺少字段 orderedIds（须为非空数组）', 'MISSING_FIELD');
+    }
+    const orderedIds = body.orderedIds.map(Number);
+    if (orderedIds.some(n => !Number.isInteger(n) || n <= 0)) {
+      throw new BizError('orderedIds 须为正整数数组', 'INVALID_FIELD');
+    }
+    const parentTagId = optInt(body, 'parentTagId', { min: 1 }) ?? null;
+    res.json(svc.tags.reorder(ledgerId, req.params.key, parentTagId, orderedIds));
+  });
+
   // ---- tag 管理（建/改名改色/删） ----
   /** POST /:id/tags —— 建 tag；带 parentTagId 则在其下建副 tag（两级结构，S6-v3） */
   r.post('/:id/tags', (req, res) => {
