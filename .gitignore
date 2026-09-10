@@ -34,5 +34,8 @@ docs/HANDOFF.md
 docs/opencode-t*.md
 docs/web-frontend-task.md
 
-# 数据文件（sqlite 本地账本）
+# Data files (sqlite ledger)
 server/data/
+
+# npm 本地缓存（受限网络下的 --cache 目录）
+.npm-cache/

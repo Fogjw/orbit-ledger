@@ -9,7 +9,7 @@
 orbit-ledger/
 ├─ server/       ★ 业务逻辑层（本仓库后端）：数据 + 业务规则 + REST API
 ├─ web/          前端（消费本仓库 REST）：零依赖 Canvas2D 星图 + 记账 / 统计 / tag 管理
-├─ demo-star/    早期视觉 Demo（纯静态、不接后端，保留作视觉参考）
+├─ electron/     桌面壳层：主进程内嵌本地服务（bootstrap）+ 窗口
 └─ docs/
    └─ architecture.md（本文档）
 ```
@@ -73,7 +73,8 @@ Base: `http://localhost:5310/api`（端口 env `ORBIT_PORT` 覆盖）。CORS 放
 | GET | `/ledgers/:id` | 账本 |
 | GET | `/ledgers/:id/dimensions` | 维度+tag 树（录入下拉/图谱源） |
 | POST | `/ledgers/:id/dimensions` | 启用扩展维度 `{key,name?}`（如 payment；不预设占位 tag） |
-| GET | `/ledgers/:id/export` | 账本全量 JSON 快照（备份，D-13，供未来 import） |
+| GET | `/ledgers/:id/export` | 账本全量 JSON 快照（备份，D-13） |
+| POST | `/ledgers/import` | 用快照回读为**新账本**（不覆盖/不合并，主键全部重分配）；坏备份 → 400 `INVALID_BACKUP` / `BACKUP_INCOMPLETE`。路由须声明在 `/:id` 之前，否则 `import` 会被当成账本 id |
 | PATCH/DELETE | `/ledgers/:id` | 改名 `{name}` / 删除 |
 | POST | `/ledgers/:id/tags` | 建 tag `{dimensionKey,name,color?,parentTagId?}`——带 `parentTagId` 则在其下建副 tag（父须为同维度主 tag） |
 | PATCH/DELETE | `/ledgers/:id/tags/:tagId` | 改名/改色 `{name?,color?}`（同层级唯一，「未分类」锁定） / 删除（「未分类」与被引用 tag、以及副 tag 被引用的父 tag 409 保护） |
@@ -81,6 +82,8 @@ Base: `http://localhost:5310/api`（端口 env `ORBIT_PORT` 覆盖）。CORS 放
 | GET | `/ledgers/:id/expenses?from&to&type` | 时间窗列表（含 tag 明细） |
 | GET/PUT/DELETE | `/ledgers/:id/expenses/:eid` | 单笔 / 编辑 / 删除（单笔操作账本内校验，跨账本 404） |
 | GET | `/ledgers/:id/stats?from&to&type` | 聚合视图 |
+
+请求体上限 **32mb**（`express.json({ limit })`）：导入备份走同一 JSON 解析器，默认 100kb 装不下千笔级快照。
 
 记一笔与编辑共用请求体（D-10：PUT = 全量替换）：
 ```json
@@ -126,7 +129,7 @@ Base: `http://localhost:5310/api`（端口 env `ORBIT_PORT` 覆盖）。CORS 放
 
 ## 质量
 
-- 测试：`npm test`（node:test 63 项：Σ 守恒/隔离/回滚/校验/编辑全量替换/tag 维护保护/维度扩展贯通/迁移机制（含 v3 表重建安全性）/导出快照/MCP 真实协议/聚合/API 全流程/错误映射/副 tag 归属校验）。
+- 测试：`npm test`（node:test 70 项：Σ 守恒/隔离/回滚/校验/编辑全量替换/tag 维护保护/维度扩展贯通/迁移机制（含 v3 表重建安全性）/导出快照/**导入回读（等价重建·引用完整性·事务无残留）**/MCP 真实协议/聚合/API 全流程/错误映射/副 tag 归属校验）。
 - schema 版本：当前 **v3**（v1 五表、v2 dimensions.required、v3 tags 两级化）。v3 走表重建流程，属 `foreignKeysOff` 类迁移。
 - 金额守恒是记账正确性生死线，回归必查。
 
@@ -134,7 +137,7 @@ Base: `http://localhost:5310/api`（端口 env `ORBIT_PORT` 覆盖）。CORS 放
 
 - **node:sqlite**（Node ≥22.5 内置）替代 better-sqlite3：API 等价（同步/WAL/事务）、零原生编译、Electron 亦可用；如需切换只动 `db/database.js`。
 - 迁移：`db/schema.js` 版本化迁移序列（只追加、不改已发布项）。表重建类迁移标记 `foreignKeysOff`——`migrate()` 在**事务外**临时关闭外键（PRAGMA 在事务内是 no-op），迁移内在提交前跑 `foreign_key_check` 兜底。
-- 未来：Electron 主进程内嵌本服务（同进程/端口）；MCP Server 复用 services；多入口同一数据层。
+- 多入口同一数据层：`server/src/bootstrap.js` 暴露 `createRuntime()` / `startServer()`，`index.js` 与 **Electron 主进程**都通过它起服务（同进程、同端口、同一份 SQLite），MCP 复用同一套 services。
 
 ## 相关
 
