@@ -43,10 +43,19 @@ async function main() {
 
   // 4) HTML：从 web/index.html 生成 —— 去掉 REST 客户端，改加载本地 bundle
   let html = await readFile(join(root, 'web/index.html'), 'utf8');
+
+  // 静态站点没有服务端，安全策略只能靠自己声明。
+  //  'wasm-unsafe-eval' 是跑 WebAssembly 必需的（不是 'unsafe-eval'）；
+  //  style-src 必须放开 'unsafe-inline' —— 界面与引导层里都有内联样式。
+  const CSP = "default-src 'self'; script-src 'self' 'wasm-unsafe-eval'; "
+    + "style-src 'self' 'unsafe-inline'; img-src 'self' data:; connect-src 'self'; "
+    + "object-src 'none'; base-uri 'none'; form-action 'none'";
+
   html = html
     .replace(/<script src="api\.js"><\/script>\s*/g, '')
     .replace(/<script src="data\.js"><\/script>\s*/g, '')
     .replace(/<script src="app\.js"><\/script>\s*/g, '')
+    .replace('<head>', `<head>\n<meta http-equiv="Content-Security-Policy" content="${CSP}">`)
     .replace('</body>', '  <script type="module" src="./bundle.js"></script>\n</body>');
   await writeFile(join(out, 'index.html'), html, 'utf8');
 
