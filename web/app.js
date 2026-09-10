@@ -294,6 +294,9 @@ function buildGraph(){
     const span=Math.min(X1-X0,Y1-Y0);
     const subs=summarizeSubs(detailExpenses,detailTag.tagId);
     const subById=new Map(subs.map(s=>[s.tagId,s]));   // 取 count 判断共享线
+    // 下钻的是收入类目 → 整张图都用收入星形（四角尖星），与 L1 的收入星保持一致；
+    // 收入是「全链路统一形状」，不是只有入口那颗星特殊。
+    const isInc=isIncomeTag(detailTag);
 
     // 外环：细分节点（按金额降序均布，从正上方起）
     // 环半径随节点数放大：每个细分在环上至少留出弧长；装不下就超出视口，
@@ -305,7 +308,7 @@ function buildGraph(){
       const a=angOf.get(s.tagId);
       const R=Math.max(7,Math.min(19,5.5+Math.sqrt(s.amount/100)*0.5));
       const ax=cx0+Math.cos(a)*R2, ay=cy0+Math.sin(a)*R2*0.86;
-      nodes.push({kind:'sub',id:'s'+s.tagId,tagId:s.tagId,ref:s,amount:s.amount/100,R,tr:R,
+      nodes.push({kind:'sub',id:'s'+s.tagId,tagId:s.tagId,ref:s,amount:s.amount/100,R,tr:R,income:isInc,
         x:ax+(hash01('s'+s.tagId)-.5)*26, y:ay+(hash01('sy'+s.tagId)-.5)*20,
         vx:0,vy:0,ax,ay,k:0.0018,seed:i*2.1+3,idx:i,sats:[]});
     });
@@ -332,8 +335,9 @@ function buildGraph(){
       const yuan=e.amount_cents/100;
       const ax=cx0+Math.cos(angle)*R1, ay=cy0+Math.sin(angle)*R1*0.88;
       const er=expR(yuan);
-      nodes.push({kind:'exp',id:'e'+e.id,ref:e,cat:detailTag.id,subIds,amount:yuan,R:er,tr:er,
-        x:ax,y:ay,vx:0,vy:0,ax,ay,k:0.0026,seed:i*1.7+1,idx:subs.length+i*0.25,ctxColor:'#cdd8f2'});
+      nodes.push({kind:'exp',id:'e'+e.id,ref:e,cat:detailTag.id,subIds,amount:yuan,R:er,tr:er,income:isInc,
+        x:ax,y:ay,vx:0,vy:0,ax,ay,k:0.0026,seed:i*1.7+1,idx:subs.length+i*0.25,
+        ctxColor:isInc?'#6fe3a8':'#cdd8f2'});
       // 边一：账单 ↔ 其所属细分 —— **全部实线**（这是归属关系）
       for(const id of subIds){
         if(!subById.has(id))continue;
@@ -595,9 +599,12 @@ function drawGraph(t){
     const hot=!hotNodes||hotNodes.has(n.id);
     const a=dimA(n.id);if(a<=.02)continue;
     const tw=.8+.2*Math.sin(t*2.2+n.seed);
-    const col=n.kind==='exp'?(hot?n.ctxColor:'#aeb9d4'):n.ref.color;
-    if(n.kind==='inc'){
-      drawIncomeStar(n.x,n.y,Math.max(.5,n.R*sc),col,tw*a);   // 收入：四角尖星
+    // 收入节点即使未被高亮也保持绿调（只是压暗），维持「这是进账」的认知
+    const col=n.kind==='exp'
+      ? (hot?(n.ctxColor||'#aeb9d4'):(n.income?'#3f8c6e':'#aeb9d4'))
+      : n.ref.color;
+    if(n.kind==='inc'||n.income){
+      drawIncomeStar(n.x,n.y,Math.max(.5,n.R*sc),col,tw*a);   // 收入：四角尖星（L1 与下钻图一致）
     }else{
       // 细分节点是「标签」身份，给星芒；花销节点保持素净（数量多，加芒会糊）
       drawStar(n.x,n.y,Math.max(.5,n.R*sc),col,tw*a,n.kind==='sub');
@@ -1085,7 +1092,7 @@ function setHover(h){
   }
   if(h.kind==='cat'||h.kind==='exp'||h.kind==='sub'||h.kind==='inc'){
     const n=byId(h.id);if(!n){tip.hidden=true;return}
-    const title=n.kind==='exp'?(n.ref.note||'一笔花销'):n.ref.name;
+    const title=n.kind==='exp'?(n.ref.note||(n.income?'一笔收入':'一笔花销')):n.ref.name;
     let sub;
     if(n.kind==='cat'){
       sub=S.view==='detail'?`本类合计 · ${detailExpenses.length} 笔`:'本月合计';
