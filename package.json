@@ -9,6 +9,7 @@
   "scripts": {
     "start": "electron .",
     "make:icon": "electron electron/scripts/make-icon.js",
+    "shots": "electron electron/scripts/make-shots.js",
     "pack": "electron-builder --win --dir --publish never",
     "dist": "electron-builder --win nsis --publish never"
   },

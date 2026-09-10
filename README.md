@@ -1,10 +1,27 @@
 # Orbit（星账）
 
+![Orbit 星账 · 主视图](docs/screenshots/overview.png)
+
 图谱化账单软件：用关系图谱替代流水账/扇形图，花销与分类构成二部图，节点大小编码金额，让"钱花在哪、钱之间有什么关联"一眼可见。
 
 - **产品名**：Orbit（中文「星账」）——星轨（Orbit）是产品视觉核心
 - **定位**：本地优先（Local-First）个人记账；Electron 桌面端 + 浏览器直连 + MCP（同进程同端口）
 - **架构与接口**：[docs/architecture.md](docs/architecture.md) —— 分层、数据模型、业务规则与 REST / MCP 契约
+
+## 界面预览
+
+主视图：中间是花销星图（面积编码金额），底部星轨按日 / 月 / 年三档浏览，左侧是当月洞察。
+
+| 记一笔 | 账本与备份 |
+|---|---|
+| ![记一笔](docs/screenshots/entry.png) | ![账本下拉](docs/screenshots/ledger-menu.png) |
+
+下钻到某个品类：外环是细分、内环是每一笔花销，被同一笔账单挂上的细分之间连虚线「共享线」。
+
+![分类下钻二部图](docs/screenshots/detail.png)
+
+> 以上截图由 `npm run shots` 生成（Electron 自己渲染并截屏，尺寸与等待时机都可复现，
+> 截图前还会自检界面状态，避免拍到没打开或加载中的帧）。
 
 ## 结构
 
