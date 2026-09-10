@@ -44,6 +44,7 @@ export function createExpenseService(db) {
    */
   function resolveSecondary(ledgerId, refs = [], primaryTagIds = new Set()) {
     const out = [];
+    const seen = new Set();
     for (const ref of refs) {
       let tag;
       if (typeof ref === 'number') {
@@ -64,6 +65,10 @@ export function createExpenseService(db) {
           400
         );
       }
+      // 同一细分被引用多次 → 静默去重。links 的唯一键是 (expense_id, tag_id, role)，
+      // 不去重会撞唯一约束变成 500；而这本质是输入冗余，不该让用户看到内部错误。
+      if (seen.has(tag.id)) continue;
+      seen.add(tag.id);
       out.push(tag);
     }
     return out;

@@ -556,6 +556,22 @@ describe('副 tag 绑定主 tag（两级结构 + 归属校验）', () => {
     assert.ok(food > 0 && traffic > 0);
   });
 
+  test('副 tag 重复引用 → 静默去重（不再撞唯一键报 500）', () => {
+    const { svc } = setup();
+    const l = svc.ledgers.create('X');
+    const food = mainTagId(svc, l.id, 'category', '餐饮');
+    const lunch = svc.tags.create(l.id, { dimensionKey: 'category', name: '午餐', parentTagId: food });
+    // 同一个副 tag 传三次（id 与名称混用也算重复）
+    const e = svc.expenses.add({
+      ledgerId: l.id, amountCents: 2000, date: '2026-06-01',
+      primary: { category: '餐饮' }, tags: [lunch.id, lunch.id, '午餐'],
+    });
+    const subs = e.tags.filter(t => t.role === 'secondary');
+    assert.equal(subs.length, 2, '去重后只剩「午餐」+ 情境维兜底「未分类」');
+    assert.equal(subs.filter(t => t.name === '午餐').length, 1);
+    assert.equal(svc.reports.windowView(l.id, { type: 'expense' }).totals.expense, 2000, '金额不受影响');
+  });
+
   test('维度树返回 parent_tag_id，前端可组树', () => {
     const { svc } = setup();
     const l = svc.ledgers.create('X');
