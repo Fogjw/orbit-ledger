@@ -17,15 +17,15 @@ orbit-ledger/
 ## 分层
 
 ```
-┌────────────────────────────────────────────┐
-│ API 层 (Express)   routes + validate + 错误映射 │  前端/REST 契约
-├────────────────────────────────────────────┤
+┌─────────────────────────────────────────────────┐
+│ API 层 (Express)   routes + validate + 错误映射  │  前端/REST 契约
+├─────────────────────────────────────────────────┤
 │ 服务层 (services)  事务边界 + 业务规则 + BizError │  记账/隔离/报表
-├────────────────────────────────────────────┤
-│ 数据访问 (repos)   纯 SQL，无业务规则          │  每表/聚合一组
-├────────────────────────────────────────────┤
-│ 数据层 (db)       node:sqlite · WAL · schema  │  五表 + 迁移 + seed
-└────────────────────────────────────────────┘
+├─────────────────────────────────────────────────┤
+│ 数据访问 (repos)   纯 SQL，无业务规则             │  每表/聚合一组
+├─────────────────────────────────────────────────┤
+│ 数据层 (db)       node:sqlite · WAL · schema     │  五表 + 迁移 + seed
+└─────────────────────────────────────────────────┘
 ```
 
 依赖只向下：api → services → repos → db。模块用工厂函数注入 `db`，便于测试（内存库）与将来复用。
@@ -65,7 +65,8 @@ orbit-ledger/
 
 ## REST API 契约
 
-Base: `http://localhost:5310/api`（端口 env `ORBIT_PORT` 覆盖）。CORS 放开（本地浏览器直连）。| 方法 | 路径 | 说明 |
+Base: `http://localhost:5310/api`（端口 env `ORBIT_PORT` 覆盖）。CORS 放开（本地浏览器直连）。
+| 方法 | 路径 | 说明 |
 |---|---|---|
 | GET | `/health` | 存活 |
 | GET/POST | `/ledgers` | 账本列表 / 建账本 `{name}`（自动维度） |
@@ -106,15 +107,17 @@ Base: `http://localhost:5310/api`（端口 env `ORBIT_PORT` 覆盖）。CORS 放
 - **协议**：MCP 2026-07-28（stateless core）——官方 TS SDK v2 `@modelcontextprotocol/server@2.0.0`（zod v4 描述工具入参）；`legacy: 'stateless'` 亦兼容 2025-era 客户端。
 - **实现**：`server/src/mcp/`——`orbitMcpServer.js`（工厂注册工具）+ `index.js`（createMcpHandler → toNodeHandler）。
 - **工具（7 个，复用 services 同一批规则）**：
-  | 工具 | 说明 |
-  |---|---|
-  | `create_ledger` | 建账本（自动维度） |
-  | `list_ledgers` | 账本列表 |
-  | `list_dimensions` | 维度+tag 树 |
-  | `create_tag` | 建 tag（可选 `parentTagId` 建副 tag） |
-  | `add_expense` | 记一笔（Σ 守恒/缺省兜底/隔离经 service 生效，与 REST 同源） |
-  | `get_stats` | 聚合视图 |
-  | `export_ledger` | JSON 快照 |
+  
+| 工具 | 说明 |
+|---|---|
+| `create_ledger` | 建账本（自动维度） |
+| `list_ledgers` | 账本列表 |
+| `list_dimensions` | 维度+tag 树 |
+| `create_tag` | 建 tag（可选 `parentTagId` 建副 tag） |
+| `add_expense` | 记一笔（Σ 守恒/缺省兜底/隔离经 service 生效，与 REST 同源） |
+| `get_stats` | 聚合视图 |
+| `export_ledger` | JSON 快照 |
+  
 - 错误：业务规则失败返回工具 `isError: true` + `[CODE] message`（如 `[REQUIRED_TAG] …`、`[TAG_NOT_FOUND] …`）。
 
 ## 错误格式
