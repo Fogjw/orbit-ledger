@@ -1623,17 +1623,21 @@ function syncChrome(){
   const w=Data&&Data._window;
   const lv=(w&&w.kind)||'month';
   // 笔数：Data.days 为有支出的天数，笔数保守估算；总额必须真实
-  let nExp=1;
+  // nExp 的两个来源语义不同：Data.days.length 是「有支出的**天数**」，
+  // 而兜底的 tot/58 是笔数估算 —— 以前两者都写成「共 N 笔」，于是「615 天」被读成「615 笔」，
+  // 让人以为账本里有 615 条记录（演示库实际是 615 天 / 2495 笔）。这里按来源分开措辞。
+  let nExp=1, nUnit='笔';
   try{
-    if(Data&&Data.days&&Data.days.length)nExp=Math.max(Data.days.length,1);
+    // Data.days 是「有支出的天数」，0 也是合法值（空账本）—— 不能兜成 1，否则空库会显示「1 笔」
+    if(Data&&Data.days){nExp=Data.days.length;nUnit='天'}
     else nExp=Math.max(1,Math.round(tot/58));
   }catch(e){nExp=Math.max(1,Math.round(tot/58))}
-  $('#mtLabel').textContent=`${selLabel()} · 共 ${nExp} 笔`;
+  $('#mtLabel').textContent=`${selLabel()} · ${nUnit==='天'?nExp+' 天有支出':'共 '+nExp+' 笔'}`;
   animateNum($('#mtValue'),tot,v=>'¥'+Math.round(v).toLocaleString());
   animateNum($('#pNum'),tot,v=>'¥'+Math.round(v).toLocaleString());
   // 日均按当前窗口天数算（日档 1 天、年档 365 天、其余按 30 天）
   const span=lv==='day'?1:(lv==='year'?365:30);
-  $('#pCount').textContent=`${nExp} 笔 · 日均 ¥${Math.round(tot/span)}`;
+  $('#pCount').textContent=`${nUnit==='天'?nExp+' 天有记录':nExp+' 笔'} · 日均 ¥${Math.round(tot/span)}`;
   const pv=prevTotal(),d=pv>0?(tot-pv)/pv*100:0;
   $('#pDelta').textContent=(lv==='year')
     ?'年度合计'                                        // 年环比需跨年全量，暂不显示
