@@ -24,6 +24,7 @@
       "output": "release"
     },
     "files": [
+      "assets/**/*",
       "electron/**/*",
       "web/**/*",
       "server/src/**/*",
@@ -46,6 +47,7 @@
       "icon": "assets/icon.png"
     },
     "nsis": {
+      "include": "electron/installer.nsh",
       "oneClick": false,
       "perMachine": false,
       "allowToChangeInstallationDirectory": true,
