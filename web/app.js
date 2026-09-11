@@ -804,34 +804,35 @@ function viewOf(w){
   const full=timelineFull();
   const PAD=44, vw=Math.max(1,w-PAD*2);
   const z=clamp(TL.z,0,3);
-  // 轴长也按压缩轴量：否则「全部」档会把封顶后的空档再当成真实天数压一遍
-  const all=Math.max(1,axisDay(full.to)-axisDay(full.from));
-  const pDay=PX_PER_DAY, pMonth=PX_PER_MONTH/DAYS_PER_MONTH, pYear=vw/all;
-  // 日→月→年→全部：前三段按比例插值，最后一段把比例压到「整轴一屏」以下一些，
-  // 让「全部」比年档再退半步（年档仍可能因为年份少而显得很密）。
+  // 年档比例先用**真实跨度**定（之后不再迭代）：压缩只影响空档，不影响整体缩放档感
+  const allReal=Math.max(1,full.to-full.from);
+  const pDay=PX_PER_DAY, pMonth=PX_PER_MONTH/DAYS_PER_MONTH, pYear=vw/allReal;
   const pAll=pYear*0.62;
   const p = z<=1 ? lerp(pDay,pMonth,z)
           : z<=2 ? lerp(pMonth,pYear,z-1)
           : lerp(pYear,pAll,z-2);
+  // ★ 相邻节点的**像素**间距上限 = 三分之一视口：空档再大也不超过 vw/3，密集处照常铺开
+  const maxGap=maxGapDaysOf(vw,p);
   const half=vw/2/Math.max(.0001,p);      // 视口半径（压缩轴上的天数）
+  const c0=anchorCenter(maxGap);
   // 可平移范围＝**有数据的月份**，而不是整年。时间轴按整年铺是为了年档锚点不跑出画面，
   // 但若照着整年来放开平移，视口能一路拖进大半年的空白里 —— 体感就是「星轨不限位、能一直拖」。
   const f=MONTHS[0], l=MONTHS[MONTHS.length-1];
-  const df=axisDay(f?dayNum(`${f.y}-${pad2(f.m)}-01`):full.from);
-  const dt=axisDay(l?dayNum(`${l.y}-${pad2(l.m)}-28`):full.to);
-  const c0=anchorCenter();
+  const df=axisDay(f?dayNum(`${f.y}-${pad2(f.m)}-01`):full.from,maxGap);
+  const dt=axisDay(l?dayNum(`${l.y}-${pad2(l.m)}-28`):full.to,maxGap);
   // 视口中心允许落在 [df+half, dt-half]；换算成「相对锚点的平移量」就是这两个边界
   let panLo=df+half-c0, panHi=dt-half-c0;
   if(panLo>panHi){const mid=(panLo+panHi)/2;panLo=mid;panHi=mid}   // 数据跨度比视口还窄：居中即可
   const c=c0+clamp(TL.pan||0,panLo,panHi);
-  return {c,p,vw,PAD,half,panLo,panHi};   // 两个边界一并返回：拖动写回时要用同一套范围
+  return {c,p,vw,PAD,half,panLo,panHi,maxGap};   // 边界与压缩上限一并返回：调用方要用同一套
 }
-/* ---- 轴坐标压缩：节点之间的空档不该把画面拉散 ----
+/* ---- 轴坐标压缩：只给**空档**封顶，不压缩正常间距 ----
    真实天数直接线性映射时，「去年 9 月一笔、今年一笔」在日档要翻 365×44 ≈ 16000px ——
-   看起来像没有限位，也完全没有连贯感。这里给相邻节点之间的一步**封顶**：
-   最多折算 MAX_GAP_DAYS 天（日档 ≈ 一屏之内），节点密集处仍按真实天数铺开，
-   所以「哪里挤、哪里疏」照样看得见，只是空档不再无限拉长。 */
-const MAX_GAP_DAYS=14;
+   看起来像没有限位，也失去连贯感。这里限制的是**单个相邻区间的像素长度**：
+   最多**三分之一**个星轨视口（vw/3）。节点密集处（日与日、月与月）仍按各自的像素比例铺开，
+   所以整体该松的地方照样松，只有大空档被截断。 */
+/** 相邻区间允许的最大像素长度 → 折算成"轴天数"上限（随当前档位的 px/天 变化） */
+function maxGapDaysOf(vw,p){return Math.max(1,(vw/3)/Math.max(.0001,p))}
 /** 当前档位的节点日期（真实天数，升序） */
 function axisNodes(){
   const lv=domLevel();
@@ -839,37 +840,38 @@ function axisNodes(){
   if(lv==='month')return MONTHS.map(m=>dayNum(`${m.y}-${pad2(m.m)}-15`));
   return YEARS.map(y=>dayNum(`${y.y}-07-01`));
 }
-/** 真实天数 → 压缩后的轴天数（单调不减，空档封顶） */
-function axisDay(d){
+/** 真实天数 → 压缩后的轴天数（单调不减；单步超过 maxGap 就按 maxGap 计） */
+function axisDay(d,maxGap){
   const ns=axisNodes();
-  if(ns.length<2)return d;
+  if(ns.length<2||!(maxGap>0))return d;
   let acc=0,prev=ns[0];
   if(d<=prev)return d-prev;
   for(let i=1;i<ns.length;i++){
-    const step=Math.min(ns[i]-prev,MAX_GAP_DAYS);
-    if(d<=ns[i])return acc+Math.min(d-prev,MAX_GAP_DAYS);
+    const step=Math.min(ns[i]-prev,maxGap);
+    if(d<=ns[i])return acc+Math.min(d-prev,maxGap);
     acc+=step;prev=ns[i];
   }
-  return acc+Math.min(d-prev,MAX_GAP_DAYS);
+  return acc+Math.min(d-prev,maxGap);
 }
 /** 天序号 → 星轨像素 x（位置在**压缩轴**上量取） */
 function xOfDay(d,w){
   const v=viewOf(w);
-  return v.PAD + v.vw/2 + (axisDay(d)-v.c)*v.p;
+  return v.PAD + v.vw/2 + (axisDay(d,v.maxGap)-v.c)*v.p;
 }
 /** 视口锚点＝选中节点在**上一级周期**的中心：
     日档→该月中心；月档→该年中心（年中即 7/1）；年档→整体中心。 */
-function anchorCenter(){
+function anchorCenter(maxGap){
   const full=timelineFull();
   const lv=domLevel();
+  const g=maxGap!=null?maxGap:100000;   // 没传上限就按真实天数（压缩只影响渲染位置）
   if(lv==='day'){
     const d=DAYS[TL.sel.idx];
-    if(d)return axisDay(dayNum(`${d.y}-${pad2(d.m)}-15`));
+    if(d)return axisDay(dayNum(`${d.y}-${pad2(d.m)}-15`),g);
   }else if(lv==='month'){
     const m=MONTHS[TL.sel.idx];
-    if(m)return axisDay(dayNum(`${m.y}-07-01`));
+    if(m)return axisDay(dayNum(`${m.y}-07-01`),g);
   }
-  return axisDay((full.from+full.to)/2);
+  return axisDay((full.from+full.to)/2,g);
 }
 /** 当前选中节点代表的时间中心（天）—— 跨档衔接时用来找「覆盖它的新节点」 */
 function selCenterDay(){
@@ -1109,10 +1111,10 @@ async function selectTime(kind,id){
   if(!arr||!arr[id])return;
   const c0=viewOf(W).c;
   TL.sel={level:kind,idx:id};
-  TL.pan=c0-anchorCenter();             // 先补：await 之间会出帧，同步途中也不许跳
+  TL.pan=c0-anchorCenter(viewOf(W).maxGap);   // 先补：await 之间会出帧，同步途中也不许跳
   await syncWindowToSel();
   if(Math.abs(viewOf(W).c-c0)>0.5){
-    TL.pan=c0-anchorCenter();
+    TL.pan=c0-anchorCenter(viewOf(W).maxGap);
     buildGraph();
   }
   burst(W/2,H-190,'#9be9ff',kind==='day'?10:kind==='year'?18:14);
