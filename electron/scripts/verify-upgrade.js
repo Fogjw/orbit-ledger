@@ -17,6 +17,7 @@ import { execFileSync } from 'node:child_process';
 import { createHash } from 'node:crypto';
 import { existsSync, mkdirSync, readFileSync, readdirSync, rmSync, writeFileSync } from 'node:fs';
 import { dirname, join } from 'node:path';
+import { tmpdir } from 'node:os';
 import { fileURLToPath } from 'node:url';
 
 import { openDatabase } from '../../server/src/db/database.js';
@@ -62,6 +63,40 @@ function killApp() {
   try { execFileSync('taskkill', ['/IM', 'Orbit 星账.exe', '/F'], { stdio: 'ignore' }); } catch { /* 没在跑 */ }
 }
 
+const UNINSTALL_ROOT = 'HKCU\\Software\\Microsoft\\Windows\\CurrentVersion\\Uninstall\\';
+
+/** 本机已有的 Orbit 卸载记录（注册表子键名） */
+function orbitKeys() {
+  const ps = "$k='HKCU:\\Software\\Microsoft\\Windows\\CurrentVersion\\Uninstall';"
+    + "if(!(Test-Path $k)){ '[]'; exit };"
+    + "$r=@(Get-ChildItem $k | Where-Object { (Get-ItemProperty $_.PSPath).DisplayName -like '*Orbit*' } | ForEach-Object { $_.PSChildName });"
+    + 'ConvertTo-Json -InputObject $r -Compress';
+  const out = execFileSync('powershell', ['-NoProfile', '-Command', ps], { encoding: 'utf8' }).trim();
+  const parsed = out ? JSON.parse(out) : [];
+  return Array.isArray(parsed) ? parsed : [parsed];
+}
+
+/**
+ * 把本机**已有的** Orbit 安装记录整体挪开（导出后删除），返回恢复函数。
+ * 为什么必须这么做：安装器现在会优先「更新已存在的那一份」（这正是要验的行为），
+ * 所以只要本机装着用户的 Orbit，测试就会跑到他真实的安装目录上去 —— 卸载收尾时
+ * 还会把他卸掉。实测就发生过一次：/D= 指定的测试目录被忽略，装到了用户的目录。
+ */
+function stashExistingInstall() {
+  const keys = orbitKeys();
+  if (!keys.length) return () => {};
+  const files = keys.map((k, i) => {
+    const f = join(tmpdir(), `orbit-uninstall-${i}.reg`);
+    execFileSync('reg', ['export', UNINSTALL_ROOT + k, f, '/y'], { stdio: 'ignore' });
+    return f;
+  });
+  for (const k of keys) execFileSync('reg', ['delete', UNINSTALL_ROOT + k, '/f'], { stdio: 'ignore' });
+  log(`本机已有 ${keys.length} 份 Orbit 安装记录，测试期间先挪开，跑完原样放回`);
+  return () => {
+    for (const f of files) { try { execFileSync('reg', ['import', f], { stdio: 'ignore' }); } catch { /* 尽力恢复 */ } }
+  };
+}
+
 function findUninstaller() {
   if (!existsSync(INSTALL_DIR)) return null;
   const f = readdirSync(INSTALL_DIR).find((n) => /^Uninstall.*\.exe$/i.test(n));
@@ -93,19 +128,13 @@ function waitGone(dir, timeoutMs = 30000) {
 
 /**
  * 场景 2：把账本放在**程序安装目录里面**（真有人这么用，本机历史配置就是 D:\orbit\store）。
- * 覆盖更新会整体删掉安装目录（NSIS 模板里的 `RMDir /r $INSTDIR`），所以安装器必须在卸载旧版本
- * **之前**把 orbit.db 请出来暂存、装完再放回 —— 用户选的路径一个字都不该被改。
+ * 1.0.4 及更早的安装器在升级时会调用旧卸载器（`RMDir /r $INSTDIR`），账本会被一起删掉；
+ * 1.0.5 起改为抑制那个调用、让新载荷就地覆盖，所以这里的断言是：**原文件原地不动**。
  */
 function checkInnerDataDir() {
   log('\n--- 场景 2：账本放在程序安装目录内 ---');
-  const SAFE_DIR = join(process.env.APPDATA, 'Orbit 星账');
-  const safeFiles = () => (existsSync(SAFE_DIR) ? readdirSync(SAFE_DIR).filter((n) => n.startsWith('orbit.db')) : []);
-  // 这台机器上可能真有账本放在安全位置 —— 先备份，测完原样放回
-  const saved = safeFiles().map((n) => [n, readFileSync(join(SAFE_DIR, n))]);
-  const clearSafe = () => { for (const f of safeFiles()) rmSync(join(SAFE_DIR, f), { force: true }); };
   const inner = join(INSTALL_DIR, 'store');
   try {
-    clearSafe();
     rmDir(INSTALL_DIR);
     run(setup, ['/S', `/D=${INSTALL_DIR}`]);
     killApp();
@@ -119,22 +148,23 @@ function checkInnerDataDir() {
     createExpenseService(db).add({ ledgerId: led.id, amountCents: 520, date: '2026-09-11', note: '放在安装目录里' });
     db.close();
     writeFileSync(CFG, Buffer.concat([Buffer.from([0xff, 0xfe]), Buffer.from(inner, 'utf16le')]));
-    log(`账本故意放在安装目录内：${src}`);
+    const hash0 = sha(src);
+    log(`账本故意放在安装目录内：${src}（sha ${hash0}）`);
 
     run(setup, ['/S', `/D=${INSTALL_DIR}`]);
     killApp();
 
-    // 关键断言：路径没被改（还是用户原来那个），且账本还在那里、笔数完好
     const cfgAfter = readCfg(CFG);
     if (cfgAfter !== inner) problems.push(`数据目录配置被改了：期望仍是「${inner}」，实际「${cfgAfter}」`);
     else log('数据目录配置没被动过 ✓（还是用户原来选的位置）');
-    if (!existsSync(src)) problems.push('账本没被放回来 —— 它是被覆盖更新清掉的');
+    if (!existsSync(src)) problems.push('安装目录里的账本被覆盖更新清掉了');
+    else if (sha(src) !== hash0) problems.push('安装目录里的账本被改写了');
     else {
       const db2 = openDatabase(src);
       const n = db2.prepare('SELECT COUNT(*) AS c FROM expenses').get().c;
       db2.close();
-      if (n !== 1) problems.push(`放回来的账本笔数不对：${n}，期望 1`);
-      else log('账本原位放回，笔数完好 ✓');
+      if (n !== 1) problems.push(`账本笔数不对：${n}，期望 1`);
+      else log('账本原地不动、笔数完好 ✓（旧卸载器已被抑制）');
     }
   } finally {
     killApp();
@@ -142,8 +172,6 @@ function checkInnerDataDir() {
     if (un) { try { run(un, ['/S']); } catch { /* 尽力而为 */ } waitGone(INSTALL_DIR, 15000); }
     killApp();
     rmDir(INSTALL_DIR);
-    clearSafe();                                   // 清掉可能被复制到安全位置的那份
-    for (const [n, buf] of saved) writeFileSync(join(SAFE_DIR, n), buf);
   }
 }
 
@@ -159,6 +187,7 @@ function main() {
   const hadCfgDir = existsSync(CFG_DIR);
   const cfgBackup = hadCfg ? readFileSync(CFG) : null;
   let installed = false;
+  const restoreExisting = stashExistingInstall();
 
   try {
     rmDir(INSTALL_DIR);
@@ -255,6 +284,7 @@ function main() {
       // —— 默认数据目录就是它，多删一步就可能把别人的账本删了
       if (!hadCfgDir) { try { rmSync(CFG_DIR, { recursive: false, force: true }); } catch { /* 非空，留着 */ } }
     }
+    restoreExisting();   // 本机原有的安装记录放回去
     killApp();
     waitGone(INSTALL_DIR, 15000);
     rmDir(DATA_DIR);
