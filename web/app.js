@@ -1036,25 +1036,22 @@ function tickZoomAnim(now){
   applyLevelChange(true);
   if(k>=1){TL.z=zoomAnim.to;zoomAnim=null;syncRail()}
 }
+/** 点星轨节点：只换选中项 + 换数据窗，视口中心**保持不变**（点一下不该把星轨拽回复位）。
+    视口中心 = anchorCenter()+pan，而 anchorCenter() 依赖 TL.sel 与 MONTHS（时间轴范围），
+    所以先用旧选中态记下中心 c0，改完选中项后把 pan 补成「c0 − 新锚点」；
+    数据窗切换可能改变时间轴范围（月档补列），同步完成后若中心又漂了再补一次。 */
 async function selectTime(kind,id){
-  if(kind==='day'){
-    if(!DAYS[id])return;
-    TL.sel={level:'day',idx:id};TL.pan=0;
-    await syncWindowToSel();
-    burst(W/2,H-190,'#9be9ff',10);
-    return;
-  }
-  if(kind==='year'){
-    if(!YEARS[id])return;
-    TL.sel={level:'year',idx:id};TL.pan=0;
-    await syncWindowToSel();
-    burst(W/2,H-190,'#9be9ff',18);
-    return;
-  }
-  if(kind!=='month'||!MONTHS[id])return;
-  TL.sel={level:'month',idx:id};TL.pan=0;
+  const arr = kind==='day'?DAYS : kind==='year'?YEARS : kind==='month'?MONTHS : null;
+  if(!arr||!arr[id])return;
+  const c0=viewOf(W).c;
+  TL.sel={level:kind,idx:id};
+  TL.pan=c0-anchorCenter();             // 先补：await 之间会出帧，同步途中也不许跳
   await syncWindowToSel();
-  burst(W/2,H-190,'#9be9ff',14);
+  if(Math.abs(viewOf(W).c-c0)>0.5){
+    TL.pan=c0-anchorCenter();
+    buildGraph();
+  }
+  burst(W/2,H-190,'#9be9ff',kind==='day'?10:kind==='year'?18:14);
 }
 /** 直接落到某一档（初始化 / 点节点 / 回到今天等场合），不带吸附动画 */
 function setZoom(z,quiet){
@@ -1958,7 +1955,12 @@ $('#nameOk').onclick=async ()=>{
         toast('tag 已重命名为「'+raw+'」');
       }else{
         // 当前账本内建 tag；带 parentTagId 时建为该主 tag 下的副 tag（已重拉维度）
-        const fresh=await Data.createTag(act.dimKey,raw,pickingColor,act.parentTagId||null);
+        // 「是不是收入类目」由**名字的「收入」前缀**决定（需求基线 §5.3；数据模型里没有单独的
+        // 收入标记）。所以在收入浮层里新建主 tag 时必须把前缀补齐 —— 否则它会被算作支出品类，
+        // 在收入候选里永远不出现，用户看到的现象就是「创建之后不显示」。
+        const name=(act.dimKey==='category'&&!act.parentTagId&&modalIsIncome&&!isIncomeTag({name:raw}))
+          ?'收入·'+raw:raw;
+        const fresh=await Data.createTag(act.dimKey,name,pickingColor,act.parentTagId||null);
         refreshTagArrays();refreshAmounts();
         // 若记一笔浮层正开着：主 tag 建成即选中它；副 tag 建成即勾上它
         if(!mask.hidden){
@@ -1971,7 +1973,7 @@ $('#nameOk').onclick=async ()=>{
           }
           renderModalChips();
         }
-        toast('tag · '+raw+' 已创建');
+        toast('tag · '+name+' 已创建');
       }
     }
   }catch(e){
@@ -2015,6 +2017,11 @@ function bindPrimaryChips(sel,dimKey){
     renderModalChips();
   });
 }
+/** 记一笔浮层里的品类候选：支出＝支出品类，收入＝收入类目。
+    两者同属 category 维度，靠名字的「收入」前缀区分（需求基线 §5.3）；收入类目**不在 CATS 里**
+    —— CATS 正是「排除了收入类目的支出品类」。早先这里写成 CATS.filter(名字含「收入」)，
+    于是收入候选恒为空：新建的收入类目在浮层里根本不出现，看起来就是「创建之后不显示」。 */
+const catCandidates=()=>modalIsIncome?INCOMES:CATS;
 /* 副 tag：仅选中主 tag 后出现，多选。占位「未分类」不进候选（不选即等于它），
    但编辑时若本笔确实挂着占位则保留显示，避免一编辑就丢。 */
 function renderSubRow(dimKey){
@@ -2025,7 +2032,7 @@ function renderSubRow(dimKey){
   const addBtn=isCat?$('#mCatsSubAdd'):$('#mCtxSubAdd');
   const st=modalSel[dimKey];
   if(st.primary==null){wrap.hidden=true;box.innerHTML='';return}
-  const parent=(isCat?CATS:CTXS).find(c=>c.tagId===st.primary);
+  const parent=(isCat?catCandidates():CTXS).find(c=>c.tagId===st.primary);
   const subs=(SUBS[st.primary]||[]).filter(s=>!s.is_unnamed||st.subs.has(s.tagId));
   wrap.hidden=false;
   label.textContent='「'+(parent?parent.name:'')+'」的细分';
@@ -2041,8 +2048,7 @@ function renderSubRow(dimKey){
   addBtn.onclick=()=>openNameBox({kind:'tag',dimKey,parentTagId:st.primary,parentName:parent?parent.name:''});
 }
 function renderModalChips(){
-  // 收入时品类候选只留名字含「收入」的 tag
-  const catList0=modalIsIncome?CATS.filter(c=>c.name.includes('收入')):CATS;
+  const catList0=catCandidates();
   if(!catList0.length){
     $('#mCats').innerHTML='<div style="color:#8b96b5;font-size:12px">暂无收入类目，可先新建「收入·…」；不选则记为「未分类」</div>';
   }else{
@@ -2058,7 +2064,7 @@ function renderModalChips(){
     // 收入 tab 联动品类重渲染
     modalIsIncome=b.textContent.trim()==='收入';
     // 切类型后原品类若不在新候选里，清掉（连同其副 tag），避免提交出语义不符的品类
-    const list=modalIsIncome?CATS.filter(c=>c.name.includes('收入')):CATS;
+    const list=modalIsIncome?INCOMES:CATS;
     if(!list.some(c=>c.tagId===modalSel.category.primary)){
       modalSel.category.primary=null;modalSel.category.subs.clear();
     }
@@ -2326,6 +2332,13 @@ window.OrbitDebug = {
     TL.z=saved;
     return out;
   },
+  /** 只读：当前视口中心（天）+ pan —— 「点节点不复位」只能靠这两个数判断 */
+  center(){
+    const w=oC.getBoundingClientRect().width;
+    return {c:viewOf(w).c,pan:TL.pan||0,level:domLevel(),sel:TL.sel};
+  },
+  /** 验证用直通：等价于用户点画布上的第 idx 个节点（合成鼠标事件驱动不了 canvas 命中） */
+  tapNode(kind,idx){return selectTime(kind,idx)},
 };
 
 boot();

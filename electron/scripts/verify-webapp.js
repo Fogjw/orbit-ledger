@@ -265,6 +265,116 @@ async function main() {
       + '那张「年档截图」其实还是月档 —— 年档的判定以上面的节点坐标为准，不受影响');
   }
 
+  // 点节点不该复位星轨（用户报的「点一下节点整条星轨复位」）。
+  // 判据只能是「视口中心在点击前后不变」—— 画面本身看着都正常，截图分辨不出来。
+  // 前提：必须先让平移量非零，否则「不复位」与「复位到同一处」不可区分；
+  // 而新账本只有一个月的跨度，全年范围下月档/年档的 maxPan 会被算成 0（本来就看得见全部时间、
+  // 没有可平移的余地），所以先切到日档（像素/天最大、maxPan 最大），再真实拖动制造偏移。
+  win.webContents.debugger.attach('1.3');
+  try {
+    await sendMouse('mousePressed', box.x, box.yBottom, 1);
+    await sendMouse('mouseMoved', box.x, box.yBottom - box.h + 4, 1);
+    await sendMouse('mouseReleased', box.x, box.yBottom - box.h + 4, 0);
+  } finally {
+    win.webContents.debugger.detach();
+  }
+  await wait(1600);   // 等吸附动画落到「日」
+  const atDay = JSON.parse(await js(`JSON.stringify(window.OrbitDebug.center())`));
+  console.log(`[verify] 滑块拖到顶后档位 = ${atDay.level}（期望 day）`);
+
+  const gb = JSON.parse(await js(`(() => {
+    // 星轨有自己的画布（#orbit），平移手势绑在它身上；拖 #graph 是拖不到星轨的
+    const r = document.querySelector('#orbit').getBoundingClientRect();
+    return JSON.stringify({
+      x: Math.round(r.left + r.width / 2),
+      y: Math.round(r.top + r.height / 2),
+      w: Math.round(r.width), h: Math.round(r.height),
+    });
+  })()`));
+  console.log(`[verify] 星轨画布 ${gb.w}×${gb.h} @ (${gb.x}, ${gb.y})`);
+  win.webContents.debugger.attach('1.3');
+  try {
+    await sendMouse('mousePressed', gb.x + 160, gb.y, 1);
+    for (let i = 1; i <= 8; i++) await sendMouse('mouseMoved', gb.x + 160 - i * 25, gb.y, 1);
+    await sendMouse('mouseReleased', gb.x - 40, gb.y, 0);
+  } finally {
+    win.webContents.debugger.detach();
+  }
+  await wait(400);
+
+  const before = JSON.parse(await js(`JSON.stringify(window.OrbitDebug.center())`));
+  await js(`window.OrbitDebug.tapNode('day', 0)`);   // 等价于用户点第 0 个日节点
+  await wait(700);
+  const after = JSON.parse(await js(`JSON.stringify(window.OrbitDebug.center())`));
+  const shifted = Math.abs(before.pan) > 1;
+  const kept = Math.abs(after.c - before.c) < 1;
+  console.log(`[verify] 拖动后 pan = ${before.pan.toFixed(2)} 天 · 视口中心 = ${before.c.toFixed(1)}`);
+  console.log(`[verify] 点节点后 pan = ${after.pan.toFixed(2)} 天 · 视口中心 = ${after.c.toFixed(1)}`
+    + ` → ${kept ? '不复位 ✓' : '被复位的 ✗'}`);
+  const noReset = shifted ? kept : null;
+  if (!shifted) {
+    console.log('[verify] 注：本次没能拖动星轨（偏移仍为 0），「不复位」与「复位到原处」无法区分，本项不计入结论');
+  }
+
+  // 收入类目在浮层里显示不出来（用户报的「收入主 tag 创建之后不显示」）。
+  // 收入类目与支出品类同属 category 维度、靠名字的「收入」前缀区分，而 CATS 恰好是
+  // 「排除了收入类目的那一半」；浮层原先拿 CATS.filter(名字含「收入」) 当收入候选 ⇒ 恒为空。
+  // 复现必须走完整 UI 路径：记一笔 → 收入 tab → 新建「收入·工资」→ 候选区里必须出现它。
+  await click('#btnAdd');
+  await wait(700);
+  await js(`document.querySelectorAll('.m-tab')[1].click()`);
+  await wait(300);
+  const incBefore = await js(`document.querySelector('#mCats').textContent.trim().slice(0, 40)`);
+  console.log(`[verify] 收入 tab 品类候选（新建前）= "${incBefore}"`);
+  const newTag = async (tagName) => {
+    await click('#btnAddCat');
+    await wait(500);
+    await js(`(() => { document.querySelector('#nameInput').value = ${JSON.stringify(tagName)}; return true; })()`);
+    await click('#nameOk');
+    await wait(900);
+  };
+  await newTag('收入·工资');   // 已经带前缀
+  await newTag('兼职');        // 不带前缀：必须被自动补成「收入·兼职」，否则它会算作支出品类
+  const incChips = JSON.parse(await js(`JSON.stringify(
+    [...document.querySelectorAll('#mCats .m-chip')].map((b) => b.textContent.trim())
+  )`));
+  const incomeVisible = incChips.includes('收入·工资') && incChips.includes('收入·兼职');
+  console.log(`[verify] 新建收入类目后候选 = [${incChips.join(', ')}]`
+    + ` → ${incomeVisible ? '已显示 ✓' : '仍未显示 ✗'}`);
+  await click('#modalClose');
+  await wait(500);
+
+  // 提示层必须压在所有浮层之上（用户报：弹窗里操作时看不到 toast 提示）。
+  // 判据不靠截图：让最高的浮层（#nameMask）**保持打开**时触发一条 toast，
+  // 再用 elementFromPoint 问「这个点上最顶层的元素是谁」—— 被盖住的话拿到的是 mask 而不是 toast。
+  // 触发方式是空名称点确定：它只 toast 不关浮层（正好保住了遮挡场景）。
+  await click('#btnAdd');
+  await wait(700);
+  await click('#btnAddCat');
+  await wait(500);
+  await js(`(() => { document.querySelector('#nameInput').value = ''; return true; })()`);
+  await click('#nameOk');
+  await wait(400);
+  const zTop = JSON.parse(await js(`(() => {
+    const z = (s) => { const el = document.querySelector(s); return el ? Number(getComputedStyle(el).zIndex) || 0 : 0; };
+    const t = document.querySelector('#toast');
+    const r = t.getBoundingClientRect();
+    const hit = document.elementFromPoint(Math.round(r.left + r.width / 2), Math.round(r.top + r.height / 2));
+    return JSON.stringify({
+      toastZ: z('#toast'),
+      topMaskZ: Math.max(z('#nameMask'), z('#tagMask'), z('#viewMask'), z('#modalMask'), z('#expMask')),
+      toastShown: !t.hidden && r.width > 0,
+      hit: hit ? (hit.id || String(hit.className)) : null,
+    });
+  })()`));
+  const toastOnTop = zTop.toastShown && zTop.hit === 'toast' && zTop.toastZ > zTop.topMaskZ;
+  console.log(`[verify] 提示层 z = ${zTop.toastZ} · 最高浮层 z = ${zTop.topMaskZ}`
+    + ` · 浮层开着时 toast 中心点命中 = "${zTop.hit}" → ${toastOnTop ? '在最顶层 ✓' : '被盖住了 ✗'}`);
+  await click('#nameCancel');   // 空名称不会关浮层，这里手动收尾
+  await wait(300);
+  await click('#modalClose');
+  await wait(400);
+
   if (warnings.length) {
     console.log(`[verify] 页面告警 ${warnings.length} 条（不影响结论）：`);
     for (const w of warnings.slice(0, 5)) console.log('  ~ ' + String(w).split('\n')[0].slice(0, 120));
@@ -277,7 +387,8 @@ async function main() {
   }
 
   const ok = gateShown && state.loadedUi && state.canvasLit > 0 && wrote && inputWorks
-    && yearVisible && year.centerLit > 0 && errors.length === 0;
+    && yearVisible && year.centerLit > 0 && errors.length === 0 && noReset !== false
+    && incomeVisible && toastOnTop;
   console.log(`[verify] 结论: ${ok ? '通过' : '未通过'}`);
   win.destroy();
   server.close();
