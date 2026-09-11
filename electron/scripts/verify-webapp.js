@@ -426,6 +426,18 @@ async function main() {
   const incomeVisible = incChips.includes('收入·工资') && incChips.includes('收入·兼职');
   console.log(`[verify] 新建收入类目后候选 = [${incChips.join(', ')}]`
     + ` → ${incomeVisible ? '已显示 ✓' : '仍未显示 ✗'}`);
+
+  // 星轨不能漏掉收入：记一笔**上个月**的收入，日节点序列必须多出那一天
+  //（用户实测：「记一笔收入没有在星轨上添加当年当月当日的节点」）。
+  const daysBefore = await js(`window.OrbitData.days.length`);
+  await js(`(() => { document.querySelector('#mAmount').value = '1800'; return true; })()`);
+  await js(`(() => { document.querySelector('.m-row input[type=date]').value = '2026-08-05'; return true; })()`);
+  await click('#modalSave');
+  await wait(1600);
+  const daysAfter = await js(`window.OrbitData.days.length`);
+  const railHasIncome = daysAfter === daysBefore + 1;
+  console.log(`[verify] 记一笔 8 月收入：星轨日节点 ${daysBefore} → ${daysAfter}`
+    + ` → ${railHasIncome ? '收入也上了星轨 ✓' : '收入没进星轨 ✗'}`);
   await click('#modalClose');
   await wait(500);
 
@@ -520,7 +532,8 @@ async function main() {
 
   const ok = gateShown && state.loadedUi && state.canvasLit > 0 && wrote && inputWorks
     && yearVisible && year.centerLit > 0 && errors.length === 0 && noReset !== false
-    && incomeVisible && toastOnTop && toastClickThrough && tagDelOk && pTitleOk && panelOk && ctxShown && stayPut && bounded;
+    && incomeVisible && toastOnTop && toastClickThrough && tagDelOk && pTitleOk && panelOk && ctxShown && stayPut && bounded
+    && railHasIncome;
   console.log(`[verify] 结论: ${ok ? '通过' : '未通过'}`);
   win.destroy();
   server.close();

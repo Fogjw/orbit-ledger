@@ -139,17 +139,32 @@ const Data = {
     if (byDim.context) for (const r of byDim.context) this.monthAmountsByDim.context[r.tag_id] = centsToYuan(r.amount_cents);
     this.monthAmounts = this.monthAmountsByDim.category;
 
-    // 日序列（expense only，按日期排序）；topColor = 该日金额最大的品类 tag 色（星轨日节点上色）
-    const dailyExpense = (dailyStats.daily || []).filter(d => d.type === 'expense');
-    this.days = dailyExpense.map(d => {
-      const [yy, mm, dd] = d.date.split('-').map(Number);
-      return {
-        label: mm + '月' + dd + '日', date: d.date, y: yy, m: mm, d: dd,
-        total: centsToYuan(d.amount_cents),
-        topName: d.top_name || '',
-        topColor: d.top_color || hashColor(d.top_name || ''),
-      };
-    });
+    // 日序列（**支出与收入都算**）：星轨日节点看的是「这一天有没有账」，
+    // 只收支出的话，纯收入的那天在星轨上就没有节点。同一天两者都有时合并成一颗，
+    // 金额相加（节点大小），颜色仍取当天支出最大的品类，纯收入日用收入绿。
+    const byDate = new Map();
+    for (const d of (dailyStats.daily || [])) {
+      const cur = byDate.get(d.date) || { date: d.date, expense: 0, income: 0, topName: '', topColor: '' };
+      cur[d.type] = (cur[d.type] || 0) + d.amount_cents;
+      if (d.type === 'expense' && d.top_name) {
+        cur.topName = d.top_name;
+        cur.topColor = d.top_color || '';
+      }
+      byDate.set(d.date, cur);
+    }
+    this.days = [...byDate.values()]
+      .filter(d => d.expense + d.income > 0)
+      .sort((a, b) => (a.date < b.date ? -1 : a.date > b.date ? 1 : 0))
+      .map(d => {
+        const [yy, mm, dd] = d.date.split('-').map(Number);
+        const name = d.topName || (d.income > 0 ? '收入' : '');
+        return {
+          label: mm + '月' + dd + '日', date: d.date, y: yy, m: mm, d: dd,
+          total: centsToYuan(d.expense + d.income),
+          topName: name,
+          topColor: d.topColor || hashColor(name),
+        };
+      });
   },
 
   // ===== 月选择 =====
@@ -279,13 +294,18 @@ const Data = {
     const raw = await API.getStats(this.ledgerId);
     const monthly = raw.monthly || [];
 
-    // 按月聚合 expense；同时记录该月主导 tag（星轨月节点上色用）
+    // 按月聚合：**支出和收入都算** —— 星轨节点的存在与否看的是「这个月有没有账」，
+    // 之前只收 expense，于是「只记了收入的月份」在星轨上根本没有节点（用户实测）。
+    // 主导色仍取该月支出最大的品类；整月只有收入时用收入绿兜底。
     const byMonth = {};
     const topOf = {};
     for (const r of monthly) {
-      if (r.type !== 'expense') continue;
       byMonth[r.month] = (byMonth[r.month] || 0) + r.amount_cents;
-      if (r.top_name) topOf[r.month] = { name: r.top_name, color: r.top_color || hashColor(r.top_name) };
+      if (r.type === 'expense' && r.top_name) {
+        topOf[r.month] = { name: r.top_name, color: r.top_color || hashColor(r.top_name) };
+      } else if (r.type === 'income' && !topOf[r.month]) {
+        topOf[r.month] = { name: '收入', color: '#6fe3a8' };
+      }
     }
 
     this.months = Object.keys(byMonth)
