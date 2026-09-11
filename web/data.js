@@ -238,6 +238,10 @@ const Data = {
 
   // ===== 变更后刷新（按当前档位重新加载）=====
   async afterChange() {
+    // 先重拉维度：记一笔时后端会**懒创建**占位 tag（支出的「未分类」、收入的「收入·未分类」），
+    // 前端缓存里没有它们，星图上就画不出那颗节点 —— 用户实测「给 2025 年记了笔收入，
+    // 星轨上有 2025 的节点，但星图上没有这个收入节点」。支出走同一条路径，同样受影响。
+    await this._loadDims();
     await this._loadMonths();
     const w = this._window;
     if (w && w.kind === 'day' && w.date) { await this.selectDay(w.date); return; }

@@ -131,6 +131,7 @@ async function main() {
   //    （afterChange → refreshMonths → 重绘星轨）根本不会被触发，星轨会一直是空数据状态 ——
   //    拿一个空星轨去验证「年档有没有节点」，等于什么都没验。
   let wrote = false;
+  let expensePlaceholderVisible = false;
   if (state.loadedUi) {
     const before = state.total;
     await click('#btnAdd');
@@ -146,7 +147,8 @@ async function main() {
     })()`);
     console.log(`[verify] 记账日期设为 ${await js(`document.querySelector('.m-row input[type=date]')?.value`)}（今天 ${today}）`);
     await js(`(() => { const el = document.querySelector('#mAmount'); el.value = '66'; el.dispatchEvent(new Event('input', { bubbles: true })); return true; })()`);
-    await js(`document.querySelector('#mCats > *')?.click()`);   // 选第一个品类；不选也会落「未分类」
+    // **不选品类**：让后端懒创建支出的「未分类」占位 —— 前端若不在记账后重拉维度，
+    // 星图上就画不出这颗节点（收入走同一条路径，用户实测两处都漏）。
     await wait(300);
     await click('#modalSave');
     await wait(3000);   // 等提交 + 重拉统计 + 重绘星轨
@@ -154,6 +156,13 @@ async function main() {
     wrote = before !== afterSave.total;   // 顶部总额变了 = 界面确实刷新过
     console.log(`[verify] 界面记账：弹窗=${afterSave.modal} · 顶部总额 ${before} → ${afterSave.total}`
       + ` · 顶部标签「${await js(`document.querySelector('#mtLabel').textContent.trim()`)}」`);
+    // 支出侧同一条判据：不选品类时后端懒创建的「未分类」占位，必须已经进前端维度缓存
+    const catsAfterExpense = JSON.parse(await js(`JSON.stringify(
+      (window.OrbitData.cats || []).map((t) => t.name).filter((n) => n.includes('未分类'))
+    )`));
+    expensePlaceholderVisible = catsAfterExpense.includes('未分类');
+    console.log(`[verify] 记完支出后品类维度里的占位 = [${catsAfterExpense.join(', ')}]`
+      + ` → ${expensePlaceholderVisible ? '支出占位已进缓存，星图画得出 ✓' : '维度缓存没刷新 ✗'}`);
   }
   console.log(`[verify] 记账写入链路（走界面）: ${wrote}`);
   await wait(1200);
@@ -457,6 +466,13 @@ async function main() {
   console.log(`[verify] 记一笔 8 月收入：星轨日节点 ${daysBefore} → ${daysAfter}`
     + ` → ${railHasIncome ? '收入也上了星轨 ✓' : '收入没进星轨 ✗'}`);
 
+  // 星图上也要有这颗节点：记账会懒创建占位 tag（收入的「收入·未分类」/ 支出的「未分类」），
+  // 前端若不重拉维度，星图里就画不出它（用户实测）。判据直接看维度缓存里有没有它。
+  const catsAll = JSON.parse(await js(`JSON.stringify((window.OrbitData.cats || []).map((t) => t.name))`));
+  const incomePlaceholderVisible = catsAll.some((n) => n.startsWith('收入'));
+  console.log(`[verify] 记完收入后品类维度里的收入类目 = [${catsAll.filter((n) => n.startsWith('收入')).join(', ')}]`
+    + ` → ${incomePlaceholderVisible ? '收入类目已进缓存，星图画得出 ✓' : '维度缓存没刷新，星图没有它 ✗'}`);
+
   // 年档是「由月档按年聚合」来的，顺手验一下它也没漏：记一笔**去年**的收入，年序列要多出那一年
   const yearsBefore = JSON.parse(await js(`JSON.stringify(window.OrbitDebug.snapshot('year').years)`));
   await click('#btnAdd');
@@ -566,7 +582,7 @@ async function main() {
   const ok = gateShown && state.loadedUi && state.canvasLit > 0 && wrote && inputWorks
     && yearVisible && year.centerLit > 0 && errors.length === 0 && noReset !== false
     && incomeVisible && toastOnTop && toastClickThrough && tagDelOk && pTitleOk && panelOk && ctxShown && stayPut && bounded
-    && railHasIncome && yearHasIncome;
+    && railHasIncome && yearHasIncome && incomePlaceholderVisible && expensePlaceholderVisible;
   console.log(`[verify] 结论: ${ok ? '通过' : '未通过'}`);
   win.destroy();
   server.close();
