@@ -119,6 +119,23 @@ export const MIGRATIONS = [
       }
     },
   },
+  {
+    version: 4,
+    name: '收入与情境维度解耦：清掉历史收入笔上的 context 关联',
+    up(db) {
+      // 情境表达的是「和谁、在什么场合花的钱」，收入没有这个语义；早先记账给收入也补了
+      // context/未分类，于是那笔收入会从「情景视图 → 未分类」里冒出来。新记账已不再挂
+      // context（见 expenseService.plan），这里把历史数据一并清干净 —— 只删收入的 context
+      // 关联，支出与其它维度一律不动。
+      db.exec(`
+        DELETE FROM expense_tag_links
+         WHERE tag_id IN (
+                 SELECT t.id FROM tags t JOIN dimensions d ON d.id = t.dimension_id
+                  WHERE d.key = 'context')
+           AND expense_id IN (SELECT id FROM expenses WHERE type = 'income')
+      `);
+    },
+  },
 ];
 
 /** 当前 schema 最新版本 */

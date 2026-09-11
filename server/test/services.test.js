@@ -732,4 +732,55 @@ describe('tag 排序（维度内 position）', () => {
   });
 });
 
+// 收入与支出共用 category 维度（靠名字「收入」前缀区分），但情境维度只属于支出：
+// 情境表达「和谁、在什么场合花的钱」，收入没有这个语义。此前给收入也补 context/未分类，
+// 后果是那笔收入会从「情景视图 → 未分类」里冒出来（用户实测发现）。
+describe('收入不参与情境维度，缺省占位与支出分开', () => {
+  /** 取某笔账挂上的全部 tag（带维度与角色），便于逐项核对 */
+  function linksOf(db, expenseId) {
+    return db.prepare(`
+      SELECT t.name, t.is_unnamed, l.role, d.key AS dim FROM expense_tag_links l
+        JOIN tags t ON t.id = l.tag_id
+        JOIN dimensions d ON d.id = t.dimension_id
+       WHERE l.expense_id = ?`).all(expenseId);
+  }
+
+  test('收入不选任何 tag：只挂品类，且缺省是「收入·未分类」——不碰情境', () => {
+    const { db, svc } = setup();
+    const l = svc.ledgers.create('R');
+    const e = svc.expenses.add({ ledgerId: l.id, type: 'income', amountCents: 180000, date: '2026-09-05', note: '生活费' });
+    const links = linksOf(db, e.id);
+    assert.equal(links.filter(x => x.dim === 'context').length, 0, '收入不挂任何情境 tag');
+    const primary = links.find(x => x.role === 'primary');
+    assert.equal(primary.dim, 'category');
+    assert.equal(primary.name, '收入·未分类', '收入品类缺省是「收入·未分类」');
+    assert.equal(primary.is_unnamed, 1, '它仍是不可改名/改色的占位 tag');
+  });
+
+  test('支出不选任何 tag：品类与情境各挂一个「未分类」，与收入互不串门', () => {
+    const { db, svc } = setup();
+    const l = svc.ledgers.create('E');
+    const e = svc.expenses.add({ ledgerId: l.id, amountCents: 3200, date: '2026-09-05' });
+    const primaries = linksOf(db, e.id).filter(x => x.role === 'primary');
+    assert.deepEqual(primaries.map(x => x.dim).sort(), ['category', 'context'], '支出两维各一个 primary');
+    assert.ok(primaries.every(x => x.name === '未分类'), '支出的缺省仍是「未分类」');
+    // 同一账本里再记一笔收入：两个占位并存、分别收纳
+    svc.expenses.add({ ledgerId: l.id, type: 'income', amountCents: 100, date: '2026-09-06' });
+    const catUnnamed = db.prepare(`
+      SELECT t.name FROM tags t JOIN dimensions d ON d.id = t.dimension_id
+       WHERE t.ledger_id = ? AND d.key = 'category' AND t.is_unnamed = 1 AND t.parent_tag_id IS NULL`).all(l.id).map(r => r.name);
+    assert.deepEqual(new Set(catUnnamed), new Set(['未分类', '收入·未分类']), '两个占位并存、分别收纳');
+  });
+
+  test('收入即使显式传了情境也被忽略（隔离由后端保证，不靠前端自觉）', () => {
+    const { db, svc } = setup();
+    const l = svc.ledgers.create('I');
+    const e = svc.expenses.add({
+      ledgerId: l.id, type: 'income', amountCents: 500, date: '2026-09-07',
+      primary: { context: '和朋友' },
+    });
+    assert.equal(linksOf(db, e.id).filter(x => x.dim === 'context').length, 0, '显式传入也不落库');
+  });
+});
+
 

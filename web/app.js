@@ -2094,19 +2094,32 @@ function renderModalChips(){
   }else{
     $('#mCats').innerHTML=catList0.map(c=>`<button class="m-chip${modalSel.category.primary===c.tagId?' on':''}" data-tag-id="${c.tagId}"><i style="background:${c.color}"></i>${c.name}</button>`).join('');
   }
-  $('#mCtx').innerHTML=CTXS.map(c=>`<button class="m-chip${modalSel.context.primary===c.tagId?' on':''}" data-tag-id="${c.tagId}"><i style="background:${c.color}"></i>${c.name}</button>`).join('');
+  // 情境维度对收入不适用：后端压根不给收入挂 context，这里也整块收起，
+  // 免得用户选了半天、存下去却不生效（反过来，收入的品类缺省是「收入·未分类」，见后端）。
+  $('#mCtxLabel').hidden=modalIsIncome;
+  $('#mCtx').hidden=modalIsIncome;
+  if(modalIsIncome){
+    $('#mCtx').innerHTML='';
+    $('#mCtxSub').hidden=true;
+  }else{
+    $('#mCtx').innerHTML=CTXS.map(c=>`<button class="m-chip${modalSel.context.primary===c.tagId?' on':''}" data-tag-id="${c.tagId}"><i style="background:${c.color}"></i>${c.name}</button>`).join('');
+    bindPrimaryChips('#mCtx','context');
+    renderSubRow('context');
+  }
   bindPrimaryChips('#mCats','category');
-  bindPrimaryChips('#mCtx','context');
   renderSubRow('category');
-  renderSubRow('context');
   document.querySelectorAll('.m-tab').forEach(b=>b.onclick=()=>{
     document.querySelectorAll('.m-tab').forEach(x=>x.classList.remove('active'));b.classList.add('active');
     // 收入 tab 联动品类重渲染
     modalIsIncome=b.textContent.trim()==='收入';
     // 切类型后原品类若不在新候选里，清掉（连同其副 tag），避免提交出语义不符的品类
-    const list=modalIsIncome?INCOMES:CATS;
+    const list=catCandidates();
     if(!list.some(c=>c.tagId===modalSel.category.primary)){
       modalSel.category.primary=null;modalSel.category.subs.clear();
+    }
+    // 收入没有情境，切到收入时把情境选中一并清掉，别让它跟着提交
+    if(modalIsIncome){
+      modalSel.context.primary=null;modalSel.context.subs.clear();
     }
     renderModalChips();
   });

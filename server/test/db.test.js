@@ -4,16 +4,21 @@ import assert from 'node:assert/strict';
 import { openDatabase } from '../src/db/database.js';
 import { migrate, MIGRATIONS } from '../src/db/schema.js';
 import { createLedgerService } from '../src/services/ledgerService.js';
+import { createTagService } from '../src/services/tagService.js';
+import { createExpenseService } from '../src/services/expenseService.js';
+
+/** 全部迁移版本号，直接从迁移表推导 —— 以后再加迁移，这些断言不用跟着改 */
+const ALL_VERSIONS = MIGRATIONS.map(m => m.version);
 
 function versionRows(db) {
   return db.prepare('SELECT version FROM schema_version ORDER BY version').all().map(r => r.version);
 }
 
 describe('schema 版本化迁移（S3-1/S3-2/S6-v3）', () => {
-  test('全新库 migrate → 迁移全部应用（版本 1、2、3），v2/v3 列就位', () => {
+  test('全新库 migrate → 迁移全部应用，v2/v3 列就位', () => {
     const db = openDatabase(':memory:');
     migrate(db);
-    assert.deepEqual(versionRows(db), [1, 2, 3], 'schema_version 记录 v1、v2、v3');
+    assert.deepEqual(versionRows(db), ALL_VERSIONS, 'schema_version 记录全部迁移');
     // v2 加的列
     const cols = db.prepare('PRAGMA table_info(dimensions)').all().map(c => c.name);
     assert.ok(cols.includes('required'), 'v2 迁移为 dimensions 增加 required 列');
@@ -27,7 +32,7 @@ describe('schema 版本化迁移（S3-1/S3-2/S6-v3）', () => {
     migrate(db);
     migrate(db);
     migrate(db);
-    assert.deepEqual(versionRows(db), [1, 2, 3], '重复 migrate 版本行不增加');
+    assert.deepEqual(versionRows(db), ALL_VERSIONS, '重复 migrate 版本行不增加');
   });
 
   test('旧库兼容升级：只跑到 v1 的库（无 required 列）→ migrate 补到最新且数据保留', () => {
@@ -48,7 +53,7 @@ describe('schema 版本化迁移（S3-1/S3-2/S6-v3）', () => {
     insDim.run(ledgerId, 'context', '情境', 1);
 
     migrate(db); // 升级
-    assert.deepEqual(versionRows(db), [1, 2, 3]);
+    assert.deepEqual(versionRows(db), ALL_VERSIONS);
     // 数据保留
     const row = db.prepare('SELECT COUNT(*) AS n FROM ledgers').get();
     assert.equal(row.n, 1);
@@ -106,7 +111,7 @@ describe('v3 tags 两级化迁移（表重建安全性）', () => {
 
     migrate(db);
 
-    assert.deepEqual(versionRows(db), [1, 2, 3]);
+    assert.deepEqual(versionRows(db), ALL_VERSIONS);
     // tags 内容与 id 原样保留
     const afterTags = db.prepare('SELECT id, name FROM tags ORDER BY id').all().map(r => ({ ...r }));
     assert.deepEqual(afterTags, beforeTags, 'tags 行与 id 不变');
@@ -183,5 +188,39 @@ describe('v3 tags 两级化迁移（表重建安全性）', () => {
       'SELECT COUNT(*) AS n FROM tags WHERE ledger_id = ? AND parent_tag_id IS NOT NULL'
     ).get(l.id).n;
     assert.equal(parentNull, 0, '默认维度建的 tag 均为主 tag');
+  });
+});
+
+// v4：收入与情境维度解耦。老库里收入笔挂着 context/未分类（那时记账给每维都补占位），
+// 结果是那笔收入会从「情景视图 → 未分类」里冒出来。迁移只清收入的 context 关联。
+describe('v4 收入与情境解耦迁移', () => {
+  test('清掉历史收入笔上的 context 关联，支出的关联原样保留', () => {
+    const db = openDatabase(':memory:');
+    migrate(db);
+    const ledgers = createLedgerService(db);
+    const tagSvc = createTagService(db);
+    const expenses = createExpenseService(db);
+    const l = ledgers.create('L');
+    const inc = expenses.add({ ledgerId: l.id, type: 'income', amountCents: 100, date: '2026-09-01' });
+    const exp = expenses.add({ ledgerId: l.id, amountCents: 200, date: '2026-09-02', primary: { category: '餐饮' } });
+    const ctxDim = tagSvc.dimensions(l.id).find(d => d.key === 'context');
+    const ctxUnnamed = ctxDim.tags.find(t => t.is_unnamed === 1 && t.name === '未分类');
+    assert.ok(ctxUnnamed, '支出那笔会按需建出 context/未分类');
+
+    // 手工补一条「老库遗留」的关联：v3 及更早，收入也会挂上 context/未分类
+    db.prepare('INSERT INTO expense_tag_links (expense_id, tag_id, role) VALUES (?, ?, ?)')
+      .run(inc.id, ctxUnnamed.id, 'primary');
+    const ctxLinksOf = (id) => db.prepare(`
+      SELECT COUNT(*) AS n FROM expense_tag_links l
+        JOIN tags t ON t.id = l.tag_id JOIN dimensions d ON d.id = t.dimension_id
+       WHERE l.expense_id = ? AND d.key = 'context'`).get(id).n;
+    assert.equal(ctxLinksOf(inc.id), 1, '迁移前：收入也挂着情境');
+
+    // 抹掉 v4 记录再迁移，等价于「用新版本打开一个老库」
+    db.prepare('DELETE FROM schema_version WHERE version = 4').run();
+    migrate(db);
+    assert.equal(ctxLinksOf(inc.id), 0, '迁移后：收入的 context 关联被清掉');
+    assert.equal(ctxLinksOf(exp.id), 2, '支出的 context 关联不受影响（primary + 副占位各一条）');
+    assert.ok(versionRows(db).includes(4), 'v4 重新记录在案');
   });
 });

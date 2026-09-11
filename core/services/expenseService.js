@@ -11,6 +11,12 @@ import { transaction } from '../transaction.js';
 import { BizError } from './ledgerService.js';
 
 const DATE_RE = /^\d{4}-\d{2}-\d{2}$/;
+/**
+ * 收入品类缺省用的占位 tag 名。产品约定收入类目以「收入」开头（§5.3），所以这个名字
+ * 一举两得：既与支出的「未分类」分开收纳，又自动被认成收入类目（四角星渲染）。
+ * 情境维度对收入不适用，收入根本不挂 context（见 plan）。
+ */
+export const INCOME_UNNAMED_TAG_NAME = '收入·未分类';
 
 export function createExpenseService(db) {
   const expenses = createExpenseRepo(db);
@@ -19,11 +25,13 @@ export function createExpenseService(db) {
   /**
    * 解析维度主 tag。**所有维度都不强制必填**（产品规则：记一笔不要求用户选 tag）：
    * 未选 → 该维「未分类」占位主 tag，没有则当场创建。
-   * @param {{id:number, key:string, name:string}} dim
+   * 收入的品类缺省用「收入·未分类」：它和支出的「未分类」分开收纳，前缀又让它天然
+   * 按收入类目渲染（四角星）。@param {{id:number, key:string, name:string}} dim
    */
-  function resolvePrimary(ledgerId, dim, ref) {
+  function resolvePrimary(ledgerId, dim, ref, type) {
     if (ref === undefined || ref === null || ref === '') {
-      return tags.tagById(ledgerId, tags.ensureUnnamedTag(ledgerId, dim.id));
+      const name = (type === 'income' && dim.key === 'category') ? INCOME_UNNAMED_TAG_NAME : undefined;
+      return tags.tagById(ledgerId, tags.ensureUnnamedTag(ledgerId, dim.id, { name }));
     }
     const tag = typeof ref === 'number'
       ? tags.tagById(ledgerId, ref)
@@ -91,10 +99,14 @@ export function createExpenseService(db) {
     if (!DATE_RE.test(date)) throw new BizError('日期格式须为 YYYY-MM-DD', 'INVALID_DATE');
     const type = input.type === 'income' ? 'income' : 'expense';
 
-    // 主 tag：遍历账本全部维度，每维恰一个（未选 → 「未分类」）
-    const primaries = tags.dimensions(ledgerId).map(dim => ({
+    // 主 tag：遍历账本全部维度，每维恰一个（未选 → 「未分类」）。
+    // **收入不参与情境维度**：情境表达的是「和谁、在什么场合花的钱」，收入没有这个语义。
+    // 之前硬给收入补一个 context/未分类，后果是那笔收入会从「情景视图 → 未分类」里冒出来
+    // （用户实测：一笔 ¥1800 的收入就挂在 context/未分类 上），看起来像是收入没做维度隔离。
+    const dims = tags.dimensions(ledgerId).filter(d => type !== 'income' || d.key !== 'context');
+    const primaries = dims.map(dim => ({
       dimensionId: dim.id,
-      tag: resolvePrimary(ledgerId, dim, input.primary ? input.primary[dim.key] : undefined),
+      tag: resolvePrimary(ledgerId, dim, input.primary ? input.primary[dim.key] : undefined, type),
     }));
 
     // 副 tag：归属校验的基准 = 本笔各维主 tag

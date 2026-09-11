@@ -42,11 +42,12 @@ describe('导出（S3-3：账本 JSON 全量快照）', () => {
     assert.equal(snap.ledger.name, '生活费');
     assert.equal(snap.dimensions.length, 2, '品类+情境两维');
     // tags：默认维度 10（品类6 + 情境4，**不预设占位**）+ 夜宵（餐饮副 tag）+ 收入·生活费 = 12
-    // 另加记账缺省兜底按需创建的 4 个「未分类」占位：
-    //   和朋友→未分类（情境副）、收入·生活费→未分类（品类副）、
-    //   情境维「未分类」主 tag、以及它下面的「未分类」副 tag
-    assert.equal(snap.tags.length, 16);
-    assert.equal(snap.tags.filter(t => t.is_unnamed === 1).length, 4, '占位 tag 均为 is_unnamed=1');
+    // 另加记账缺省兜底按需创建的 2 个「未分类」占位：
+    //   和朋友→未分类（情境副）、收入·生活费→未分类（品类副）。
+    // 情境维不再有「未分类」占位 —— 收入不参与情境维度，那笔收入也就不再挂 context；
+    // 它的品类是显式选的，所以品类维也不会凭空多出占位。
+    assert.equal(snap.tags.length, 14);
+    assert.equal(snap.tags.filter(t => t.is_unnamed === 1).length, 2, '占位 tag 均为 is_unnamed=1');
     // 未记账时账本里没有任何占位 tag（懒创建，不预设）
     const fresh = svc.ledgers.create('空账本');
     assert.equal(svc.tags.dimensions(fresh.id).flatMap(d => d.tags).length, 10, '新账本只有种子 tag');

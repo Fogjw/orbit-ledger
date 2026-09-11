@@ -88,20 +88,22 @@ export function createTagRepo(db) {
      * 记账缺省兜底用，两种作用域：
      *  - parentTagId = null → 该维的「未分类」**主 tag**（某维主 tag 未选时）
      *  - parentTagId = 主 tag id → 该主 tag 的「未分类」**副 tag**（选了主 tag 但没选副 tag 时）
+     * name 可换：收入的品类缺省用「收入·未分类」—— 它和支出的「未分类」是两个占位，
+     * 前缀还让它天然按收入类目渲染（四角星），不必在渲染层特判。
      * 按需创建、不预设：账本里不会堆积没人用过的占位行。
      * 调用方须在事务内使用（与记账同生共死）。
      * @returns {number} tag id
      */
-    ensureUnnamedTag(ledgerId, dimensionId, { parentTagId = null } = {}) {
+    ensureUnnamedTag(ledgerId, dimensionId, { parentTagId = null, name = UNNAMED_TAG_NAME } = {}) {
       const found = parentTagId === null
         ? db.prepare(
             'SELECT id FROM tags WHERE ledger_id = ? AND dimension_id = ? AND parent_tag_id IS NULL AND name = ?'
-          ).get(ledgerId, dimensionId, UNNAMED_TAG_NAME)
+          ).get(ledgerId, dimensionId, name)
         : db.prepare(
             'SELECT id FROM tags WHERE ledger_id = ? AND dimension_id = ? AND parent_tag_id = ? AND name = ?'
-          ).get(ledgerId, dimensionId, parentTagId, UNNAMED_TAG_NAME);
+          ).get(ledgerId, dimensionId, parentTagId, name);
       if (found) return Number(found.id);
-      return this.createTag(ledgerId, dimensionId, UNNAMED_TAG_NAME, {
+      return this.createTag(ledgerId, dimensionId, name, {
         isUnnamed: 1,
         position: UNNAMED_TAG_POSITION,
         parentTagId,
