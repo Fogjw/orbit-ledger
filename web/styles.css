@@ -64,11 +64,18 @@ canvas{display:block}
 .p-title{font-size:11px;letter-spacing:2px;color:var(--dim);display:flex;align-items:center;gap:8px}
 .live-dot{width:7px;height:7px;border-radius:50%;background:#6fe3a8;box-shadow:0 0 10px #6fe3a8;animation:blink 1.8s infinite}
 @keyframes blink{50%{opacity:.4}}
-.p-num{font-size:34px;font-weight:800;margin:8px 0 6px;font-variant-numeric:tabular-nums;text-shadow:0 0 24px rgba(120,180,255,.35)}
-.p-sub{display:flex;align-items:center;gap:8px}
+.p-num{font-size:34px;font-weight:800;font-variant-numeric:tabular-nums;text-shadow:0 0 24px rgba(120,180,255,.35)}
+/* 每个数字前面都得有标签：面板里同时有结余/支出/收入三个数，不标出来没法读 */
+.p-balance{display:flex;align-items:baseline;gap:9px;margin:8px 0 7px}
+.p-balance .p-num{font-size:34px}
+.p-key{font-size:11px;letter-spacing:2px;color:var(--dim);flex:none}
+.p-val{font-size:13.5px;font-weight:700;font-variant-numeric:tabular-nums}
+.p-exp{color:#e8eefc}
+.p-inc{color:#6fe3a8}
+.p-sub{display:flex;align-items:center;gap:8px;margin-top:3px}
 .chip{font-size:10.5px;padding:3px 8px;border-radius:20px;font-weight:700}
 .chip.up{color:#8df0bd;background:rgba(111,227,168,.12);border:1px solid rgba(111,227,168,.3)}
-.p-count{font-size:11px;color:var(--dim)}
+.p-count{font-size:11px;color:var(--dim);margin-top:7px}
 .p-sec{margin:15px 0 8px;font-size:11px;letter-spacing:2px;color:var(--dim2)}
 .top-row{display:flex;align-items:center;gap:9px;padding:7px 8px;border-radius:11px;cursor:pointer;transition:background .2s;border:1px solid transparent}
 .top-row:hover,.top-row.hot{background:rgba(120,170,255,.07);border-color:var(--border)}

@@ -322,6 +322,23 @@ async function main() {
   const pTitleOk = pTitle === '当日星图';
   console.log(`[verify] 日档下的面板标题 = "${pTitle}" → ${pTitleOk ? '随时间窗变化 ✓' : '没跟着变 ✗'}`);
 
+  // 面板里的数字必须自带含义标签，并且算得对：脚本记了一笔 ¥66 支出、没有任何收入，
+  // 所以应当是 支出 ¥66 / 收入 ¥0 / 结余 -¥66（超支用红字）。等数字动画走完再读。
+  await wait(900);
+  const panel = JSON.parse(await js(`(() => {
+    const t = (s) => { const el = document.querySelector(s); return el ? el.textContent.trim() : ''; };
+    return JSON.stringify({
+      keys: [...document.querySelectorAll('#insightPanel .p-key')].map((e) => e.textContent.trim()),
+      bal: t('#pNum'), exp: t('#pExp'), inc: t('#pInc'),
+      color: document.querySelector('#pNum').style.color || '',
+    });
+  })()`));
+  const panelOk = panel.keys.join('/') === '结余/支出/收入'
+    && panel.exp === '¥66' && panel.inc === '¥0' && panel.bal === '-¥66'
+    && panel.color.includes('255, 154, 154');
+  console.log(`[verify] 面板 ${panel.keys.join(' / ')} → 支出 ${panel.exp} · 收入 ${panel.inc} · 结余 ${panel.bal}`
+    + `（${panel.color || '默认色'}）→ ${panelOk ? '标签齐全、数字算对、超支标红 ✓' : '✗'}`);
+
   // 收入类目在浮层里显示不出来（用户报的「收入主 tag 创建之后不显示」）。
   // 收入类目与支出品类同属 category 维度、靠名字的「收入」前缀区分，而 CATS 恰好是
   // 「排除了收入类目的那一半」；浮层原先拿 CATS.filter(名字含「收入」) 当收入候选 ⇒ 恒为空。
@@ -427,7 +444,7 @@ async function main() {
 
   const ok = gateShown && state.loadedUi && state.canvasLit > 0 && wrote && inputWorks
     && yearVisible && year.centerLit > 0 && errors.length === 0 && noReset !== false
-    && incomeVisible && toastOnTop && tagDelOk && pTitleOk;
+    && incomeVisible && toastOnTop && tagDelOk && pTitleOk && panelOk;
   console.log(`[verify] 结论: ${ok ? '通过' : '未通过'}`);
   win.destroy();
   server.close();

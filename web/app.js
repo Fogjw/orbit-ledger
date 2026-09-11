@@ -104,6 +104,8 @@ function amountsForTime(){
 function selTotal(){
   return (Data&&typeof Data.monthTotal==='number')?Data.monthTotal:0;
 }
+/** 金额显示：负数写成 -¥1,234 —— 负号放在货币符号前，一眼能看出是超支 */
+const fmtYuan=v=>{const n=Math.round(v);return (n<0?'-¥':'¥')+Math.abs(n).toLocaleString()};
 function selLabel(){
   const w=Data&&Data._window;
   if(w){
@@ -1657,14 +1659,21 @@ function syncChrome(){
     if(Data&&Data.days){nExp=Data.days.length;nUnit='天'}
     else nExp=Math.max(1,Math.round(tot/58));
   }catch(e){nExp=Math.max(1,Math.round(tot/58))}
-  $('#mtLabel').textContent=`${selLabel()} · ${nUnit==='天'?nExp+' 天有支出':'共 '+nExp+' 笔'}`;
-  // 面板标题跟时间窗走：当日 / 本月 / 全年（面板里的数字就是这段窗口的**支出**合计）
+  $('#mtLabel').textContent=`${selLabel()} · 支出 · ${nUnit==='天'?nExp+' 天有记录':'共 '+nExp+' 笔'}`;
+  // 面板标题跟时间窗走：当日 / 本月 / 全年
   $('#pTitle').textContent=periodWord()+'星图';
-  animateNum($('#mtValue'),tot,v=>'¥'+Math.round(v).toLocaleString());
-  animateNum($('#pNum'),tot,v=>'¥'+Math.round(v).toLocaleString());
+  // 面板里三个数都要能自己说明含义：结余（收入−支出，大字）+ 支出 + 收入，
+  // 每个数前面都带文字标签 —— 只甩一个大数字出去，没人知道那是支出还是结余。
+  const inc=(Data&&typeof Data.incomeTotal==='number')?Data.incomeTotal:0;
+  const bal=inc-tot;
+  animateNum($('#mtValue'),tot,fmtYuan);
+  animateNum($('#pNum'),bal,fmtYuan);
+  animateNum($('#pExp'),tot,fmtYuan);
+  animateNum($('#pInc'),inc,fmtYuan);
+  $('#pNum').style.color=bal<0?'#ff9a9a':'#9be9ff';   // 入不敷出是坏消息，用红字说清楚
   // 日均按当前窗口天数算（日档 1 天、年档 365 天、其余按 30 天）
   const span=lv==='day'?1:(lv==='year'?365:30);
-  $('#pCount').textContent=`${nUnit==='天'?nExp+' 天有记录':nExp+' 笔'} · 日均 ¥${Math.round(tot/span)}`;
+  $('#pCount').textContent=`${nUnit==='天'?nExp+' 天有记录':nExp+' 笔'} · 日均支出 ¥${Math.round(tot/span)}`;
   const pv=prevTotal(),d=pv>0?(tot-pv)/pv*100:0;
   $('#pDelta').textContent=(lv==='year')
     ?'年度合计'                                        // 年环比需跨年全量，暂不显示
