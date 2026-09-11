@@ -375,6 +375,39 @@ async function main() {
   await click('#modalClose');
   await wait(400);
 
+  // 标签管理里的删除（与花销明细里的删除共用同一个流程）。
+  // confirm 是原生对话框，自动化里点不了 —— 先把它换成「一律确认」，再走真实 UI 路径。
+  await js(`(() => { window.confirm = () => true; return true; })()`);
+  await click('#btnAdd');
+  await wait(700);
+  await newTag('验收品类A');
+  await newTag('验收品类B');
+  await click('#modalClose');
+  await wait(500);
+
+  const mgrTagNames = async () => JSON.parse(await js(`JSON.stringify(
+    [...document.querySelectorAll('#tagList .t-name')].map((e) => e.textContent.trim())
+  )`));
+  await click('#ledgerBtn');
+  await wait(400);
+  await click('#ddManageTags');
+  await wait(600);
+  const tagsBefore = await mgrTagNames();
+  await js(`(() => {
+    const row = [...document.querySelectorAll('#tagList .t-row')]
+      .find((r) => r.querySelector('.t-name').textContent.trim() === '验收品类B');
+    row.querySelector('.t-del').click();
+    return true;
+  })()`);
+  await wait(900);
+  const tagsAfter = await mgrTagNames();
+  await click('#tagClose');
+  await wait(400);
+  const tagDelOk = tagsBefore.includes('验收品类B') && tagsAfter.includes('验收品类A')
+    && !tagsAfter.includes('验收品类B');
+  console.log(`[verify] 标签管理删除：删前 [${tagsBefore.join(', ')}] → 删后 [${tagsAfter.join(', ')}]`
+    + ` → ${tagDelOk ? '删掉了且其它 tag 保留 ✓' : '✗'}`);
+
   if (warnings.length) {
     console.log(`[verify] 页面告警 ${warnings.length} 条（不影响结论）：`);
     for (const w of warnings.slice(0, 5)) console.log('  ~ ' + String(w).split('\n')[0].slice(0, 120));
@@ -388,7 +421,7 @@ async function main() {
 
   const ok = gateShown && state.loadedUi && state.canvasLit > 0 && wrote && inputWorks
     && yearVisible && year.centerLit > 0 && errors.length === 0 && noReset !== false
-    && incomeVisible && toastOnTop;
+    && incomeVisible && toastOnTop && tagDelOk;
   console.log(`[verify] 结论: ${ok ? '通过' : '未通过'}`);
   win.destroy();
   server.close();

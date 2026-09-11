@@ -1474,20 +1474,34 @@ async function refreshExpList(){
 $('#expClose').onclick=()=>expMask.hidden=true;
 $('#expDone').onclick=()=>expMask.hidden=true;
 expMask.addEventListener('click',e=>{if(e.target===expMask)expMask.hidden=true});
-// 删除整个 tag（后端保护：被引用则 409 提示先删花销；「未分类」占位锁定）
-$('#expDelTag').onclick=async ()=>{
-  if(!expCtx)return;
-  if(!confirm('删除 tag「'+expCtx.name+'」？\n（若仍有花销使用会被拒绝，需先删除或转移）'))return;
+/**
+ * 删除 tag 的共用流程 —— 花销明细浮层与标签管理都走这一套：同一个确认、同一个接口、
+ * 同一串刷新，免得两处行为各走各的。后端有三重保护（「未标注」锁定 / 自己仍被花销引用 /
+ * 主 tag 的副 tag 仍被引用），都会以 409 拒绝，这里把原因统一 toast 出来。
+ * 返回 true 表示删成功且界面已刷新，调用方据此决定要不要收起自己的浮层。
+ */
+async function deleteTagFlow(tag){
+  if(!tag)return false;
+  const subs=(SUBS[tag.id]||[]).filter(s=>!s.is_unnamed);
+  const more=subs.length?`\n它下面的 ${subs.length} 个细分 tag 会一并删除。`:'';
+  if(!confirm('删除 tag「'+tag.name+'」？'+more+'\n（若仍有花销使用会被拒绝，需先删除或转移）'))return false;
   try{
-    await OrbitAPI.deleteTag(Data.ledgerId,expCtx.tagId);
-    expMask.hidden=true;
+    await OrbitAPI.deleteTag(Data.ledgerId,tag.id);
     await Data.selectLedger(Data.ledgerId); // 重拉维度/统计
     refreshTagArrays();refreshMonths();refreshAmounts();
     buildGraph();syncChrome();
+    if(!mask.hidden)renderModalChips();     // 记一笔浮层开着则同步候选
     toast('tag 已删除');
+    return true;
   }catch(err){
     toast('删除失败：'+(err.message||err)+'（请先删除使用它的花销）');
+    return false;
   }
+}
+// 删除整个 tag（后端保护：被引用则 409 提示先删花销；「未标注」占位锁定）
+$('#expDelTag').onclick=async ()=>{
+  if(!expCtx)return;
+  if(await deleteTagFlow({id:expCtx.tagId,name:expCtx.name}))expMask.hidden=true;
 };
 // 重命名 tag
 $('#expRenameTag').onclick=()=>{
@@ -1559,6 +1573,7 @@ function renderTagMgr(){
       <button class="t-mv" data-dir="-1"${index===0?' disabled':''} title="上移">↑</button>
       <button class="t-mv" data-dir="1"${index===total-1?' disabled':''} title="下移">↓</button>
       <button class="t-edit" title="重命名">✎</button>
+      <button class="t-del"${t.is_unnamed?' disabled':''} title="${t.is_unnamed?'「未标注」是占位 tag，不能删除':'删除'}">🗑</button>
     </div>`;
   let html='';
   tree.roots.forEach((r,i)=>{
@@ -1575,6 +1590,13 @@ function renderTagMgr(){
       if(!t)return;
       tagMask.hidden=true;   // 让位给命名浮层（nameMask 层级更高，先收起更清爽）
       openNameBox({kind:'tag',mode:'rename',dimKey:tagMgrDim,targetId:t.id,currentName:t.name,parentTagId:parentId});
+    };
+    // 删除走的是与花销明细里同一个流程（deleteTagFlow）：同样的确认与刷新，
+    // 被引用的 tag 由后端拒绝，这里只负责把结果画回去。
+    el.querySelector('.t-del').onclick=async ()=>{
+      const t=findMgrTag(parentId,id);
+      if(!t||t.is_unnamed)return;
+      if(await deleteTagFlow(t))renderTagMgr();
     };
   });
 }
