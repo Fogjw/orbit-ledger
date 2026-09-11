@@ -147,6 +147,37 @@ async function main() {
   console.log(`[verify] 记账写入链路（走界面）: ${wrote}`);
   await wait(1200);
 
+  // 键盘输入验证：守的是用户报的「金额框只能删、不能输入」。
+  // 这里必须注入**真实按键事件**，而不是直接改 value —— 改值绕过全部键盘处理，
+  // 正好测不出「按键被吞」这类问题（我上一轮在年档上就栽在类似的地方）。
+  await click('#btnAdd');
+  await wait(900);
+  await js(`(() => { const el = document.querySelector('#mAmount'); el.focus(); return true; })()`);
+  win.webContents.debugger.attach('1.3');
+  try {
+    const press = async (key, code, vk, text) => {
+      const base = { key, code, windowsVirtualKeyCode: vk, nativeVirtualKeyCode: vk };
+      // 只发 keyDown/keyUp：CDP 的 keyDown 带 text 时本身就会插入字符，
+      // 再补一个 char 事件会把每个字符插两次（上一版就是这么得到 "112233" 的）
+      await win.webContents.debugger.sendCommand('Input.dispatchKeyEvent', {
+        ...base, type: 'keyDown', ...(text ? { text, unmodifiedText: text } : {}),
+      });
+      await win.webContents.debugger.sendCommand('Input.dispatchKeyEvent', { ...base, type: 'keyUp' });
+    };
+    // 完全照用户的操作顺序：先把初始值 88 用退格删掉，再敲数字
+    await press('Backspace', 'Backspace', 8, null);
+    await press('Backspace', 'Backspace', 8, null);
+    for (const ch of '123') await press(ch, 'Digit' + ch, 48 + Number(ch), ch);
+  } finally {
+    win.webContents.debugger.detach();
+  }
+  await wait(400);
+  const typed = await js(`document.querySelector('#mAmount').value`);
+  const inputWorks = typed === '123';
+  console.log(`[verify] 键盘输入「123」后金额框的值 = "${typed}" → ${inputWorks ? '可输入 ✓' : '✗ 按键未生效，复现了问题'}`);
+  await click('#modalClose');
+  await wait(600);
+
   const img = await win.webContents.capturePage();
   const { writeFileSync } = await import('node:fs');
   writeFileSync(SHOT, img.toPNG());
@@ -245,7 +276,7 @@ async function main() {
     console.log('[verify] 页面无报错');
   }
 
-  const ok = gateShown && state.loadedUi && state.canvasLit > 0 && wrote
+  const ok = gateShown && state.loadedUi && state.canvasLit > 0 && wrote && inputWorks
     && yearVisible && year.centerLit > 0 && errors.length === 0;
   console.log(`[verify] 结论: ${ok ? '通过' : '未通过'}`);
   win.destroy();
