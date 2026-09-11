@@ -91,6 +91,62 @@ function waitGone(dir, timeoutMs = 30000) {
   return !existsSync(dir);
 }
 
+/**
+ * 场景 2：把账本放在**程序安装目录里面**（真有人这么用，本机历史配置就是 D:\orbit\store）。
+ * 覆盖更新会整体删掉安装目录（NSIS 模板里的 `RMDir /r $INSTDIR`），所以安装器必须在卸载旧版本
+ * **之前**把 orbit.db 请出来暂存、装完再放回 —— 用户选的路径一个字都不该被改。
+ */
+function checkInnerDataDir() {
+  log('\n--- 场景 2：账本放在程序安装目录内 ---');
+  const SAFE_DIR = join(process.env.APPDATA, 'Orbit 星账');
+  const safeFiles = () => (existsSync(SAFE_DIR) ? readdirSync(SAFE_DIR).filter((n) => n.startsWith('orbit.db')) : []);
+  // 这台机器上可能真有账本放在安全位置 —— 先备份，测完原样放回
+  const saved = safeFiles().map((n) => [n, readFileSync(join(SAFE_DIR, n))]);
+  const clearSafe = () => { for (const f of safeFiles()) rmSync(join(SAFE_DIR, f), { force: true }); };
+  const inner = join(INSTALL_DIR, 'store');
+  try {
+    clearSafe();
+    rmDir(INSTALL_DIR);
+    run(setup, ['/S', `/D=${INSTALL_DIR}`]);
+    killApp();
+
+    mkdirSync(inner, { recursive: true });
+    const src = join(inner, 'orbit.db');
+    const db = openDatabase(src);
+    migrate(db);
+    seedIfEmpty(db);
+    const led = db.prepare('SELECT id FROM ledgers ORDER BY id LIMIT 1').get();
+    createExpenseService(db).add({ ledgerId: led.id, amountCents: 520, date: '2026-09-11', note: '放在安装目录里' });
+    db.close();
+    writeFileSync(CFG, Buffer.concat([Buffer.from([0xff, 0xfe]), Buffer.from(inner, 'utf16le')]));
+    log(`账本故意放在安装目录内：${src}`);
+
+    run(setup, ['/S', `/D=${INSTALL_DIR}`]);
+    killApp();
+
+    // 关键断言：路径没被改（还是用户原来那个），且账本还在那里、笔数完好
+    const cfgAfter = readCfg(CFG);
+    if (cfgAfter !== inner) problems.push(`数据目录配置被改了：期望仍是「${inner}」，实际「${cfgAfter}」`);
+    else log('数据目录配置没被动过 ✓（还是用户原来选的位置）');
+    if (!existsSync(src)) problems.push('账本没被放回来 —— 它是被覆盖更新清掉的');
+    else {
+      const db2 = openDatabase(src);
+      const n = db2.prepare('SELECT COUNT(*) AS c FROM expenses').get().c;
+      db2.close();
+      if (n !== 1) problems.push(`放回来的账本笔数不对：${n}，期望 1`);
+      else log('账本原位放回，笔数完好 ✓');
+    }
+  } finally {
+    killApp();
+    const un = findUninstaller();
+    if (un) { try { run(un, ['/S']); } catch { /* 尽力而为 */ } waitGone(INSTALL_DIR, 15000); }
+    killApp();
+    rmDir(INSTALL_DIR);
+    clearSafe();                                   // 清掉可能被复制到安全位置的那份
+    for (const [n, buf] of saved) writeFileSync(join(SAFE_DIR, n), buf);
+  }
+}
+
 function main() {
   if (!existsSync(setup)) {
     console.error(`[升级验收] 找不到安装包：${setup}（先跑 npm run dist）`);
@@ -184,6 +240,8 @@ function main() {
         log(`注：安装目录还剩 ${readdirSync(INSTALL_DIR).length} 项（NSIS 卸载常见残留，不影响数据）`);
       }
     }
+
+    checkInnerDataDir();
   } finally {
     // 还原现场：配置文件恢复原样，测试目录删掉，别把机器留在装了/卸了的状态
     killApp();
