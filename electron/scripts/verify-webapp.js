@@ -374,6 +374,15 @@ async function main() {
   const pTitleOk = pTitle === '2026/09/11星图' || pTitle.endsWith('星图');
   console.log(`[verify] 日档下的面板标题 = "${pTitle}" → ${pTitleOk ? '写清了看的是哪段时间 ✓' : '✗'}`);
 
+  // 星轨日节点 hover 要显示**当天**数据：此前一律按 MONTHS[h.id] 取，日节点几乎都落到
+  // 「暂无数据」，偶尔越界又显示成某个月的数据（用户实测）。
+  const dayTips = JSON.parse(await js(`JSON.stringify(
+    Array.from({ length: Math.min(3, (window.OrbitData.days || []).length) }, (_, i) => window.OrbitDebug.tipFor('day', i))
+  )`));
+  const dayTipOk = dayTips.length > 0 && dayTips.every((t) => t.includes('¥'));
+  console.log(`[verify] 日节点 hover = ${JSON.stringify(dayTips)}`
+    + ` → ${dayTipOk ? '显示的是当天数据 ✓' : '有节点没取到当天数据 ✗'}`);
+
   // 面板里的数字必须自带含义标签，并且算得对：脚本记了一笔 ¥66 支出、没有任何收入，
   // 所以应当是 支出 ¥66 / 收入 ¥0 / 结余 -¥66（超支用红字）。等数字动画走完再读。
   await wait(900);
@@ -582,6 +591,7 @@ async function main() {
   const ok = gateShown && state.loadedUi && state.canvasLit > 0 && wrote && inputWorks
     && yearVisible && year.centerLit > 0 && errors.length === 0 && noReset !== false
     && incomeVisible && toastOnTop && toastClickThrough && tagDelOk && pTitleOk && panelOk && ctxShown && stayPut && bounded
+    && dayTipOk
     && railHasIncome && yearHasIncome && incomePlaceholderVisible && expensePlaceholderVisible;
   console.log(`[verify] 结论: ${ok ? '通过' : '未通过'}`);
   win.destroy();

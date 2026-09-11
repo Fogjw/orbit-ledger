@@ -1195,10 +1195,23 @@ function setHover(h){
     const cid=n.kind==='cat'?n.id:(n.kind==='exp'?n.cat:null);
     document.querySelectorAll('.top-row').forEach(e=>e.classList.toggle('hot',e.dataset.id===cid));
   }else{
-    let html='';
-    const m=MONTHS[h.id];
-    if(m)html=`<b>${m.full||m.label}</b><div class="tt-amt">¥${Math.round(m.total).toLocaleString()}</div>`;
-    else html='<b>暂无数据</b>';
+    // 星轨节点：按 hover 的那一档取**那个节点自己**的数据。
+    // 此前一律 `MONTHS[h.id]` 取，于是日节点几乎都落到「暂无数据」，
+    // 偶尔索引恰好不越界又显示成某个月的数据（用户实测）。
+    let html='<b>暂无数据</b>';
+    if(h.kind==='day'){
+      const d=DAYS[h.id];
+      if(d)html=`<b>${d.label}</b><div class="tt-amt">¥${Math.round(d.total).toLocaleString()}</div>`
+        +`<div style="color:#8b96b5">${d.date}${d.topName?' · '+d.topName:''}</div>`;
+    }else if(h.kind==='month'){
+      const m=MONTHS[h.id];
+      if(m)html=`<b>${m.full||m.label}</b><div class="tt-amt">¥${Math.round(m.total).toLocaleString()}</div>`
+        +'<div style="color:#8b96b5">当月合计</div>';
+    }else if(isYearLike(h.kind)){
+      const y=YEARS[h.id];
+      if(y)html=`<b>${y.label}</b><div class="tt-amt">¥${Math.round(y.total).toLocaleString()}</div>`
+        +`<div style="color:#8b96b5">${h.kind==='all'?'全部时间':'当年合计'}</div>`;
+    }
     tip.innerHTML=html;tip.hidden=false;
   }
 }
@@ -2424,6 +2437,8 @@ window.OrbitDebug = {
     const v=viewOf(w);
     return {c:v.c,pan:TL.pan||0,panLo:v.panLo,panHi:v.panHi,level:domLevel(),sel:TL.sel};
   },
+  /** 验证用直通：等价于用户 hover 某个星轨节点，返回提示框文本 */
+  tipFor(kind,idx){setHover({kind,id:idx});return tip?tip.textContent.trim():''},
   /** 验证用直通：等价于用户点画布上的第 idx 个节点（合成鼠标事件驱动不了 canvas 命中） */
   tapNode(kind,idx){return selectTime(kind,idx)},
 };
