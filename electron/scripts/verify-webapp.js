@@ -438,6 +438,21 @@ async function main() {
   const railHasIncome = daysAfter === daysBefore + 1;
   console.log(`[verify] 记一笔 8 月收入：星轨日节点 ${daysBefore} → ${daysAfter}`
     + ` → ${railHasIncome ? '收入也上了星轨 ✓' : '收入没进星轨 ✗'}`);
+
+  // 年档是「由月档按年聚合」来的，顺手验一下它也没漏：记一笔**去年**的收入，年序列要多出那一年
+  const yearsBefore = JSON.parse(await js(`JSON.stringify(window.OrbitDebug.snapshot('year').years)`));
+  await click('#btnAdd');
+  await wait(700);
+  await js(`document.querySelectorAll('.m-tab')[1].click()`);   // 切到收入
+  await wait(250);
+  await js(`(() => { document.querySelector('#mAmount').value = '500'; return true; })()`);
+  await js(`(() => { document.querySelector('.m-row input[type=date]').value = '2025-12-20'; return true; })()`);
+  await click('#modalSave');
+  await wait(1600);
+  const yearsAfter = JSON.parse(await js(`JSON.stringify(window.OrbitDebug.snapshot('year').years)`));
+  const yearHasIncome = yearsAfter.length === yearsBefore.length + 1 && yearsAfter.includes(2025);
+  console.log(`[verify] 记一笔 2025 年收入：星轨年序列 [${yearsBefore}] → [${yearsAfter}]`
+    + ` → ${yearHasIncome ? '收入也上了年档 ✓' : '年档漏了收入 ✗'}`);
   await click('#modalClose');
   await wait(500);
 
@@ -533,7 +548,7 @@ async function main() {
   const ok = gateShown && state.loadedUi && state.canvasLit > 0 && wrote && inputWorks
     && yearVisible && year.centerLit > 0 && errors.length === 0 && noReset !== false
     && incomeVisible && toastOnTop && toastClickThrough && tagDelOk && pTitleOk && panelOk && ctxShown && stayPut && bounded
-    && railHasIncome;
+    && railHasIncome && yearHasIncome;
   console.log(`[verify] 结论: ${ok ? '通过' : '未通过'}`);
   win.destroy();
   server.close();
