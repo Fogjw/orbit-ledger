@@ -1669,8 +1669,8 @@ function syncChrome(){
     else nExp=Math.max(1,Math.round(tot/58));
   }catch(e){nExp=Math.max(1,Math.round(tot/58))}
   $('#mtLabel').textContent=`${selLabel()} · 支出 · ${nUnit==='天'?nExp+' 天有记录':'共 '+nExp+' 笔'}`;
-  // 面板标题跟时间窗走：当日 / 本月 / 全年
-  $('#pTitle').textContent=periodWord()+'星图';
+  // 面板标题写清**看的是哪一段时间**（「本月」在选中八月时也会说本月，那是另一层歧义）
+  $('#pTitle').textContent=`${selLabel()||periodWord()}星图`;
   // 面板里三个数都要能自己说明含义：结余（收入−支出，大字）+ 支出 + 收入，
   // 每个数前面都带文字标签 —— 只甩一个大数字出去，没人知道那是支出还是结余。
   const inc=(Data&&typeof Data.incomeTotal==='number')?Data.incomeTotal:0;
@@ -2254,17 +2254,10 @@ $('#modalSave').onclick=async ()=>{
     if(editingExpense){
       // 编辑：PUT 全量替换（保持原 ledger_id）
       await OrbitAPI.updateExpense(editingExpense.ledger_id,editingExpense.id,payload);
-      const savedDate=payload.date;
       mask.hidden=true;editingExpense=null;
-      // 刷新并跳转（若日期改了月份则跳到新月份）
+      // 只刷新数据，**不跟着这笔的时间跳窗口**：把一笔账补记/改到别的月份时画面被拽走，
+      // 会让人以为记错了地方（用户实测：「节点显示在这个月…必须手动点当月节点才恢复」）。
       await Data.afterChange();refreshMonths();refreshAmounts();
-      if(savedDate&&/^\d{4}-\d{2}-\d{2}$/.test(savedDate)){
-        const cy=Number(savedDate.slice(0,4)),cm=Number(savedDate.slice(5,7));
-        if(!(Data._currentMonthY===cy&&Data._currentMonthM===cm)){
-          await Data.selectMonth({year:cy,month:cm});
-          refreshMonths();refreshAmounts();
-        }
-      }
       const mi=MONTHS.findIndex(m=>m.y===Data._currentMonthY&&m.m===Data._currentMonthM);
       if(mi>=0)TL.sel={level:'month',idx:mi};
       TODAY=Math.max(0,MONTHS.length-1);
@@ -2290,15 +2283,8 @@ $('#modalSave').onclick=async ()=>{
       await Data.afterChange();
       refreshMonths();refreshAmounts();
     }
-    // 若刚记的月份不在当前显示月，跳到该月（按 created.date 的 YYYY-MM）
-    if(created&&created.date&&/^\d{4}-\d{2}-\d{2}$/.test(created.date)){
-      const cy=Number(created.date.slice(0,4)),cm=Number(created.date.slice(5,7));
-      if(!(Data._currentMonthY===cy&&Data._currentMonthM===cm)){
-        await Data.selectMonth({year:cy,month:cm});
-        refreshMonths();refreshAmounts();
-      }
-    }
-    // 同步星轨选中到该月并重建图谱
+    // 记账后**不跳到这笔所在的月份**：补记上月/去年的账时把画面拽走，用户会以为记错了地方。
+    // 数据已经刷新，这笔会在它该在的档位上出现，切过去看即可。
     const mi=MONTHS.findIndex(m=>m.y===Data._currentMonthY&&m.m===Data._currentMonthM);
     if(mi>=0)TL.sel={level:'month',idx:mi};
     TODAY=Math.max(0,MONTHS.length-1);

@@ -216,10 +216,14 @@ const Data = {
   async afterChange() {
     await this._loadMonths();
     const w = this._window;
-    if (!w) return;
-    if (w.kind === 'day' && w.date) await this.selectDay(w.date);
-    else if (w.kind === 'year' && w.year) await this.selectYear(w.year);
-    else if (w.year && w.month) await this.selectMonth({ year: w.year, month: w.month });
+    if (w && w.kind === 'day' && w.date) { await this.selectDay(w.date); return; }
+    if (w && w.kind === 'year' && w.year) { await this.selectYear(w.year); return; }
+    if (w && w.year && w.month) { await this.selectMonth({ year: w.year, month: w.month }); return; }
+    // 还没有时间窗 —— 全新账本第一次记账就是这种情况（启动时因月份序列为空而没落窗口）。
+    // 早先这里直接 return，于是「记完一笔，顶部总额和左侧面板都还是 0，得手动点一下星轨节点
+    // 才恢复」。落到最新月份上，统计才跟着刷新。
+    const last = this.months[this.months.length - 1];
+    if (last) await this.selectMonth({ year: last.y, month: last.m });
   },
 
   // ===== 建账本（建后入列表并选中，含默认维度）=====

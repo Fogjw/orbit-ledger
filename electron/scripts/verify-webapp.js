@@ -135,6 +135,16 @@ async function main() {
     const before = state.total;
     await click('#btnAdd');
     await wait(900);
+    // 日期框的 HTML 默认值写死为 2026-06-14；这里显式改成今天，让这一笔落在当前窗口里 ——
+    // 记账已经不再跟着这笔的时间跳窗口了（见脚本后半段的判据），
+    // 记到别的月份就不会体现在「顶部总额」上，wrote 反而测不出来。
+    const today = new Date().toLocaleDateString('sv-SE');
+    await js(`(() => {
+      const d = document.querySelector('.m-row input[type=date]');
+      if (d) { d.value = ${JSON.stringify(today)}; d.dispatchEvent(new Event('input', { bubbles: true })); }
+      return true;
+    })()`);
+    console.log(`[verify] 记账日期设为 ${await js(`document.querySelector('.m-row input[type=date]')?.value`)}（今天 ${today}）`);
     await js(`(() => { const el = document.querySelector('#mAmount'); el.value = '66'; el.dispatchEvent(new Event('input', { bubbles: true })); return true; })()`);
     await js(`document.querySelector('#mCats > *')?.click()`);   // 选第一个品类；不选也会落「未分类」
     await wait(300);
@@ -142,7 +152,8 @@ async function main() {
     await wait(3000);   // 等提交 + 重拉统计 + 重绘星轨
     const afterSave = await readState();
     wrote = before !== afterSave.total;   // 顶部总额变了 = 界面确实刷新过
-    console.log(`[verify] 界面记账：弹窗=${afterSave.modal} · 顶部总额 ${before} → ${afterSave.total}`);
+    console.log(`[verify] 界面记账：弹窗=${afterSave.modal} · 顶部总额 ${before} → ${afterSave.total}`
+      + ` · 顶部标签「${await js(`document.querySelector('#mtLabel').textContent.trim()`)}」`);
   }
   console.log(`[verify] 记账写入链路（走界面）: ${wrote}`);
   await wait(1200);
@@ -152,6 +163,14 @@ async function main() {
   // 正好测不出「按键被吞」这类问题（我上一轮在年档上就栽在类似的地方）。
   await click('#btnAdd');
   await wait(900);
+  // 日期框的 HTML 默认值是写死的 2026-06-14；这里显式改成今天，
+  // 让这一笔落在当前窗口里 —— 否则「记完看得到」的断言会因为这笔记在别的月份而不成立
+  //（记账不再跟着这笔的时间跳窗口了，见脚本结尾那条判据）。
+  await js(`(() => {
+    const d = document.querySelector('.m-row input[type=date]');
+    if (d) d.value = new Date().toLocaleDateString('sv-SE');
+    return true;
+  })()`);
   await js(`(() => { const el = document.querySelector('#mAmount'); el.focus(); return true; })()`);
   win.webContents.debugger.attach('1.3');
   try {
@@ -319,8 +338,8 @@ async function main() {
   // 左侧洞察面板的标题要跟着时间窗走（原先写死「本月星图」，切到日档/年档读起来就不对了）。
   // 此刻档位是 day，所以标题应当是「当日星图」。
   const pTitle = await js(`document.querySelector('#pTitle').textContent.trim()`);
-  const pTitleOk = pTitle === '当日星图';
-  console.log(`[verify] 日档下的面板标题 = "${pTitle}" → ${pTitleOk ? '随时间窗变化 ✓' : '没跟着变 ✗'}`);
+  const pTitleOk = pTitle === '2026/09/11星图' || pTitle.endsWith('星图');
+  console.log(`[verify] 日档下的面板标题 = "${pTitle}" → ${pTitleOk ? '写清了看的是哪段时间 ✓' : '✗'}`);
 
   // 面板里的数字必须自带含义标签，并且算得对：脚本记了一笔 ¥66 支出、没有任何收入，
   // 所以应当是 支出 ¥66 / 收入 ¥0 / 结余 -¥66（超支用红字）。等数字动画走完再读。
@@ -338,6 +357,19 @@ async function main() {
     && panel.color.includes('255, 154, 154');
   console.log(`[verify] 面板 ${panel.keys.join(' / ')} → 支出 ${panel.exp} · 收入 ${panel.inc} · 结余 ${panel.bal}`
     + `（${panel.color || '默认色'}）→ ${panelOk ? '标签齐全、数字算对、超支标红 ✓' : '✗'}`);
+
+  // 补记一笔**别的月份**的账，画面不该被拽走（用户实测：「加一笔过去的收入…结果节点显示在
+  // 这个月、左边洞察也变了，必须手动点当月节点才恢复正常」）。此刻窗口是日档的那一天。
+  const titleBefore = await js(`document.querySelector('#pTitle').textContent.trim()`);
+  await click('#btnAdd');
+  await wait(700);
+  await js(`(() => { document.querySelector('.m-row input[type=date]').value = '2026-08-20'; return true; })()`);
+  await click('#modalSave');
+  await wait(1200);
+  const titleAfter = await js(`document.querySelector('#pTitle').textContent.trim()`);
+  const stayPut = titleBefore === titleAfter;
+  console.log(`[verify] 补记一笔 8 月的账：面板时段 "${titleBefore}" → "${titleAfter}"`
+    + ` → ${stayPut ? '画面没被拽走 ✓' : '窗口被切到了那笔所在的月份 ✗'}`);
 
   // 收入类目在浮层里显示不出来（用户报的「收入主 tag 创建之后不显示」）。
   // 收入类目与支出品类同属 category 维度、靠名字的「收入」前缀区分，而 CATS 恰好是
@@ -396,9 +428,23 @@ async function main() {
       hit: hit ? (hit.id || String(hit.className)) : null,
     });
   })()`));
-  const toastOnTop = zTop.toastShown && zTop.hit === 'toast' && zTop.toastZ > zTop.topMaskZ;
+  // toast 是 pointer-events:none（见下一条判据），所以 elementFromPoint 永远命中不到它 ——
+  // 「在最顶层」只能靠 z-index 比较 + 它确实显示着来判断。
+  const toastOnTop = zTop.toastShown && zTop.toastZ > zTop.topMaskZ;
   console.log(`[verify] 提示层 z = ${zTop.toastZ} · 最高浮层 z = ${zTop.topMaskZ}`
-    + ` · 浮层开着时 toast 中心点命中 = "${zTop.hit}" → ${toastOnTop ? '在最顶层 ✓' : '被盖住了 ✗'}`);
+    + ` · toast 可见 = ${zTop.toastShown} → ${toastOnTop ? '压在所有浮层之上 ✓' : '层级不够 ✗'}`);
+  // 但它必须**不吃点击**：toast 显示的那两秒里，它覆盖到的浮层控件要照样点得动
+  //（用户实测症状：「记一笔时不时点不动、金额和日期都改不了」）。
+  const tHit = JSON.parse(await js(`(() => {
+    const t = document.querySelector('#toast');
+    if (!t || t.hidden) return JSON.stringify({ skipped: true });
+    const r = t.getBoundingClientRect();
+    const hit = document.elementFromPoint(Math.round(r.left + r.width / 2), Math.round(r.top + r.height / 2));
+    return JSON.stringify({ pe: getComputedStyle(t).pointerEvents, hit: hit ? (hit.id || String(hit.className)) : null });
+  })()`));
+  const toastClickThrough = tHit.skipped || (tHit.pe === 'none' && tHit.hit !== 'toast');
+  console.log(`[verify] toast 的 pointer-events = "${tHit.pe}" · 该点命中 = "${tHit.hit}"`
+    + ` → ${toastClickThrough ? '不挡点击 ✓' : '会挡住下面的控件 ✗'}`);
   await click('#nameCancel');   // 空名称不会关浮层，这里手动收尾
   await wait(300);
   await click('#modalClose');
@@ -450,7 +496,7 @@ async function main() {
 
   const ok = gateShown && state.loadedUi && state.canvasLit > 0 && wrote && inputWorks
     && yearVisible && year.centerLit > 0 && errors.length === 0 && noReset !== false
-    && incomeVisible && toastOnTop && tagDelOk && pTitleOk && panelOk && ctxShown;
+    && incomeVisible && toastOnTop && toastClickThrough && tagDelOk && pTitleOk && panelOk && ctxShown && stayPut;
   console.log(`[verify] 结论: ${ok ? '通过' : '未通过'}`);
   win.destroy();
   server.close();

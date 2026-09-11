@@ -109,7 +109,10 @@ canvas{display:block}
 .tooltip{position:fixed;z-index:200;pointer-events:none;background:rgba(10,15,30,.92);border:1px solid var(--border2);border-radius:12px;padding:9px 12px;font-size:12px;line-height:1.6;box-shadow:0 8px 28px rgba(0,0,10,.6);backdrop-filter:blur(10px);max-width:230px}
 .tooltip b{color:#fff}
 .tooltip .tt-amt{font-size:15px;font-weight:800;color:#9be9ff;font-variant-numeric:tabular-nums}
-.toast{position:fixed;left:50%;bottom:170px;transform:translateX(-50%);z-index:210;background:rgba(12,20,38,.9);border:1px solid var(--border2);padding:10px 18px;border-radius:30px;font-size:12.5px;box-shadow:0 8px 30px rgba(0,0,10,.5);animation:toastIn .3s}
+/* pointer-events:none 是必须的：toast 压在所有浮层之上（z-index 210），
+   若它自己可命中，提示显示的那两秒里就会把下面浮层的按钮/输入框全挡住 ——
+   实测症状是「记一笔时不时点不动、金额和日期都改不了」。 */
+.toast{position:fixed;left:50%;bottom:170px;transform:translateX(-50%);z-index:210;pointer-events:none;background:rgba(12,20,38,.9);border:1px solid var(--border2);padding:10px 18px;border-radius:30px;font-size:12.5px;box-shadow:0 8px 30px rgba(0,0,10,.5);animation:toastIn .3s}
 @keyframes toastIn{from{opacity:0;transform:translate(-50%,8px)}}
 
 /* 记账浮层 */
