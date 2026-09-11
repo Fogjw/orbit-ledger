@@ -114,6 +114,12 @@ function selLabel(){
   const m=MONTHS[TL.sel.idx];
   return m?m.full:'';
 }
+/** 左侧洞察面板的时段词，跟当前时间窗走（日/月/年）。
+    面板标题与空态文案都改用它 —— 之前一律写死「本月」，切到年档/日档读起来就不对了。 */
+function periodWord(){
+  const k=(Data&&Data._window&&Data._window.kind)||'month';
+  return k==='day'?'当日':k==='year'?'全年':'本月';
+}
 function prevTotal(){
   if(Data&&typeof Data.prevMonthTotal==='number'&&Data.prevMonthTotal>0)return Data.prevMonthTotal;
   return selTotal()*0.9;
@@ -1652,6 +1658,8 @@ function syncChrome(){
     else nExp=Math.max(1,Math.round(tot/58));
   }catch(e){nExp=Math.max(1,Math.round(tot/58))}
   $('#mtLabel').textContent=`${selLabel()} · ${nUnit==='天'?nExp+' 天有支出':'共 '+nExp+' 笔'}`;
+  // 面板标题跟时间窗走：当日 / 本月 / 全年（面板里的数字就是这段窗口的**支出**合计）
+  $('#pTitle').textContent=periodWord()+'星图';
   animateNum($('#mtValue'),tot,v=>'¥'+Math.round(v).toLocaleString());
   animateNum($('#pNum'),tot,v=>'¥'+Math.round(v).toLocaleString());
   // 日均按当前窗口天数算（日档 1 天、年档 365 天、其余按 30 天）
@@ -1673,9 +1681,10 @@ function syncChrome(){
 }
 function renderTop(){
   const amts=amountsForTime(),items=[...catList()].sort((a,b)=>(amts[b.id]||0)-(amts[a.id]||0)).slice(0,5);
+  const pw=periodWord();
   if(!items.length){
-    $('#topList').innerHTML='<div style="color:#8b96b5;font-size:12px">本月暂无支出</div>';
-    $('#insightBox').innerHTML='✨ 本月暂无支出，快去点亮第一颗星。';
+    $('#topList').innerHTML=`<div style="color:#8b96b5;font-size:12px">${pw}暂无支出</div>`;
+    $('#insightBox').innerHTML=`✨ ${pw}暂无支出，快去点亮第一颗星。`;
     return;
   }
   const max=amts[items[0].id]||1;
@@ -1692,7 +1701,7 @@ function renderTop(){
     el.onclick=()=>{const tag=(CATS.concat(CTXS)).find(c=>c.id===el.dataset.id);if(tag)openExpenseList(tag)};
   });
   const topName=items[0]?items[0].name:'—';
-  $('#insightBox').innerHTML=`✨ 本月 <b>${topName}</b> 是最大支出星系`;
+  $('#insightBox').innerHTML=`✨ ${pw} <b>${topName}</b> 是最大支出星系`;
 }
 /** 程序化同步段控选中态（不触发回调）：浏览器前进/后退恢复视图时用 */
 function setSegActive(id,v){$(id).querySelectorAll('.seg').forEach(b=>b.classList.toggle('active',b.dataset.v===v))}

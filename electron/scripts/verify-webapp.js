@@ -316,6 +316,12 @@ async function main() {
     console.log('[verify] 注：本次没能拖动星轨（偏移仍为 0），「不复位」与「复位到原处」无法区分，本项不计入结论');
   }
 
+  // 左侧洞察面板的标题要跟着时间窗走（原先写死「本月星图」，切到日档/年档读起来就不对了）。
+  // 此刻档位是 day，所以标题应当是「当日星图」。
+  const pTitle = await js(`document.querySelector('#pTitle').textContent.trim()`);
+  const pTitleOk = pTitle === '当日星图';
+  console.log(`[verify] 日档下的面板标题 = "${pTitle}" → ${pTitleOk ? '随时间窗变化 ✓' : '没跟着变 ✗'}`);
+
   // 收入类目在浮层里显示不出来（用户报的「收入主 tag 创建之后不显示」）。
   // 收入类目与支出品类同属 category 维度、靠名字的「收入」前缀区分，而 CATS 恰好是
   // 「排除了收入类目的那一半」；浮层原先拿 CATS.filter(名字含「收入」) 当收入候选 ⇒ 恒为空。
@@ -421,7 +427,7 @@ async function main() {
 
   const ok = gateShown && state.loadedUi && state.canvasLit > 0 && wrote && inputWorks
     && yearVisible && year.centerLit > 0 && errors.length === 0 && noReset !== false
-    && incomeVisible && toastOnTop && tagDelOk;
+    && incomeVisible && toastOnTop && tagDelOk && pTitleOk;
   console.log(`[verify] 结论: ${ok ? '通过' : '未通过'}`);
   win.destroy();
   server.close();
