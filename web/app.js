@@ -815,14 +815,14 @@ function viewOf(w){
   const maxGap=maxGapDaysOf(vw,p);
   const half=vw/2/Math.max(.0001,p);      // 视口半径（压缩轴上的天数）
   const c0=anchorCenter(maxGap);
-  // 可平移范围＝**有数据的月份**，而不是整年。时间轴按整年铺是为了年档锚点不跑出画面，
-  // 但若照着整年来放开平移，视口能一路拖进大半年的空白里 —— 体感就是「星轨不限位、能一直拖」。
-  const f=MONTHS[0], l=MONTHS[MONTHS.length-1];
-  const df=axisDay(f?dayNum(`${f.y}-${pad2(f.m)}-01`):full.from,maxGap);
-  const dt=axisDay(l?dayNum(`${l.y}-${pad2(l.m)}-28`):full.to,maxGap);
-  // 视口中心允许落在 [df+half, dt-half]；换算成「相对锚点的平移量」就是这两个边界
-  let panLo=df+half-c0, panHi=dt-half-c0;
-  if(panLo>panHi){const mid=(panLo+panHi)/2;panLo=mid;panHi=mid}   // 数据跨度比视口还窄：居中即可
+  // 可平移范围：**两端节点都要能拖到视口中心** —— 拖到尽头时最左那颗星正好停在正中，
+  // 再往外没有意义。此前按「有数据的月份 ± 视口半径」算，日档拖到头最左节点仍停在中心
+  // 右边小半屏，感觉像没拖到底（用户实测）。
+  const ns=axisNodes();
+  const dLo=ns.length?axisDay(ns[0],maxGap):axisDay(full.from,maxGap);
+  const dHi=ns.length?axisDay(ns[ns.length-1],maxGap):axisDay(full.to,maxGap);
+  let panLo=dLo-c0, panHi=dHi-c0;
+  if(panLo>panHi){const mid=(panLo+panHi)/2;panLo=mid;panHi=mid}   // 只有一个节点：居中即可
   const c=c0+clamp(TL.pan||0,panLo,panHi);
   return {c,p,vw,PAD,half,panLo,panHi,maxGap};   // 边界与压缩上限一并返回：调用方要用同一套
 }

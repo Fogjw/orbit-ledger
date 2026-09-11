@@ -367,6 +367,12 @@ async function main() {
   console.log(`[verify] 朝一个方向猛拖 3000px 后 pan = ${dragEnd.pan.toFixed(1)}`
     + ` · 允许区间 [${dragEnd.panLo.toFixed(1)}, ${dragEnd.panHi.toFixed(1)}]`
     + ` → ${bounded ? '限位生效 ✓' : '越界了，能一直拖 ✗'}`);
+  // 而且拖到尽头时，**端点节点要能到视口中心**（否则像没拖到底）
+  const dragDayX = JSON.parse(await js(`JSON.stringify(window.OrbitDebug.snapshot('day').dayX)`));
+  const dragW = await js(`window.OrbitDebug.snapshot('day').canvasWidth`);
+  const endReachable = dragDayX.length > 0 && dragDayX[0] <= Math.round(dragW / 2) + 2;
+  console.log(`[verify] 拖到左端后最左日节点 x = ${dragDayX[0]}（视口中心 ${Math.round(dragW / 2)}）`
+    + ` → ${endReachable ? '能拖到中心 ✓' : '停在中心右边，像没拖到底 ✗'}`);
 
   // 左侧洞察面板的标题要跟着时间窗走（原先写死「本月星图」，切到日档/年档读起来就不对了）。
   // 此刻档位是 day，所以标题应当是「当日星图」。
@@ -591,7 +597,7 @@ async function main() {
   const ok = gateShown && state.loadedUi && state.canvasLit > 0 && wrote && inputWorks
     && yearVisible && year.centerLit > 0 && errors.length === 0 && noReset !== false
     && incomeVisible && toastOnTop && toastClickThrough && tagDelOk && pTitleOk && panelOk && ctxShown && stayPut && bounded
-    && dayTipOk
+    && dayTipOk && endReachable
     && railHasIncome && yearHasIncome && incomePlaceholderVisible && expensePlaceholderVisible;
   console.log(`[verify] 结论: ${ok ? '通过' : '未通过'}`);
   win.destroy();
