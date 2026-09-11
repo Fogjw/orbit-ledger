@@ -802,9 +802,17 @@ function viewOf(w){
   const pDay=PX_PER_DAY, pMonth=PX_PER_MONTH/DAYS_PER_MONTH, pYear=vw/all;
   const p=z<=1 ? lerp(pDay,pMonth,z) : lerp(pMonth,pYear,z-1);
   const half=vw/2/Math.max(.0001,p);      // 视口半径（天）
-  const maxPan=Math.max(0,all/2-half);    // 视口中心相对整体中心的最大偏移天数（0＝该档本就能看到全部时间）
-  const c=anchorCenter()+clamp(TL.pan||0,-maxPan,maxPan);
-  return {c,p,vw,PAD,half,maxPan};        // maxPan 一并返回：拖动写回时要用同一套边界
+  // 可平移范围＝**有数据的月份**，而不是整年。时间轴按整年铺是为了年档锚点不跑出画面，
+  // 但若照着整年来放开平移，视口能一路拖进大半年的空白里 —— 体感就是「星轨不限位、能一直拖」。
+  const f=MONTHS[0], l=MONTHS[MONTHS.length-1];
+  const df=f?dayNum(`${f.y}-${pad2(f.m)}-01`):full.from;
+  const dt=l?dayNum(`${l.y}-${pad2(l.m)}-28`):full.to;
+  const c0=anchorCenter();
+  // 视口中心允许落在 [df+half, dt-half]；换算成「相对锚点的平移量」就是这两个边界
+  let panLo=df+half-c0, panHi=dt-half-c0;
+  if(panLo>panHi){const mid=(panLo+panHi)/2;panLo=mid;panHi=mid}   // 数据跨度比视口还窄：居中即可
+  const c=c0+clamp(TL.pan||0,panLo,panHi);
+  return {c,p,vw,PAD,half,panLo,panHi};   // 两个边界一并返回：拖动写回时要用同一套范围
 }
 /** 天序号 → 星轨像素 x */
 function xOfDay(d,w){
@@ -1279,7 +1287,7 @@ oC.addEventListener('pointermove',e=>{
       const v=viewOf(r.width);
       const step=e.clientX-oDrag.lastX;
       oDrag.lastX=e.clientX;
-      TL.pan=clamp((TL.pan||0)-step/v.p,-v.maxPan,v.maxPan);
+      TL.pan=clamp((TL.pan||0)-step/v.p,v.panLo,v.panHi);
     }
     return;
   }
@@ -2374,7 +2382,8 @@ window.OrbitDebug = {
   /** 只读：当前视口中心（天）+ pan —— 「点节点不复位」只能靠这两个数判断 */
   center(){
     const w=oC.getBoundingClientRect().width;
-    return {c:viewOf(w).c,pan:TL.pan||0,level:domLevel(),sel:TL.sel};
+    const v=viewOf(w);
+    return {c:v.c,pan:TL.pan||0,panLo:v.panLo,panHi:v.panHi,level:domLevel(),sel:TL.sel};
   },
   /** 验证用直通：等价于用户点画布上的第 idx 个节点（合成鼠标事件驱动不了 canvas 命中） */
   tapNode(kind,idx){return selectTime(kind,idx)},

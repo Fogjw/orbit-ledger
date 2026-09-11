@@ -324,16 +324,40 @@ async function main() {
   const before = JSON.parse(await js(`JSON.stringify(window.OrbitDebug.center())`));
   await js(`window.OrbitDebug.tapNode('day', 0)`);   // 等价于用户点第 0 个日节点
   await wait(700);
-  const after = JSON.parse(await js(`JSON.stringify(window.OrbitDebug.center())`));
-  const shifted = Math.abs(before.pan) > 1;
+  const after = JSON.parse(await js(`JSON.stringify(window.OrbitDebug.center())`));  const shifted = Math.abs(before.pan) > 1;
   const kept = Math.abs(after.c - before.c) < 1;
+  const room = before.panHi - before.panLo;   // 这一档允许的平移空间（天）
   console.log(`[verify] 拖动后 pan = ${before.pan.toFixed(2)} 天 · 视口中心 = ${before.c.toFixed(1)}`);
   console.log(`[verify] 点节点后 pan = ${after.pan.toFixed(2)} 天 · 视口中心 = ${after.c.toFixed(1)}`
     + ` → ${kept ? '不复位 ✓' : '被复位的 ✗'}`);
-  const noReset = shifted ? kept : null;
+  // 判据要有区分力：可平移空间太小（测试库的数据就一个月）时，「不复位」与「复位到原处」
+  // 本来就分不开 —— 这时不计入结论，而不是让它在数据多寡上随机通过/失败。
+  const noReset = (shifted && room > 20) ? kept : null;
   if (!shifted) {
-    console.log('[verify] 注：本次没能拖动星轨（偏移仍为 0），「不复位」与「复位到原处」无法区分，本项不计入结论');
+    console.log('[verify] 注：本次没能拖动星轨（偏移仍为 0），本项不计入结论');
+  } else if (room <= 20) {
+    console.log(`[verify] 注：可平移空间只有 ${room.toFixed(1)} 天，无法区分「不复位」与「复位到原处」，本项不计入结论`);
   }
+
+  // 星轨必须限位：往一个方向猛拖，平移量应停在 maxPan 上，而不是能一直拖下去
+  win.webContents.debugger.attach('1.3');
+  try {
+    // 一轮 600px 只有约 14 天，单次拖不满 maxPan；多拖几轮，确保真的顶到边界再判定
+    for (let round = 0; round < 30; round++) {
+      await sendMouse('mousePressed', gb.x + 300, gb.y, 1);
+      for (let i = 1; i <= 4; i++) await sendMouse('mouseMoved', gb.x + 300 - i * 150, gb.y, 1);
+      await sendMouse('mouseReleased', gb.x - 300, gb.y, 0);
+    }
+  } finally {
+    win.webContents.debugger.detach();
+  }
+  await wait(500);
+  const dragEnd = JSON.parse(await js(`JSON.stringify(window.OrbitDebug.center())`));
+  // 平移量必须落在 [panLo, panHi] 内 —— 也就是视口停在**有数据的月份**范围里，拖不进空白
+  const bounded = dragEnd.pan >= dragEnd.panLo - 0.5 && dragEnd.pan <= dragEnd.panHi + 0.5;
+  console.log(`[verify] 朝一个方向猛拖 3000px 后 pan = ${dragEnd.pan.toFixed(1)}`
+    + ` · 允许区间 [${dragEnd.panLo.toFixed(1)}, ${dragEnd.panHi.toFixed(1)}]`
+    + ` → ${bounded ? '限位生效 ✓' : '越界了，能一直拖 ✗'}`);
 
   // 左侧洞察面板的标题要跟着时间窗走（原先写死「本月星图」，切到日档/年档读起来就不对了）。
   // 此刻档位是 day，所以标题应当是「当日星图」。
@@ -496,7 +520,7 @@ async function main() {
 
   const ok = gateShown && state.loadedUi && state.canvasLit > 0 && wrote && inputWorks
     && yearVisible && year.centerLit > 0 && errors.length === 0 && noReset !== false
-    && incomeVisible && toastOnTop && toastClickThrough && tagDelOk && pTitleOk && panelOk && ctxShown && stayPut;
+    && incomeVisible && toastOnTop && toastClickThrough && tagDelOk && pTitleOk && panelOk && ctxShown && stayPut && bounded;
   console.log(`[verify] 结论: ${ok ? '通过' : '未通过'}`);
   win.destroy();
   server.close();
