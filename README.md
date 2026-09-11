@@ -138,6 +138,9 @@ ELECTRON_BUILDER_BINARIES_MIRROR=https://npmmirror.com/mirrors/electron-builder-
 每个维度每笔都有归属：没选时支出的缺省是「未分类」、收入的缺省是「收入·未分类」，
 两者分开收纳。收入同样参与情境维度。
 
+> **暂不支持移动设备访问。** 界面按桌面宽屏设计（左侧面板在窄屏下会收起、星轨的拖拽与滚轮
+> 交互也依赖鼠标），手机上体验不完整 —— 移动端适配不在当前计划内。
+
 ## 持续集成与发布
 
 - **CI**（`.github/workflows/ci.yml`）：push / PR 触发 —— 后端全量回归（`server && npm test`）+ 前端与壳层脚本语法检查。
