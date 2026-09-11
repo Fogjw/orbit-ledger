@@ -19,8 +19,11 @@ const Data=(typeof window!=='undefined'?window:globalThis).OrbitData;
 /* 渲染用数组（id:'t'+tag_id 字符串，金额查表用数字 tagId） */
 let CATS=[], CTXS=[];
 /** 收入类目：产品约定用同一套 tag 体系加「收入·」前缀（需求基线 §5.3）。
-    星图里它们走独立的绿色圆环样式，不混进支出品类的弧线。 */
+    星图里它们走独立的绿色圆环样式，不混进支出品类的弧线。
+    **两个维度各有一份**：收入的缺省占位「收入·未分类」在每个维度里都建一个，
+    所以情景视图要画的是 CTXS 里的收入节点，而不是把品类的收入类目搬过去。 */
 let INCOMES=[];
+let INC_CTXS=[];
 const isIncomeTag=t=>String(t.name||'').startsWith('收入');
 let MONTHS=[];
 let TODAY=0;
@@ -36,18 +39,22 @@ function refreshTagArrays(){
   const cats=(Data.cats||[]).map(toRenderTag);
   CATS=cats.filter(t=>!isIncomeTag(t));      // 支出品类：走北斗弧线
   INCOMES=cats.filter(t=>isIncomeTag(t)).map(t=>({...t,color:'#6fe3a8'}));   // 收入统一绿色（基线 §5.3）
-  CTXS=(Data.ctxs||[]).map(toRenderTag);
+  const ctxs=(Data.ctxs||[]).map(toRenderTag);
+  CTXS=ctxs.filter(t=>!isIncomeTag(t));      // 情境里的收入占位不进支出弧线
+  INC_CTXS=ctxs.filter(t=>isIncomeTag(t)).map(t=>({...t,color:'#6fe3a8'}));
   SUBS={};
   for(const tree of Object.values(Data.dims||{})){
     for(const root of (tree.roots||[]))SUBS[root.id]=(root.children||[]).map(toRenderTag);
   }
 }
-/** 把当前窗口的收入金额贴到收入类目上（金额来自 Data.incomeRows） */
+/** 把当前窗口的收入金额贴到收入类目上（金额来自 Data.incomeRows / incomeRowsCtx）
+    两份数据分别对应品类维度与情境维度 —— 收入的四角星在哪个视图里都要画对。 */
 function refreshIncomes(){
-  if(!Data||!INCOMES.length)return;
-  const amt={};
-  for(const r of (Data.incomeRows||[]))amt[r.tagId]=r.amount;
-  INCOMES=INCOMES.map(t=>({...t,amount:amt[t.tagId]||0}));
+  if(!Data)return;
+  const amtOf=rows=>{const m={};for(const r of (rows||[]))m[r.tagId]=r.amount;return m};
+  const catAmt=amtOf(Data.incomeRows), ctxAmt=amtOf(Data.incomeRowsCtx);
+  INCOMES=INCOMES.map(t=>({...t,amount:catAmt[t.tagId]||0}));
+  INC_CTXS=INC_CTXS.map(t=>({...t,amount:ctxAmt[t.tagId]||0}));
 }
 function refreshAmounts(){
   if(!Data)return;
@@ -282,8 +289,10 @@ function buildGraph(){
         sats:[0,1].map(k=>({a0:hash01(c.id+k)*6.28,d:2.1+hash01(c.id+'d'+k)*.9,s:.8+hash01(c.id+'s'+k),sp:(.3+hash01(c.id+'v'+k)*.4)*(k?1:-1)}))});
     });
     // 收入节点：底部独立一排，四角尖星（需求基线 §5.3：「收入为独立样式节点，
-    // 不混入花销节点」）。只显示本期有收入的类目，按金额降序排 —— 与支出同序
-    const inc=INCOMES.filter(c=>c.amount>0).sort((a,b)=>b.amount-a.amount);
+    // 不混入花销节点」）。只显示本期有收入的类目，按金额降序排 —— 与支出同序。
+    // **取当前维度自己的收入类目**：情境视图里画的是情境维的「收入·未分类」，
+    // 早先写死 INCOMES，导致品类里建的收入 tag 跑到情景视图底下去排队（用户实测发现）。
+    const inc=(S.dim==='category'?INCOMES:INC_CTXS).filter(c=>c.amount>0).sort((a,b)=>b.amount-a.amount);
     // 间距适中：单个节点占视口宽的比例设上限（类目少时不会拉得很开），整排居中
     const incGap=0.13, incSpan=Math.min(0.74,Math.max(0,(inc.length-1)*incGap));
     inc.forEach((c,i)=>{
@@ -1293,7 +1302,7 @@ oC.addEventListener('pointerleave',()=>{oDrag=null;setHover(null)});
  * 先拉当月经该主 tag 的花销再切视图：渲染帧里不发请求。
  */
 async function enterDetail(id,opts={}){
-  const tag=CATS.concat(CTXS,INCOMES).find(c=>c.id===id);   // 收入类目也能下钻
+  const tag=CATS.concat(CTXS,INCOMES,INC_CTXS).find(c=>c.id===id);   // 两个维度里的收入类目都能下钻
   if(!tag)return;
   const {from,to}=Data.monthRange;
   try{
@@ -1382,7 +1391,7 @@ let expCtx=null; // {tagId, dimKey, name}
 async function openExpenseList(tag){
   // 收入类目也按「主 tag」处理（它不在 CATS 里，因为 CATS 只留支出品类）
   const isMain=CATS.some(c=>c.tagId===tag.tagId)||CTXS.some(c=>c.tagId===tag.tagId)
-             ||INCOMES.some(c=>c.tagId===tag.tagId);
+             ||INCOMES.some(c=>c.tagId===tag.tagId)||INC_CTXS.some(c=>c.tagId===tag.tagId);
   let dimKey=S.dim;
   if(CATS.some(c=>c.tagId===tag.tagId))dimKey='category';
   else if(CTXS.some(c=>c.tagId===tag.tagId))dimKey='context';
@@ -2094,20 +2103,15 @@ function renderModalChips(){
   }else{
     $('#mCats').innerHTML=catList0.map(c=>`<button class="m-chip${modalSel.category.primary===c.tagId?' on':''}" data-tag-id="${c.tagId}"><i style="background:${c.color}"></i>${c.name}</button>`).join('');
   }
-  // 情境维度对收入不适用：后端压根不给收入挂 context，这里也整块收起，
-  // 免得用户选了半天、存下去却不生效（反过来，收入的品类缺省是「收入·未分类」，见后端）。
-  $('#mCtxLabel').hidden=modalIsIncome;
-  $('#mCtx').hidden=modalIsIncome;
-  if(modalIsIncome){
-    $('#mCtx').innerHTML='';
-    $('#mCtxSub').hidden=true;
-  }else{
-    $('#mCtx').innerHTML=CTXS.map(c=>`<button class="m-chip${modalSel.context.primary===c.tagId?' on':''}" data-tag-id="${c.tagId}"><i style="background:${c.color}"></i>${c.name}</button>`).join('');
-    bindPrimaryChips('#mCtx','context');
-    renderSubRow('context');
-  }
+  // 情境这块对收入、支出一视同仁（收入的缺省占位只是换成「收入·未分类」，见后端）；
+  // 选了就落库 —— 早先「收入不挂情境」的做法让收入在情景维度里没有归属，已回退。
+  $('#mCtxLabel').hidden=false;
+  $('#mCtx').hidden=false;
+  $('#mCtx').innerHTML=CTXS.map(c=>`<button class="m-chip${modalSel.context.primary===c.tagId?' on':''}" data-tag-id="${c.tagId}"><i style="background:${c.color}"></i>${c.name}</button>`).join('');
   bindPrimaryChips('#mCats','category');
+  bindPrimaryChips('#mCtx','context');
   renderSubRow('category');
+  renderSubRow('context');
   document.querySelectorAll('.m-tab').forEach(b=>b.onclick=()=>{
     document.querySelectorAll('.m-tab').forEach(x=>x.classList.remove('active'));b.classList.add('active');
     // 收入 tab 联动品类重渲染
@@ -2116,10 +2120,6 @@ function renderModalChips(){
     const list=catCandidates();
     if(!list.some(c=>c.tagId===modalSel.category.primary)){
       modalSel.category.primary=null;modalSel.category.subs.clear();
-    }
-    // 收入没有情境，切到收入时把情境选中一并清掉，别让它跟着提交
-    if(modalIsIncome){
-      modalSel.context.primary=null;modalSel.context.subs.clear();
     }
     renderModalChips();
   });

@@ -49,7 +49,8 @@ const Data = {
   monthAmountsByDim: {}, // {category: {tagId: 元}, context: {tagId: 元}} 两份维度口径，渲染层按需取
   monthTotal: 0,
   incomeTotal: 0,      // 当前窗口的收入合计（星图收入节点 / 汇总展示）
-  incomeRows: [],      // 当前窗口各收入类目 [{tagId,name,amount}]
+  incomeRows: [],      // 当前窗口各收入类目 [{tagId,name,amount}]（品类维度）
+  incomeRowsCtx: [],   // 同上，但按**情境**维度聚合：收入的缺省占位「收入·未分类」住在每个维度里
   prevMonthTotal: 0,
   monthRange: { from: null, to: null },
 
@@ -119,6 +120,13 @@ const Data = {
     // 收入：总额 + 各收入类目（"收入·生活费 / 工资 / 红包"）
     this.incomeTotal = centsToYuan(incomeStats.totals.income || 0);
     this.incomeRows = (incomeStats.byDimension?.category || []).map(r => ({
+      tagId: r.tag_id,
+      name: r.name,
+      amount: centsToYuan(r.amount_cents),
+    }));
+    // 情景维度的收入同理：收入的缺省占位「收入·未分类」在每个维度里各有一个，
+    // 情景视图要靠这份数据才能把收入那颗四角星画出来（而不是把品类的收入类目搬过去）。
+    this.incomeRowsCtx = (incomeStats.byDimension?.context || []).map(r => ({
       tagId: r.tag_id,
       name: r.name,
       amount: centsToYuan(r.amount_cents),

@@ -136,6 +136,41 @@ export const MIGRATIONS = [
       `);
     },
   },
+  {
+    version: 5,
+    name: '收入的每个维度都要有归属：补回 context 的「收入·未分类」占位',
+    up(db) {
+      // v4 把收入的 context 关联清掉了（当时的判断是「收入没有情境语义」），但那让收入在
+      // 情景维度里彻底没有归属 —— 比原来更不直观（用户：应该自动建一个收入未分类来容纳它）。
+      // 正解是：收入在**每个维度**都用「收入·未分类」占位，与支出的「未分类」同机制、分开收纳；
+      // 前缀还让它天然被认成收入类目，渲染成四角星。
+      // 这里按新规则把每笔收入的 context 归属补回来：主占位「收入·未分类」+ 它的副占位。
+      const INCOME_UNNAMED = '收入·未分类';
+      const ledgers = db.prepare('SELECT DISTINCT ledger_id AS ledgerId FROM expenses WHERE type = ?').all('income');
+      for (const { ledgerId } of ledgers) {
+        const dim = db.prepare("SELECT id FROM dimensions WHERE ledger_id = ? AND key = 'context'").get(ledgerId);
+        if (!dim) continue;
+        const ensure = (name, parentTagId) => {
+          const found = parentTagId === null
+            ? db.prepare('SELECT id FROM tags WHERE ledger_id = ? AND dimension_id = ? AND parent_tag_id IS NULL AND name = ?').get(ledgerId, dim.id, name)
+            : db.prepare('SELECT id FROM tags WHERE ledger_id = ? AND dimension_id = ? AND parent_tag_id = ? AND name = ?').get(ledgerId, dim.id, parentTagId, name);
+          if (found) return Number(found.id);
+          const { lastInsertRowid } = db.prepare(
+            'INSERT INTO tags (ledger_id, dimension_id, name, is_unnamed, color, position, parent_tag_id) VALUES (?, ?, ?, ?, ?, ?, ?)'
+          ).run(ledgerId, dim.id, name, 1, null, 999, parentTagId);
+          return Number(lastInsertRowid);
+        };
+        const mainId = ensure(INCOME_UNNAMED, null);
+        const subId = ensure('未分类', mainId);
+        const link = db.prepare('INSERT INTO expense_tag_links (expense_id, tag_id, role) VALUES (?, ?, ?)');
+        for (const e of db.prepare('SELECT id FROM expenses WHERE ledger_id = ? AND type = ?').all(ledgerId, 'income')) {
+          const has = db.prepare('SELECT COUNT(*) AS n FROM expense_tag_links WHERE expense_id = ? AND tag_id = ?');
+          if (has.get(e.id, mainId).n === 0) link.run(e.id, mainId, 'primary');
+          if (has.get(e.id, subId).n === 0) link.run(e.id, subId, 'secondary');
+        }
+      }
+    },
+  },
 ];
 
 /** 当前 schema 最新版本 */

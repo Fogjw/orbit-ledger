@@ -349,12 +349,12 @@ async function main() {
   await wait(300);
   const incBefore = await js(`document.querySelector('#mCats').textContent.trim().slice(0, 40)`);
   console.log(`[verify] 收入 tab 品类候选（新建前）= "${incBefore}"`);
-  // 收入没有情境语义：收入 tab 下整块情境要收起（后端也不给收入挂 context）
-  const ctxHidden = await js(`(() => {
+  // 收入同样有情境维度（缺省占位是「收入·未分类」），所以收入 tab 下这块照常显示
+  const ctxShown = await js(`(() => {
     const c = document.querySelector('#mCtx'), l = document.querySelector('#mCtxLabel');
-    return Boolean(c && c.hidden && l && l.hidden);
+    return Boolean(c && !c.hidden && l && !l.hidden);
   })()`);
-  console.log(`[verify] 收入 tab 下情境区块收起 = ${ctxHidden ? '是 ✓' : '否 ✗'}`);
+  console.log(`[verify] 收入 tab 下情境区块显示 = ${ctxShown ? '是 ✓' : '否 ✗'}`);
   const newTag = async (tagName) => {
     await click('#btnAddCat');
     await wait(500);
@@ -450,7 +450,7 @@ async function main() {
 
   const ok = gateShown && state.loadedUi && state.canvasLit > 0 && wrote && inputWorks
     && yearVisible && year.centerLit > 0 && errors.length === 0 && noReset !== false
-    && incomeVisible && toastOnTop && tagDelOk && pTitleOk && panelOk && ctxHidden;
+    && incomeVisible && toastOnTop && tagDelOk && pTitleOk && panelOk && ctxShown;
   console.log(`[verify] 结论: ${ok ? '通过' : '未通过'}`);
   win.destroy();
   server.close();

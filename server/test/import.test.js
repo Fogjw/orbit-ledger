@@ -42,29 +42,24 @@ function seedSource(svc) {
 }
 
 /**
- * 按各维 primary 求和，校验「每维 Σ = 该维应覆盖的金额」。
- * 两个维度的口径不同（v4 起）：
- *  - category：每一笔（含收入）都挂品类 ⇒ Σ = 全部金额
- *  - context ：只有支出有情境，收入不参与情境维度 ⇒ Σ = 支出金额
+ * 按各维 primary 求和，校验「每维 Σ = 总额」。
+ * 收入的缺省占位「收入·未分类」在每个维度里各有一份，所以收入同样计入各维 ——
+ * 两个维度都应当等于全部金额（含收入）。
  */
 function assertSumInvariant(svc, ledgerId, expectedTotal) {
   const snap = svc.exports.ledgerSnapshot(ledgerId);
   const dimKeyOf = (tagId) => snap.dimensions.find(d => d.id === snap.tags.find(t => t.id === tagId)?.dimension_id)?.key;
   const perDim = {};
-  let total = 0, expenseTotal = 0;
+  let total = 0;
   for (const e of snap.expenses) {
     total += e.amount_cents;
-    if (e.type === 'expense') expenseTotal += e.amount_cents;
     for (const link of snap.expense_tag_links.filter(x => x.expense_id === e.id && x.role === 'primary')) {
       const k = dimKeyOf(link.tag_id);
       perDim[k] = (perDim[k] ?? 0) + e.amount_cents;
     }
   }
   assert.equal(total, expectedTotal, '总额');
-  const expectedOf = { category: total, context: expenseTotal };
-  for (const [k, v] of Object.entries(perDim)) {
-    assert.equal(v, expectedOf[k] ?? total, `${k} 维 Σ 对不上（category=总额、context=支出额）`);
-  }
+  for (const [k, v] of Object.entries(perDim)) assert.equal(v, total, `${k} 维 Σ=总额`);
 }
 
 describe('导入（备份回读）', () => {

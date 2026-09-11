@@ -30,7 +30,7 @@ export function createExpenseService(db) {
    */
   function resolvePrimary(ledgerId, dim, ref, type) {
     if (ref === undefined || ref === null || ref === '') {
-      const name = (type === 'income' && dim.key === 'category') ? INCOME_UNNAMED_TAG_NAME : undefined;
+      const name = (type === 'income') ? INCOME_UNNAMED_TAG_NAME : undefined;
       return tags.tagById(ledgerId, tags.ensureUnnamedTag(ledgerId, dim.id, { name }));
     }
     const tag = typeof ref === 'number'
@@ -100,11 +100,11 @@ export function createExpenseService(db) {
     const type = input.type === 'income' ? 'income' : 'expense';
 
     // 主 tag：遍历账本全部维度，每维恰一个（未选 → 「未分类」）。
-    // **收入不参与情境维度**：情境表达的是「和谁、在什么场合花的钱」，收入没有这个语义。
-    // 之前硬给收入补一个 context/未分类，后果是那笔收入会从「情景视图 → 未分类」里冒出来
-    // （用户实测：一笔 ¥1800 的收入就挂在 context/未分类 上），看起来像是收入没做维度隔离。
-    const dims = tags.dimensions(ledgerId).filter(d => type !== 'income' || d.key !== 'context');
-    const primaries = dims.map(dim => ({
+    // 收入**照样参与每个维度**，只是缺省占位换成「收入·未分类」——和支出的「未分类」
+    // 同一个机制、分别收纳。占位名前缀还让它天然被认成收入类目（四角星渲染）。
+    // 早先「收入不挂 context」的做法是错的：那样这笔收入在情景维度里没有任何归属，
+    // 反而更不符合直觉（用户：应该自动建一个收入未分类来容纳它）。
+    const primaries = tags.dimensions(ledgerId).map(dim => ({
       dimensionId: dim.id,
       tag: resolvePrimary(ledgerId, dim, input.primary ? input.primary[dim.key] : undefined, type),
     }));

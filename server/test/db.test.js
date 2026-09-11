@@ -191,10 +191,11 @@ describe('v3 tags 两级化迁移（表重建安全性）', () => {
   });
 });
 
-// v4：收入与情境维度解耦。老库里收入笔挂着 context/未分类（那时记账给每维都补占位），
-// 结果是那笔收入会从「情景视图 → 未分类」里冒出来。迁移只清收入的 context 关联。
-describe('v4 收入与情境解耦迁移', () => {
-  test('清掉历史收入笔上的 context 关联，支出的关联原样保留', () => {
+// v4/v5：收入的 context 归属。v4 曾把收入的 context 关联全删（当时的判断是「收入没有
+// 情境语义」），但那让收入在情景维度里彻底没有归属；v5 把归属补回来 —— 补的是
+// 「收入·未分类」而不是原来的「未分类」，与支出分开收纳。
+describe('v4/v5 收入的 context 归属迁移', () => {
+  test('旧库里挂在「未分类」上的收入，迁移后改挂「收入·未分类」；支出的关联不动', () => {
     const db = openDatabase(':memory:');
     migrate(db);
     const ledgers = createLedgerService(db);
@@ -203,24 +204,28 @@ describe('v4 收入与情境解耦迁移', () => {
     const l = ledgers.create('L');
     const inc = expenses.add({ ledgerId: l.id, type: 'income', amountCents: 100, date: '2026-09-01' });
     const exp = expenses.add({ ledgerId: l.id, amountCents: 200, date: '2026-09-02', primary: { category: '餐饮' } });
+
+    // 还原成「老库形态」：收入只挂 context/未分类（v3 及更早就是这么存的）
     const ctxDim = tagSvc.dimensions(l.id).find(d => d.key === 'context');
-    const ctxUnnamed = ctxDim.tags.find(t => t.is_unnamed === 1 && t.name === '未分类');
-    assert.ok(ctxUnnamed, '支出那笔会按需建出 context/未分类');
-
-    // 手工补一条「老库遗留」的关联：v3 及更早，收入也会挂上 context/未分类
+    const plainUnnamed = ctxDim.tags.find(t => t.is_unnamed === 1 && t.name === '未分类');
+    assert.ok(plainUnnamed, '支出那笔按需建出了 context/未分类');
+    db.prepare(`DELETE FROM expense_tag_links WHERE expense_id = ? AND tag_id IN (
+      SELECT t.id FROM tags t JOIN dimensions d ON d.id = t.dimension_id WHERE d.key = 'context')`).run(inc.id);
     db.prepare('INSERT INTO expense_tag_links (expense_id, tag_id, role) VALUES (?, ?, ?)')
-      .run(inc.id, ctxUnnamed.id, 'primary');
-    const ctxLinksOf = (id) => db.prepare(`
-      SELECT COUNT(*) AS n FROM expense_tag_links l
-        JOIN tags t ON t.id = l.tag_id JOIN dimensions d ON d.id = t.dimension_id
-       WHERE l.expense_id = ? AND d.key = 'context'`).get(id).n;
-    assert.equal(ctxLinksOf(inc.id), 1, '迁移前：收入也挂着情境');
+      .run(inc.id, plainUnnamed.id, 'primary');
 
-    // 抹掉 v4 记录再迁移，等价于「用新版本打开一个老库」
-    db.prepare('DELETE FROM schema_version WHERE version = 4').run();
+    const ctxPrimaryName = (id) => db.prepare(`
+      SELECT t.name FROM expense_tag_links l JOIN tags t ON t.id = l.tag_id
+        JOIN dimensions d ON d.id = t.dimension_id
+       WHERE l.expense_id = ? AND d.key = 'context' AND l.role = 'primary'`).all(id).map(r => r.name);
+    assert.deepEqual(ctxPrimaryName(inc.id), ['未分类'], '迁移前：收入挂在支出的「未分类」上');
+
+    // 抹掉 v4/v5 记录再迁移 —— 等价于「用新版打开一个老库」
+    db.prepare('DELETE FROM schema_version WHERE version IN (4, 5)').run();
     migrate(db);
-    assert.equal(ctxLinksOf(inc.id), 0, '迁移后：收入的 context 关联被清掉');
-    assert.equal(ctxLinksOf(exp.id), 2, '支出的 context 关联不受影响（primary + 副占位各一条）');
-    assert.ok(versionRows(db).includes(4), 'v4 重新记录在案');
+
+    assert.deepEqual(ctxPrimaryName(inc.id), ['收入·未分类'], '迁移后：收入改挂自己的占位');
+    assert.deepEqual(ctxPrimaryName(exp.id), ['未分类'], '支出的情境归属不受影响');
+    assert.ok(versionRows(db).includes(5), 'v5 记录在案');
   });
 });
