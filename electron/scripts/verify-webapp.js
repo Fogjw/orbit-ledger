@@ -395,6 +395,24 @@ async function main() {
   console.log(`[verify] 补记一笔 8 月的账：面板时段 "${titleBefore}" → "${titleAfter}"`
     + ` → ${stayPut ? '画面没被拽走 ✓' : '窗口被切到了那笔所在的月份 ✗'}`);
 
+  // 最高一档「全部」：把右轨滑块拖到底，窗口应切成全量（面板标题写「全部时间」）
+  win.webContents.debugger.attach('1.3');
+  try {
+    const rb = JSON.parse(await js(`(() => {
+      const r = document.querySelector('#rail').getBoundingClientRect();
+      return JSON.stringify({ x: Math.round(r.left + r.width / 2), yBottom: Math.round(r.bottom - 2) });
+    })()`));
+    await sendMouse('mousePressed', rb.x, rb.yBottom - 150, 1);
+    await sendMouse('mouseMoved', rb.x, rb.yBottom, 1);
+    await sendMouse('mouseReleased', rb.x, rb.yBottom, 0);
+  } finally {
+    win.webContents.debugger.detach();
+  }
+  await wait(1600);
+  const allTitle = await js(`document.querySelector('#pTitle').textContent.trim()`);
+  const allOk = allTitle.includes('全部时间');
+  console.log(`[verify] 拖到最高档：面板标题 = "${allTitle}" → ${allOk ? '「全部」档可用 ✓' : '没到「全部」档 ✗'}`);
+
   // 收入类目在浮层里显示不出来（用户报的「收入主 tag 创建之后不显示」）。
   // 收入类目与支出品类同属 category 维度、靠名字的「收入」前缀区分，而 CATS 恰好是
   // 「排除了收入类目的那一半」；浮层原先拿 CATS.filter(名字含「收入」) 当收入候选 ⇒ 恒为空。

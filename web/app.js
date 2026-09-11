@@ -118,6 +118,7 @@ function selLabel(){
   if(w){
     if(w.kind==='day')return w.date.replace(/-/g,'/');
     if(w.kind==='year')return w.year+'年';
+    if(w.kind==='all')return '全部时间';
   }
   if(Data&&Data._currentMonthY&&Data._currentMonthM)return Data._currentMonthY+'年'+Data._currentMonthM+'月';
   const m=MONTHS[TL.sel.idx];
@@ -127,7 +128,7 @@ function selLabel(){
     面板标题与空态文案都改用它 —— 之前一律写死「本月」，切到年档/日档读起来就不对了。 */
 function periodWord(){
   const k=(Data&&Data._window&&Data._window.kind)||'month';
-  return k==='day'?'当日':k==='year'?'全年':'本月';
+  return k==='day'?'当日':k==='year'?'全年':k==='all'?'全部':'本月';
 }
 function prevTotal(){
   if(Data&&typeof Data.prevMonthTotal==='number'&&Data.prevMonthTotal>0)return Data.prevMonthTotal;
@@ -704,9 +705,12 @@ function drawGraph(t){
     因此不会出现「日/月/年两套节点叠在一起」的中间画面。
     拖动过程若停在两档之间，也只会落在更近的那一档（相当于弹回/顺势进入）。 */
 function domLevel(){
-  return ['day','month','year'][Math.round(clamp(TL.z,0,2))];
+  return ['day','month','year','all'][Math.round(clamp(TL.z,0,3))];
 }
-const LV_NAME={day:'日',month:'月',year:'年'};
+/** 'all' = 全部：从第一笔账到今天的整个跨度（比年更高的那一档） */
+const LV_NAME={day:'日',month:'月',year:'年',all:'全部'};
+/** 年档与「全部」档共用年节点（全部档只是把整段时间都框进视口） */
+const isYearLike=lv=>lv==='year'||lv==='all';
 function tlMonthColor(mi){
   const m=MONTHS[mi];
   if(m&&m.topColor)return m.topColor;
@@ -721,7 +725,7 @@ function drawOrbit(t){
   const dl=domLevel();
   // 地形（按当前档位的口径）
   oc.save();
-  const vals=dl==='day'?DAYS.map(d=>d.total):dl==='year'?YEARS.map(y=>y.total):MONTHS.map(m=>m.total);
+  const vals=isYearLike(dl)?YEARS.map(y=>y.total):dl==='day'?DAYS.map(d=>d.total):MONTHS.map(m=>m.total);
   const n=vals.length,mx=Math.max(1,...vals);   // mx 兜底 1：空窗口时避免除零
   if(n>1){
     oc.beginPath();
@@ -736,7 +740,7 @@ function drawOrbit(t){
   // **只画当前档位**（不做中间态混合）：两套节点叠在一起很难看，
   // 切换的「顺」由节点入场动画提供，而不是让新旧两套并存。
   if(dl==='day')drawOrbitDay(w,h,t,1);
-  else if(dl==='year')drawOrbitYear(w,h,t,1);
+  else if(isYearLike(dl))drawOrbitYear(w,h,t,1);
   else drawOrbitMonth(w,h,t,1);
 }
 function orbitBase(w,h){
@@ -791,16 +795,22 @@ function timelineFull(){
   return {from:dayNum(`${f.y}-01-01`),to:dayNum(`${l.y}-12-31`)};
 }
 /** 视口 = 中心（天）+ 像素/天比例。
-    比例按**连续**变焦量在三档之间插值 ⇒ 拖动时视口是平滑缩放的（跟手），
+    比例按**连续**变焦量在四档之间插值 ⇒ 拖动时视口是平滑缩放的（跟手），
     而渲染始终只画「最近的那一档」节点，所以不会出现两套节点叠在一起。
-    节点间距由比例决定（月档 64px/月、日档 44px/天），不为塞进视口而压缩。 */
+    节点间距由比例决定（月档 64px/月、日档 44px/天），不为塞进视口而压缩。
+    第四档「全部」＝把整段时间轴都框进视口（年档再往上一级），节点仍是年份。 */
 const PX_PER_MONTH=64, PX_PER_DAY=44, DAYS_PER_MONTH=30.44;
 function viewOf(w){
   const full=timelineFull(), all=Math.max(1,full.to-full.from);
   const PAD=44, vw=Math.max(1,w-PAD*2);
-  const z=clamp(TL.z,0,2);
+  const z=clamp(TL.z,0,3);
   const pDay=PX_PER_DAY, pMonth=PX_PER_MONTH/DAYS_PER_MONTH, pYear=vw/all;
-  const p=z<=1 ? lerp(pDay,pMonth,z) : lerp(pMonth,pYear,z-1);
+  // 日→月→年→全部：前三段按比例插值，最后一段把比例压到「整轴一屏」以下一些，
+  // 让「全部」比年档再退半步（年档仍可能因为年份少而显得很密）。
+  const pAll=pYear*0.62;
+  const p = z<=1 ? lerp(pDay,pMonth,z)
+          : z<=2 ? lerp(pMonth,pYear,z-1)
+          : lerp(pYear,pAll,z-2);
   const half=vw/2/Math.max(.0001,p);      // 视口半径（天）
   // 可平移范围＝**有数据的月份**，而不是整年。时间轴按整年铺是为了年档锚点不跑出画面，
   // 但若照着整年来放开平移，视口能一路拖进大半年的空白里 —— 体感就是「星轨不限位、能一直拖」。
@@ -962,8 +972,8 @@ function orbitHit(x,y){
   const lv=domLevel();
   if(lv==='day'){
     for(let i=0;i<DAYS.length;i++)if(near(dayX(w,i),dayY(h,i)))return{kind:'day',id:i};
-  }else if(lv==='year'){
-    for(let i=0;i<YEARS.length;i++)if(near(xOfDay(dayNum(`${YEARS[i].y}-07-01`),w),yearY(h,i),20))return{kind:'year',id:i};
+  }else if(isYearLike(lv)){
+    for(let i=0;i<YEARS.length;i++)if(near(xOfDay(dayNum(`${YEARS[i].y}-07-01`),w),yearY(h,i),20))return{kind:lv,id:i};
   }else{
     for(let i=0;i<MONTHS.length;i++){const p=monthXY(w,h,i);if(near(p.x,p.y))return{kind:'month',id:i}}
   }
@@ -980,6 +990,7 @@ async function syncWindowToSel(){
   try{
     if(level==='day'&&DAYS[idx])await Data.selectDay(DAYS[idx].date);
     else if(level==='year'&&YEARS[idx])await Data.selectYear(YEARS[idx].y);
+    else if(level==='all')await Data.selectAll();
     else if(level==='month'&&MONTHS[idx])await Data.selectMonth({year:MONTHS[idx].y,month:MONTHS[idx].m});
   }catch(e){toast('切换时间窗失败：'+(e.message||e))}
   refreshDays();refreshMonths();refreshAmounts();
@@ -1047,7 +1058,7 @@ function applyLevelChange(quiet){
 /** 松手/停止滚动后：把变焦量平滑吸附到最近的档位（不停在中间） */
 let zoomAnim=null;
 function snapZoom(){
-  const to=clamp(Math.round(TL.z),0,2);
+  const to=clamp(Math.round(TL.z),0,3);
   if(Math.abs(to-TL.z)<0.001){TL.z=to;return}
   zoomAnim={from:TL.z,to,t0:performance.now(),dur:190};
 }
@@ -1081,7 +1092,7 @@ async function selectTime(kind,id){
 /** 直接落到某一档（初始化 / 点节点 / 回到今天等场合），不带吸附动画 */
 function setZoom(z,quiet){
   zoomAnim=null;
-  TL.z=clamp(Math.round(z),0,2);
+  TL.z=clamp(Math.round(z),0,3);
   syncRail();
   applyLevelChange(quiet);
 }
@@ -1089,7 +1100,7 @@ function setZoom(z,quiet){
 let wheelTimer=null;
 function wheelZoom(dy){
   zoomAnim=null;
-  TL.z=clamp(TL.z+(dy>0?0.34:-0.34),0,2);   // 约三格滚轮跨一档
+  TL.z=clamp(TL.z+(dy>0?0.34:-0.34),0,3);   // 约三格滚轮跨一档
   syncRail();
   applyLevelChange(true);
   clearTimeout(wheelTimer);
@@ -1688,14 +1699,14 @@ function syncChrome(){
   animateNum($('#pExp'),tot,fmtYuan);
   animateNum($('#pInc'),inc,fmtYuan);
   $('#pNum').style.color=bal<0?'#ff9a9a':'#9be9ff';   // 入不敷出是坏消息，用红字说清楚
-  // 日均按当前窗口天数算（日档 1 天、年档 365 天、其余按 30 天）
-  const span=lv==='day'?1:(lv==='year'?365:30);
+  // 日均按当前窗口天数算（日档 1 天、年档 365 天、「全部」按整段时间轴、其余按 30 天）
+  const span=lv==='day'?1:(lv==='all'?Math.max(1,Math.round(timelineFull().to-timelineFull().from)):(lv==='year'?365:30));
   $('#pCount').textContent=`${nUnit==='天'?nExp+' 天有记录':nExp+' 笔'} · 日均支出 ¥${Math.round(tot/span)}`;
   const pv=prevTotal(),d=pv>0?(tot-pv)/pv*100:0;
-  $('#pDelta').textContent=(lv==='year')
-    ?'年度合计'                                        // 年环比需跨年全量，暂不显示
+  $('#pDelta').textContent=isYearLike(lv)
+    ?(lv==='all'?'全部累计':'年度合计')                // 跨期环比需两条全量数据，暂不显示
     :`${d>=0?'▲':'▼'} ${Math.abs(d).toFixed(1)}% vs ${lv==='day'?'前一日':'上期'}`;
-  $('#tlTip').textContent='星轨 · '+LV_NAME[domLevel()]+'视图（点击星星切换'+(lv==='day'?'日期':lv==='year'?'年份':'月份')+'，滚轮或右轨缩放）';
+  $('#tlTip').textContent='星轨 · '+LV_NAME[domLevel()]+'视图（点击星星切换'+(lv==='day'?'日期':isYearLike(lv)?'年份':'月份')+'，滚轮或右轨缩放）';
   // 底部操作提示随视图切换（下钻视图的可用操作与 L1 不同）
   const hintEl=document.querySelector('.hint');
   if(hintEl){
@@ -1885,8 +1896,8 @@ $('#btnToday').onclick=async ()=>{
     const t=new Date().toISOString().slice(0,10);
     const i=DAYS.findIndex(d=>d.date===t);
     TL.sel={level:'day',idx:i>=0?i:DAY_TODAY};
-  }else if(lv==='year'){
-    TL.sel={level:'year',idx:Math.max(0,YEARS.length-1)};
+  }else if(isYearLike(lv)){
+    TL.sel={level:lv,idx:Math.max(0,YEARS.length-1)};
   }else{
     TL.sel={level:'month',idx:TODAY};
   }
@@ -1901,7 +1912,7 @@ function syncRail(){
   if(!handle||!rail)return;
   const r=rail.getBoundingClientRect();
   const h=r.height||1;
-  handle.style.top=clamp(6+TL.z/2*(h-12),4,h-4)+'px';   // 跟手：变焦量连续，手柄就连续
+  handle.style.top=clamp(6+TL.z/3*(h-12),4,h-4)+'px';   // 跟手：变焦量连续，手柄就连续（四档归一化）
 }
 let railDrag=false;
 function railSet(e){
@@ -1909,7 +1920,7 @@ function railSet(e){
   const r=rail.getBoundingClientRect();
   const t=clamp((e.clientY-r.top)/Math.max(1,r.height),0,1);
   zoomAnim=null;
-  TL.z=t*2;                       // 连续跟手（不在这里 round）
+  TL.z=t*3;                       // 连续跟手（不在这里 round）；四档：日/月/年/全部
   syncRail();
   applyLevelChange(true);         // 跨档时才真正换数据（静默）
 }
@@ -2364,7 +2375,7 @@ async function boot(){
 window.OrbitDebug = {
   snapshot(level){
     const saved=TL.z;
-    if(level&&{day:0,month:1,year:2}[level]!==undefined)TL.z={day:0,month:1,year:2}[level];
+    if(level&&{day:0,month:1,year:2,all:3}[level]!==undefined)TL.z={day:0,month:1,year:2,all:3}[level];
     const w=oC.getBoundingClientRect().width;
     const out={
       level:domLevel(),

@@ -167,6 +167,15 @@ const Data = {
       });
   },
 
+  // ===== 全部时间（星轨最高一档：从第一笔账至今）=====
+  async selectAll() {
+    this.monthRange = { from: null, to: null };   // null = 不加时间过滤，统计全量
+    this._window = { kind: 'all' };
+    this._currentMonthY = null;
+    this._currentMonthM = null;
+    await this._loadWindow(null, null);
+  },
+
   // ===== 月选择 =====
   async selectMonth({ year, month }) {
     const from = monthStart(year, month);
