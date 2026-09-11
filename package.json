@@ -2,7 +2,7 @@
   "name": "orbit-ledger",
   "productName": "Orbit 星账",
   "private": true,
-  "version": "1.0.2",
+  "version": "1.0.3",
   "description": "Orbit 星账 · 本地优先的图谱化记账软件（Electron 桌面端 + 浏览器直连 + MCP 同进程）",
   "type": "module",
   "main": "electron/main.js",
@@ -12,6 +12,7 @@
     "shots": "electron electron/scripts/make-shots.js",
     "build:web": "node webapp/build.mjs",
     "verify:web": "electron electron/scripts/verify-webapp.js",
+    "verify:upgrade": "node electron/scripts/verify-upgrade.js",
     "pack": "electron-builder --win --dir --publish never",
     "dist": "electron-builder --win nsis --publish never"
   },
@@ -60,6 +61,7 @@
       "createDesktopShortcut": true,
       "createStartMenuShortcut": true,
       "shortcutName": "Orbit 星账",
+      "deleteAppDataOnUninstall": false,
       "artifactName": "Orbit-Setup-${version}.exe"
     }
   }
