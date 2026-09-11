@@ -2209,6 +2209,10 @@ $('#modalSave').onclick=async ()=>{
       const mi=MONTHS.findIndex(m=>m.y===Data._currentMonthY&&m.m===Data._currentMonthM);
       if(mi>=0)TL.sel={level:'month',idx:mi};
       TODAY=Math.max(0,MONTHS.length-1);
+      // 下钻视图的数据（detailExpenses）是按「账本 + 当月 + 该主 tag」单独缓存的，
+      // 编辑一笔（尤其改了日期/金额/标签）后必须重拉，否则下钻图里那个账单节点会留在原处 ——
+      // 现象就是「把今天的改到昨天，今天的节点还在，切走再切回才消失」。
+      if(S.view==='detail'&&detailTag)await reloadDetailExpenses();
       buildGraph();syncChrome();
       if(!expMask.hidden)await refreshExpList();
       toast('已保存修改 · ¥'+yuan.toLocaleString());
@@ -2239,6 +2243,8 @@ $('#modalSave').onclick=async ()=>{
     const mi=MONTHS.findIndex(m=>m.y===Data._currentMonthY&&m.m===Data._currentMonthM);
     if(mi>=0)TL.sel={level:'month',idx:mi};
     TODAY=Math.max(0,MONTHS.length-1);
+    // 与编辑分支同理：在下钻视图里新记一笔，也要重拉 detailExpenses 才会出现新节点
+    if(S.view==='detail'&&detailTag)await reloadDetailExpenses();
     buildGraph();syncChrome();
     burst(W/2,H-190,'#9be9ff',30);
     toast('已记一笔 · ¥'+yuan.toLocaleString());
