@@ -2,7 +2,7 @@
   "name": "orbit-ledger",
   "productName": "Orbit 星账",
   "private": true,
-  "version": "1.1.6",
+  "version": "1.1.7",
   "description": "Orbit 星账 · 本地优先的图谱化记账软件（Electron 桌面端 + 浏览器直连 + MCP 同进程）",
   "type": "module",
   "main": "electron/main.js",

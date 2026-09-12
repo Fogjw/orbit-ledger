@@ -222,7 +222,13 @@ FunctionEnd
 ; 写安装位置（下次更新靠它找到你）；数据目录**只在用户这次真的填了**才写。
 !macro customInstall
   WriteRegStr SHELL_CONTEXT "${ORBIT_UNINSTALL_KEY}" "InstallLocation" "$INSTDIR"
+  ; 数据配置**只在「首次安装」或「换位置安装」时写**；原地更新一律不动它。
+  ; 1.1.6 那版漏了这个前提：更新时若位置页因为某种原因露了出来，$DataDirValue 会被预填成
+  ; 默认路径并写进配置，应用从此去读一个新目录 —— 用户看到的就是「覆盖更新后数据没了」
+  ;（文件其实还在原处）。这条判断是那次事故的补丁。
   ${If} $DataDirValue != ""
+  ${AndIf} $ExistingDir == ""
+  ${OrIf} $InstallChoice == "move"
     ; 必须写 UTF-16LE + BOM：NSIS 的 FileWrite 走系统 ANSI，中文路径会变乱码，
     ; 应用按 UTF-8 读就会凭空建出乱码目录并把库写进去（实测踩过）。
     ClearErrors
