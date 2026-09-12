@@ -263,8 +263,7 @@ FunctionEnd
 !macro customInstall
   ; 写 HKCU（per-user 安装），与 FindExistingInstall 读取的根键保持一致 ——
   ; 写 SHELL_CONTEXT、读 HKCU 会各写各的，下次更新照样认不出已安装的版本。
-  WriteRegStr HKCU "${ORBIT_UNINSTALL_KEY}" "InstallLocation" "$INSTDIR"
-  ; 数据配置**只在页面给出非空值时才写**：DestPageLeave 已经保证「原地更新且没改这一栏」
+  WriteRegStr HKCU "${ORBIT_UNINSTALL_KEY}" "InstallLocation" "$INSTDIR"  ; 数据配置**只在页面给出非空值时才写**：DestPageLeave 已经保证「原地更新且没改这一栏」
   ; 时它是空的，于是那种情况下这里什么都不做，data-path.txt 逐字节保持原样。
   ; （首次安装、换位置安装、以及用户主动改了路径 ⇒ 非空 ⇒ 正常写入。）
   ${If} $DataDirValue != ""
@@ -278,4 +277,29 @@ FunctionEnd
     FileWriteUTF16LE $0 "$DataDirValue"
     FileClose $0
   ${EndIf}
+!macroend
+
+; 卸载保护：卸载器接下来会 `RMDir /r $INSTDIR`，而用户完全可能把账本放在程序目录里
+;（或者它下面一层，比如 $INSTDIR\store\orbit.db）。**无条件先救出去**再谈别的：
+; CopyFiles 找不到文件只是静默失败，代价仅仅是一个可能为空的目录；
+; 而"先检测再救"一旦检测方式不灵（通配符匹配子目录这种事很容易踩空），
+; 结果就是数据被静默删掉 —— 所以这里选前者。
+; 救出位置固定为 $APPDATA\Orbit 星账\卸载救出\，不会被这次卸载带走。
+; 交互卸载在救完之后再告知一句；静默卸载（自动更新流程）不打断。
+!macro customUnInstall
+  ; 先留一个痕迹：这次卸载是否真的跑到了本钩子（排查用，不影响功能）
+  ClearErrors
+  FileOpen $9 "$APPDATA\Orbit 星账\uninstall-hook.txt" w
+  IfErrors unNoMark
+  FileWrite $9 "customUnInstall ran, INSTDIR=$INSTDIR"
+  FileClose $9
+  unNoMark:
+  CreateDirectory "$APPDATA\Orbit 星账\卸载救出"
+  CopyFiles /SILENT "$INSTDIR\orbit.db*" "$APPDATA\Orbit 星账\卸载救出"
+  CopyFiles /SILENT "$INSTDIR\store\orbit.db*" "$APPDATA\Orbit 星账\卸载救出"
+  CopyFiles /SILENT "$INSTDIR\*\orbit.db*" "$APPDATA\Orbit 星账\卸载救出"
+  IfSilent unDone
+  IfFileExists "$APPDATA\Orbit 星账\卸载救出\orbit.db" 0 unDone
+  MessageBox MB_OK|MB_ICONINFORMATION "安装目录里发现有账本数据，已复制到：$\r$\n$APPDATA\Orbit 星账\卸载救出$\r$\n$\r$\n程序目录接下来会被清空，你的账本不会丢。"
+  unDone:
 !macroend

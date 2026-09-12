@@ -171,6 +171,19 @@ function checkInnerDataDir() {
     const un = findUninstaller();
     if (un) { try { run(un, ['/S']); } catch { /* 尽力而为 */ } waitGone(INSTALL_DIR, 15000); }
     killApp();
+    // 卸载保护：账本原本躺在安装目录里，卸载器会 RMDir /r 掉它 —— 必须先救出来。
+    // 脚本走静默卸载（/S），对应安装器里「静默就直接救出、不打断」那条分支。
+    const rescued = join(process.env.APPDATA, 'Orbit 星账', '卸载救出', 'orbit.db');
+    if (existsSync(rescued)) {
+      const db3 = openDatabase(rescued);
+      const n3 = db3.prepare('SELECT COUNT(*) AS c FROM expenses').get().c;
+      db3.close();
+      if (n3 !== 1) problems.push(`卸载救出的账本笔数不对：${n3}`);
+      else log('卸载把安装目录里的账本救到了「卸载救出」✓（笔数完好）');
+      rmSync(join(process.env.APPDATA, 'Orbit 星账', '卸载救出'), { recursive: true, force: true });
+    } else {
+      problems.push('卸载时安装目录里的账本没被救出（customUnInstall 没生效？）');
+    }
     rmDir(INSTALL_DIR);
   }
 }
