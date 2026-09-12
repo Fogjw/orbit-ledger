@@ -37,6 +37,8 @@ Var ChoiceClose
 Var DestPage
 Var DestField
 Var DestBrowse
+Var DataDirValue     ; 用户选定的账本数据目录（空＝本轮不改配置）
+Var DataDirEdit      ; 数据目录输入框
 
 ; 找本机已有的 Orbit 安装目录。三级兜底，每一级都要真的看到 exe 才认（防误判）：
 ;   ① 自己写的 InstallLocation（1.0.5 起会写）
@@ -149,9 +151,11 @@ Function ChoicePageLeave
   ${EndIf}
 FunctionEnd
 
-; 位置选择页只在「换位置」时出现 —— 选更新的人看不到这一页，也就无从「重新选路径」。
+; 位置选择页：**首次安装**与**换位置安装**时出现；只有「原地更新」才跳过 ——
+; 选更新的人看不到这一页（路径一个字都不变），首次装的人则能自己挑地方。
 Function DestPageCreate
-  ${If} $InstallChoice != "move"
+  ${If} $ExistingDir != ""
+  ${AndIf} $InstallChoice != "move"
     Abort
   ${EndIf}
 
@@ -162,13 +166,28 @@ Function DestPageCreate
   ${EndIf}
 
   StrCpy $MoveDir "$INSTDIR"
-  ${NSD_CreateLabel} 0 0 100% 18u "选择新的安装位置（原来的 $ExistingDir 会保留，不会删除）："
-  Pop $0
+  ; 数据目录预填默认位置：用户不改就按默认，改了才写进配置（更新场景默认不动它）
+  ${If} $DataDirValue == ""
+    StrCpy $DataDirValue "$APPDATA\Orbit 星账"
+  ${EndIf}
+  ${If} $ExistingDir == ""
+    ${NSD_CreateLabel} 0 0 100% 18u "选择安装位置（默认在系统盘的用户目录下，可改到别的盘）："
+    Pop $0
+  ${Else}
+    ${NSD_CreateLabel} 0 0 100% 18u "选择新的安装位置（原来的 $ExistingDir 会保留，不会删除）："
+    Pop $0
+  ${EndIf}
   ${NSD_CreateText} 0 30u 77% 14u "$MoveDir"
   Pop $DestField
   ${NSD_CreateBrowseButton} 80% 29u 20% 16u "浏览…"
   Pop $DestBrowse
   ${NSD_OnClick} $DestBrowse DestBrowseDir
+
+  ; 同一页里把**账本数据位置**也交出去：首次安装可以自己定，换位置时也能顺手改。
+  ${NSD_CreateLabel} 0 56u 100% 26u "账本数据保存位置（数据库文件 orbit.db；换位置不会自动搬走旧数据）："
+  Pop $0
+  ${NSD_CreateDirRequest} 0 84u 100% 14u "$DataDirValue"
+  Pop $DataDirEdit
 
   nsDialogs::Show
 FunctionEnd
@@ -194,12 +213,24 @@ Function DestPageLeave
     ${NSD_SetText} $DestField "$MoveDir"
   ${EndIf}
   StrCpy $INSTDIR "$MoveDir"
+  ; 数据目录：留空＝不改配置（沿用现有或应用默认位置）
+  ${NSD_GetText} $DataDirEdit $DataDirValue
 FunctionEnd
 
 !endif
 
-; 记下安装位置：下次更新靠它一眼找到你（同时也给「换位置」留了干净的注册信息）。
-; 账本数据目录不在这里写 —— 安装器根本不碰它，已有配置保持原样。
+; 写安装位置（下次更新靠它找到你）；数据目录**只在用户这次真的填了**才写。
 !macro customInstall
   WriteRegStr SHELL_CONTEXT "${ORBIT_UNINSTALL_KEY}" "InstallLocation" "$INSTDIR"
+  ${If} $DataDirValue != ""
+    ; 必须写 UTF-16LE + BOM：NSIS 的 FileWrite 走系统 ANSI，中文路径会变乱码，
+    ; 应用按 UTF-8 读就会凭空建出乱码目录并把库写进去（实测踩过）。
+    ClearErrors
+    CreateDirectory "$APPDATA\Orbit 星账"
+    FileOpen $0 "$APPDATA\Orbit 星账\data-path.txt" w
+    FileWriteByte $0 255
+    FileWriteByte $0 254
+    FileWriteUTF16LE $0 "$DataDirValue"
+    FileClose $0
+  ${EndIf}
 !macroend

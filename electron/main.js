@@ -129,12 +129,23 @@ async function boot() {
   console.log(`[electron] 窗口已载入 ${srv.url}（关窗不退出，可右键托盘图标退出）`);
 }
 
-app.whenReady()
-  .then(() => { Menu.setApplicationMenu(buildMenu()); return boot(); })
-  .catch((err) => {
-    dialog.showErrorBox('Orbit 启动失败', String(err?.stack ?? err));
-    app.quit();
-  });
+/**
+ * 单实例锁：第二次双击（或从快捷方式再启动）不该再拉一个进程出来 ——
+ * 那样会有两个内嵌服务抢同一个数据库、两个托盘图标。这里让后来的实例直接退出，
+ * 由已有实例把窗口唤到前台。
+ */
+const gotLock = app.requestSingleInstanceLock();
+if (!gotLock) {
+  app.quit();
+} else {
+  app.on('second-instance', () => { showWin(); });
+  app.whenReady()
+    .then(() => { Menu.setApplicationMenu(buildMenu()); return boot(); })
+    .catch((err) => {
+      dialog.showErrorBox('Orbit 启动失败', String(err?.stack ?? err));
+      app.quit();
+    });
+}
 
 // 关掉窗口**不**退出应用：内嵌服务还在监听，浏览器直连与 MCP 都要靠它
 app.on('window-all-closed', () => { /* 有意留空：退出由托盘菜单决定 */ });
