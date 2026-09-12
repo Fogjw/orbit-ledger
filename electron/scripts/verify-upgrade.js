@@ -213,6 +213,7 @@ function main() {
     db.close();
     mkdirSync(CFG_DIR, { recursive: true });
     writeFileSync(CFG, Buffer.concat([Buffer.from([0xff, 0xfe]), Buffer.from(DATA_DIR, 'utf16le')]));
+    const cfgBytesBefore = readFileSync(CFG);
     const hash0 = sha(dbFile);
     log(`旧数据就位：${rows0} 笔 · ${dbFile} · sha ${hash0}`);
 
@@ -225,6 +226,14 @@ function main() {
     const cfgAfter = readCfg(CFG);
     if (cfgAfter !== DATA_DIR) problems.push(`数据目录配置被改写：期望「${DATA_DIR}」，实际「${cfgAfter}」`);
     else log(`数据目录配置未被重置 ✓（仍是 ${cfgAfter}）`);
+    // 逐字节比对：字符相等还不够 —— 编码/BOM/行尾任何一处变了都算「安装器动了用户的配置」，
+    // 而应用正是按字节嗅探编码来读它的（1.1.6 那次事故就是它被悄悄换成了默认路径）。
+    const cfgBytesAfter = existsSync(CFG) ? readFileSync(CFG) : null;
+    if (!cfgBytesAfter || !cfgBytesBefore.equals(cfgBytesAfter)) {
+      problems.push('data-path.txt 的字节与安装前不一致（安装器不该碰它）');
+    } else {
+      log(`data-path.txt 逐字节未变 ✓（${cfgBytesBefore.length} 字节）`);
+    }
 
     if (!existsSync(dbFile)) problems.push('数据库文件被删掉了');
     else if (sha(dbFile) !== hash0) problems.push('数据库文件被替换或改写');

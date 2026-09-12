@@ -37,17 +37,43 @@ Var ChoiceClose
 Var DestPage
 Var DestField
 Var DestBrowse
-Var DataDirValue     ; 用户选定的账本数据目录（空＝本轮不改配置）
+Var DataDirValue     ; 本轮要写进配置的数据目录；置空＝保持现状、不动配置文件
 Var DataDirEdit      ; 数据目录输入框
+Var PrevDataDir      ; 上次配置里记的数据目录
+Var HasPrevDataDir   ; 是否已有配置文件（"1"/"0"）
+
+; 读上次写下的数据目录。**覆盖更新必须沿用它** —— 用户升级后应用要回到原来那本账，
+; 而不是跑去默认位置新建一个空库（这条是 1.1.6 事故的根因：当时我把这个读取删掉了）。
+Function ReadPrevDataDir
+  StrCpy $PrevDataDir ""
+  StrCpy $HasPrevDataDir "0"
+  IfFileExists "$APPDATA\Orbit 星账\data-path.txt" 0 rpdDone
+  StrCpy $HasPrevDataDir "1"
+  FileOpen $0 "$APPDATA\Orbit 星账\data-path.txt" r
+  IfErrors rpdDone
+  FileReadByte $0 $1        ; BOM 第 1 字节
+  FileReadByte $0 $2        ; BOM 第 2 字节
+  ${If} $1 == 255
+  ${AndIf} $2 == 254
+    FileReadUTF16LE $0 $PrevDataDir
+  ${EndIf}
+  FileClose $0
+  rpdDone:
+FunctionEnd
 
 ; 找本机已有的 Orbit 安装目录。三级兜底，每一级都要真的看到 exe 才认（防误判）：
 ;   ① 自己写的 InstallLocation（1.0.5 起会写）
 ;   ② 注册表里的 UninstallString 反推目录（1.0.0~1.0.4 只写了这个）
 ;   ③ $INSTDIR 的默认值（per-user 安装即 $LOCALAPPDATA\Programs\Orbit 星账）
+;
+; 根键一律写成 **HKCU**：本应用是 per-user 安装（`perMachine: false`），卸载信息就在 HKCU。
+; 早先这里用的是 `SHELL_CONTEXT`，而它在 `.onInit` 阶段（customInit 所在）**还没被赋值**，
+; 于是两条注册表读取全部落空 —— 明明装着旧版本却判成「全新安装」，位置页冒出来、
+; 用户一路下一步就把数据路径写成了默认值（1.1.7 那次线上事故的真正原因）。
 Function FindExistingInstall
   StrCpy $ExistingDir ""
 
-  ReadRegStr $0 SHELL_CONTEXT "${ORBIT_UNINSTALL_KEY}" "InstallLocation"
+  ReadRegStr $0 HKCU "${ORBIT_UNINSTALL_KEY}" "InstallLocation"
   ${If} $0 != ""
     IfFileExists "$0\${ORBIT_EXE}" 0 inLocDone
     StrCpy $ExistingDir "$0"
@@ -55,7 +81,7 @@ Function FindExistingInstall
     inLocDone:
   ${EndIf}
 
-  ReadRegStr $0 SHELL_CONTEXT "${ORBIT_UNINSTALL_KEY}" "UninstallString"
+  ReadRegStr $0 HKCU "${ORBIT_UNINSTALL_KEY}" "UninstallString"
   ${If} $0 != ""
     StrCpy $0 "$0" "" 1          ; 去掉开头的引号
     StrCpy $0 "$0" -1            ; 再去掉结尾的引号
@@ -166,8 +192,13 @@ Function DestPageCreate
   ${EndIf}
 
   StrCpy $MoveDir "$INSTDIR"
-  ; 数据目录预填默认位置：用户不改就按默认，改了才写进配置（更新场景默认不动它）
-  ${If} $DataDirValue == ""
+  ; 数据目录预填：**先看上次配置**（更新时沿用原处，用户不改就回到原来那本账）；
+  ; 没有配置才用默认位置。这是「覆盖更新不该把数据指到别处」的关键一步。
+  Call ReadPrevDataDir
+  ${If} $HasPrevDataDir == "1"
+  ${AndIf} $PrevDataDir != ""
+    StrCpy $DataDirValue "$PrevDataDir"
+  ${Else}
     StrCpy $DataDirValue "$APPDATA\Orbit 星账"
   ${EndIf}
   ${If} $ExistingDir == ""
@@ -213,22 +244,30 @@ Function DestPageLeave
     ${NSD_SetText} $DestField "$MoveDir"
   ${EndIf}
   StrCpy $INSTDIR "$MoveDir"
-  ; 数据目录：留空＝不改配置（沿用现有或应用默认位置）
-  ${NSD_GetText} $DataDirEdit $DataDirValue
+  ; 数据目录：**只有用户真的改了才写配置**。
+  ; 「原地更新且没动这一栏」时置空 ⇒ customInstall 不碰 data-path.txt，
+  ; 用户的账本仍指在原来的位置（哪怕位置页因为检测失败而意外露了出来）。
+  ${NSD_GetText} $DataDirEdit $0
+  ${If} $ExistingDir != ""
+  ${AndIf} $InstallChoice != "move"
+  ${AndIf} $0 == $DataDirValue
+    StrCpy $DataDirValue ""
+  ${Else}
+    StrCpy $DataDirValue "$0"
+  ${EndIf}
 FunctionEnd
 
 !endif
 
 ; 写安装位置（下次更新靠它找到你）；数据目录**只在用户这次真的填了**才写。
 !macro customInstall
-  WriteRegStr SHELL_CONTEXT "${ORBIT_UNINSTALL_KEY}" "InstallLocation" "$INSTDIR"
-  ; 数据配置**只在「首次安装」或「换位置安装」时写**；原地更新一律不动它。
-  ; 1.1.6 那版漏了这个前提：更新时若位置页因为某种原因露了出来，$DataDirValue 会被预填成
-  ; 默认路径并写进配置，应用从此去读一个新目录 —— 用户看到的就是「覆盖更新后数据没了」
-  ;（文件其实还在原处）。这条判断是那次事故的补丁。
+  ; 写 HKCU（per-user 安装），与 FindExistingInstall 读取的根键保持一致 ——
+  ; 写 SHELL_CONTEXT、读 HKCU 会各写各的，下次更新照样认不出已安装的版本。
+  WriteRegStr HKCU "${ORBIT_UNINSTALL_KEY}" "InstallLocation" "$INSTDIR"
+  ; 数据配置**只在页面给出非空值时才写**：DestPageLeave 已经保证「原地更新且没改这一栏」
+  ; 时它是空的，于是那种情况下这里什么都不做，data-path.txt 逐字节保持原样。
+  ; （首次安装、换位置安装、以及用户主动改了路径 ⇒ 非空 ⇒ 正常写入。）
   ${If} $DataDirValue != ""
-  ${AndIf} $ExistingDir == ""
-  ${OrIf} $InstallChoice == "move"
     ; 必须写 UTF-16LE + BOM：NSIS 的 FileWrite 走系统 ANSI，中文路径会变乱码，
     ; 应用按 UTF-8 读就会凭空建出乱码目录并把库写进去（实测踩过）。
     ClearErrors
