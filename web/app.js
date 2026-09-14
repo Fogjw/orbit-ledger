@@ -26,10 +26,30 @@ let INCOMES=[];
 let INC_CTXS=[];
 const isIncomeTag=t=>String(t.name||'').startsWith('收入');
 let MONTHS=[];
-let TODAY=0;
-let DAYS=[];    // 日档：当前时间窗所在月的逐日序列（数据来自 Data.days）
+/* 「今天」在各档时间轴里的下标，**只认真实日期**（今天没记账就不在序列里 → -1）。
+   时间轴只含有记账的格子，早先这里直接取「最后一个格子」（TODAY=MONTHS.length-1），
+   于是今天没记账时，末尾那个上月的节点会顶着「✦ 今天」的标注 —— 明明不是今天。
+   绘制处读这三个值；「回到今天」按钮走 todayIdxIn()，不读它们。 */
+let MONTH_TODAY=-1;
+let YEAR_TODAY=-1;
+let DAYS=[];    // 日档：逐日序列（数据来自 Data.days，全量）
 let YEARS=[];   // 年档：由 MONTHS 按年聚合
-let DAY_TODAY=0; // 日档里的"今天"下标
+let DAY_TODAY=-1;
+/** 本地日期 'YYYY-MM-DD'。
+    不能用 new Date().toISOString()：那是 UTC，东八区 00:00–08:00 会算成「昨天」，
+    星轨的「今天」标注与新建时的默认记账日期都会错一天。 */
+function todayISO(){
+  const d=new Date();
+  return d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0')+'-'+String(d.getDate()).padStart(2,'0');
+}
+/** 序列里「今天」那一格的下标：先精确匹配；今天没记账时退到最后一个**不晚于今天**的格子
+    （宁可停在最近有记录的那格上，也不给未来的格子加「今天」标注）；都没有则 0。 */
+function todayIdxIn(arr,exact,notAfter){
+  const i=arr.findIndex(exact);
+  if(i>=0)return i;
+  for(let k=arr.length-1;k>=0;k--)if(notAfter(arr[k]))return k;
+  return 0;
+}
 const tagAmountMap={category:{},context:{}};
 /* 副 tag 索引：父主 tag id → 该主 tag 下的副 tag 数组（记一笔多选的数据源） */
 let SUBS={};
@@ -66,7 +86,8 @@ function refreshAmounts(){
 function refreshMonths(){
   if(!Data)return;
   MONTHS=(Data.months||[]).map(m=>({label:m.label,full:m.full,total:m.total,y:m.y,m:m.m,topColor:m.topColor||''}));
-  TODAY=Math.max(0,MONTHS.length-1);
+  const [ty,tm]=todayISO().split('-').map(Number);
+  MONTH_TODAY=MONTHS.findIndex(m=>m.y===ty&&m.m===tm);   // 今天没记账 → -1（末尾月上不再冒「今天」）
   // 年档：按年聚合（星轨年视图的数据源）
   const byY=new Map();
   for(const m of MONTHS){
@@ -76,16 +97,18 @@ function refreshMonths(){
     byY.set(m.y,cur);
   }
   YEARS=[...byY.values()].sort((a,b)=>a.y-b.y).map(v=>({...v,color:v.topColor||'#9be9ff'}));
+  YEAR_TODAY=YEARS.findIndex(y=>y.y===ty);
 }
-/** 日档：取当前时间窗所在月的逐日序列（Data.days 由 _loadWindow 填充） */
+/** 日档：逐日序列（Data.days 由 _loadWindow 填充，取的是全量，星轨日档可拖到任意时间） */
 function refreshDays(){
   if(!Data)return;
   DAYS=(Data.days||[]).map(d=>({label:d.label,date:d.date,y:d.y,m:d.m,day:d.d,total:d.total,
     topName:d.topName,color:d.topColor||'#9be9ff'}));
-  const t=new Date().toISOString().slice(0,10);
-  const i=DAYS.findIndex(d=>d.date===t);
-  DAY_TODAY=i>=0?i:Math.max(0,DAYS.length-1);
+  DAY_TODAY=DAYS.findIndex(d=>d.date===todayISO());   // 今天没记账 → -1
 }
+/** 最新一个有记录的月下标（空账本兜 0）—— 只用于「当前窗口对不上任何节点」时的索引兜底，
+    与「今天」无关：今天没记账时，它指向的就是上个月。 */
+const lastMonthIdx=()=>Math.max(0,MONTHS.length-1);
 
 /* 画布视角：x/y = 平移（屏幕像素），z = 缩放倍数。
    布局不再把节点硬塞进视口 —— 内容可以超出窗口，靠平移/缩放查看。 */
@@ -111,8 +134,21 @@ function amountsForTime(){
 function selTotal(){
   return (Data&&typeof Data.monthTotal==='number')?Data.monthTotal:0;
 }
-/** 金额显示：负数写成 -¥1,234 —— 负号放在货币符号前，一眼能看出是超支 */
-const fmtYuan=v=>{const n=Math.round(v);return (n<0?'-¥':'¥')+Math.abs(n).toLocaleString()};
+/* ---------- 金额显示：全站唯一出口 ----------
+   账本的最小单位是「分」，所以金额文本必须精确到分、且分以下不计 ——
+   既不四舍五入成整数（¥1,905.36 显示成 ¥1,905），也不把 1/100 的浮点毛刺吐出来。
+   顶部总额、左侧洞察、星轨节点、图谱标签、账单详情、明细列表、记账输入框全走这里；
+   以前各处各写一遍 Math.round(v).toLocaleString()，同一个数在左边是 ¥1,905、
+   在右边是 ¥1,905.36，口径不一致比数字难看更糟。 */
+/** 分 → 金额文本（元，不带 ¥）。group=false 给输入框用（里面不能有千分位逗号） */
+function moneyText(cents,group=true){
+  const n=Math.round(Number(cents)||0);              // 入参就是「分」：先落到整数分，浮点毛刺到此为止
+  const a=Math.abs(n), yi=Math.floor(a/100), frac=a%100;
+  const fracStr=frac?('.'+String(frac).padStart(2,'0').replace(/0$/,'')):'';  // 末尾 0 不写：¥12.5 而非 ¥12.50
+  return (n<0?'-':'')+(group?yi.toLocaleString('en-US'):String(yi))+fracStr;
+}
+/** 元 → 金额文本（带 ¥）。渲染层的合计与动画中间值都是「元」，先落到分再排版 */
+const fmtYuan=v=>(Number(v)<0?'-¥':'¥')+moneyText(Math.abs(Number(v)||0)*100);
 function selLabel(){
   const w=Data&&Data._window;
   if(w){
@@ -650,9 +686,9 @@ function drawGraph(t){
     if(showLb){
       if(isExp){
         // 账单节点只显示金额，不带名字/日期 —— 具体内容点开详情看
-        label('¥'+n.amount.toLocaleString(),'',n.x,n.y+n.R*sc+16,a*(hot?1:.6),hovG===n.id);
+        label(fmtYuan(n.amount),'',n.x,n.y+n.R*sc+16,a*(hot?1:.6),hovG===n.id);
       }else{
-        label(n.ref.name,'¥'+n.amount.toLocaleString(),n.x,n.y+n.R*sc+16,a*(hot?1:.6),hovG===n.id);
+        label(n.ref.name,fmtYuan(n.amount),n.x,n.y+n.R*sc+16,a*(hot?1:.6),hovG===n.id);
       }
     }
   }
@@ -685,7 +721,7 @@ function drawGraph(t){
       g.beginPath();g.arc(n.x+Math.cos(an)*R*s.d,n.y+Math.sin(an)*R*s.d*.8,s.s,0,7);g.fill();
     }
     g.restore();
-    label(n.ref.name,'¥'+n.amount.toLocaleString(),n.x,n.y+R+18,a,isH);
+    label(n.ref.name,fmtYuan(n.amount),n.x,n.y+R+18,a,isH);
   }
   g.restore();   // 结束画布平移：爆裂粒子走屏幕坐标，不随相机移动
 
@@ -784,7 +820,7 @@ function dayNum(ymd){
 /** 数据覆盖的完整时间范围（按最早/最晚月取整到月边界） */
 function timelineFull(){
   if(!MONTHS.length){
-    const t=dayNum(new Date().toISOString().slice(0,10));
+    const t=dayNum(todayISO());
     return {from:t-15,to:t+15};
   }
   // 边界按**整年**取整：年档的节点锚在「该年年中」（7/1，见 yearX 与 anchorCenter），
@@ -904,7 +940,7 @@ function drawOrbitMonth(w,h,t,al){
       oc.fillText(m.y,p.x,20);oc.restore();
     }
     const age=(MONTHS.length-1-i)/(MONTHS.length-1);
-    const R=clamp(2.6+Math.sqrt(m.total)*.10,3,7)+(i===TODAY?2:0);
+    const R=clamp(2.6+Math.sqrt(m.total)*.10,3,7)+(i===MONTH_TODAY?2:0);
     const hov=S.hoverKind==='month'&&TL.sel.level==='month'&&S.hover===i;
     const foc=TL.sel.level==='month'&&TL.sel.idx===i;
     oc.save();oc.globalAlpha=al*(1-.55*age);
@@ -913,7 +949,7 @@ function drawOrbitMonth(w,h,t,al){
     oc.restore();
     oc.save();oc.globalAlpha=al*(hov?1:(1-.5*age));
     tlStar(p.x,p.y,R*(hov?1.25:1),tlMonthColor(i),1);
-    if(i===TODAY){
+    if(i===MONTH_TODAY){
       // 双层呼吸环：内外相位错开，比单环同相呼吸更自然
       const b1=Math.sin(t*1.8), b2=Math.sin(t*1.8+1.15);
       oc.strokeStyle=`rgba(160,240,255,${.50+.28*b1})`;oc.lineWidth=1.6;
@@ -924,10 +960,10 @@ function drawOrbitMonth(w,h,t,al){
     else if(foc){oc.strokeStyle='rgba(255,255,255,.8)';oc.lineWidth=1.2;oc.beginPath();oc.arc(p.x,p.y,R+4,0,7);oc.stroke()}
     if(hov){oc.strokeStyle='#fff';oc.lineWidth=1.4;oc.beginPath();oc.arc(p.x,p.y,R+5,0,7);oc.stroke()}
     oc.restore();
-    if(i%2===0||i===TODAY||foc||hov){
-      oc.save();oc.globalAlpha=al*.85;oc.fillStyle=i===TODAY?'#9df3ff':'#8b96b5';
-      oc.font=(i===TODAY?'700 11px':'10px')+' Inter,"PingFang SC",sans-serif';oc.textAlign='center';
-      oc.fillText(i===TODAY?'✦ 今天 '+m.label:m.label,p.x,p.y+R+15);
+    if(i%2===0||i===MONTH_TODAY||foc||hov){
+      oc.save();oc.globalAlpha=al*.85;oc.fillStyle=i===MONTH_TODAY?'#9df3ff':'#8b96b5';
+      oc.font=(i===MONTH_TODAY?'700 11px':'10px')+' Inter,"PingFang SC",sans-serif';oc.textAlign='center';
+      oc.fillText(i===MONTH_TODAY?'✦ 今天 '+m.label:m.label,p.x,p.y+R+15);
       oc.restore();
     }
   }
@@ -986,13 +1022,13 @@ function drawOrbitYear(w,h,t,al){
     oc.save();oc.globalAlpha=al;
     tlStar(x,yy,R*(hov?1.15:1),col,1);
     if(foc){oc.strokeStyle='rgba(255,255,255,.85)';oc.lineWidth=1.4;oc.beginPath();oc.arc(x,yy,R+5,0,7);oc.stroke()}
-    if(i===YEARS.length-1){oc.strokeStyle=`rgba(160,240,255,${.5+.3*Math.sin(t*2.2)})`;oc.lineWidth=1.5;
+    if(i===YEAR_TODAY){oc.strokeStyle=`rgba(160,240,255,${.5+.3*Math.sin(t*2.2)})`;oc.lineWidth=1.5;
       oc.beginPath();oc.arc(x,yy,R+8,0,7);oc.stroke()}
     oc.restore();
     oc.save();oc.globalAlpha=al;oc.fillStyle='#dfe7fa';oc.font='700 12px Inter,"PingFang SC",sans-serif';oc.textAlign='center';
-    oc.fillText(y.label+(i===YEARS.length-1?' · 今':''),x,yy+R+17);
+    oc.fillText(y.label+(i===YEAR_TODAY?' · 今':''),x,yy+R+17);
     oc.font='10.5px Inter,sans-serif';oc.fillStyle='rgba(150,165,195,.85)';
-    oc.fillText('¥'+Math.round(y.total).toLocaleString(),x,yy+R+31);
+    oc.fillText(fmtYuan(y.total),x,yy+R+31);
     oc.restore();
   });
 }
@@ -1192,7 +1228,7 @@ function setHover(h){
     }else{
       sub=`${n.ref.count} 笔`;
     }
-    tip.innerHTML=`<b>${title}</b><div class="tt-amt">¥${Number(n.amount||0).toLocaleString()}</div><div style="color:#8b96b5">${sub}</div>`;
+    tip.innerHTML=`<b>${title}</b><div class="tt-amt">${fmtYuan(n.amount||0)}</div><div style="color:#8b96b5">${sub}</div>`;
     tip.hidden=false;gC.style.cursor='default';
     const cid=n.kind==='cat'?n.id:(n.kind==='exp'?n.cat:null);
     document.querySelectorAll('.top-row').forEach(e=>e.classList.toggle('hot',e.dataset.id===cid));
@@ -1203,15 +1239,15 @@ function setHover(h){
     let html='<b>暂无数据</b>';
     if(h.kind==='day'){
       const d=DAYS[h.id];
-      if(d)html=`<b>${d.label}</b><div class="tt-amt">¥${Math.round(d.total).toLocaleString()}</div>`
+      if(d)html=`<b>${d.label}</b><div class="tt-amt">${fmtYuan(d.total)}</div>`
         +`<div style="color:#8b96b5">${d.date}${d.topName?' · '+d.topName:''}</div>`;
     }else if(h.kind==='month'){
       const m=MONTHS[h.id];
-      if(m)html=`<b>${m.full||m.label}</b><div class="tt-amt">¥${Math.round(m.total).toLocaleString()}</div>`
+      if(m)html=`<b>${m.full||m.label}</b><div class="tt-amt">${fmtYuan(m.total)}</div>`
         +'<div style="color:#8b96b5">当月合计</div>';
     }else if(isYearLike(h.kind)){
       const y=YEARS[h.id];
-      if(y)html=`<b>${y.label}</b><div class="tt-amt">¥${Math.round(y.total).toLocaleString()}</div>`
+      if(y)html=`<b>${y.label}</b><div class="tt-amt">${fmtYuan(y.total)}</div>`
         +`<div style="color:#8b96b5">${h.kind==='all'?'全部时间':'当年合计'}</div>`;
     }
     tip.innerHTML=html;tip.hidden=false;
@@ -1380,7 +1416,7 @@ async function enterDetail(id,opts={}){
   resetView();   // 换视图：视角归位，平移状态不跨视图沿用
   // 分类上下文放在返回按钮上（画布中央刻意不画主 tag，避免冗余节点）
   const tot=detailExpenses.reduce((s,e)=>s+e.amount_cents,0);
-  $('#btnBack').textContent='← '+tag.name+(detailExpenses.length?(' · ¥'+(tot/100).toLocaleString()):'');
+  $('#btnBack').textContent='← '+tag.name+(detailExpenses.length?(' · '+fmtYuan(tot/100)):'');
   $('#btnBack').hidden=false;
   buildGraph();syncChrome();
   if(opts.history!==false)pushView();   // 一次下钻＝一条浏览器历史
@@ -1496,7 +1532,7 @@ function renderSubDistribution(mine){
     return `<div class="d-row${d.is_unnamed?' unnamed':''}">
       <span class="d-name">${d.name}</span>
       <div class="d-bar"><i style="width:${Math.max(2,pct)}%;background:${d.color}"></i></div>
-      <span class="d-amt">¥${(d.amount/100).toLocaleString()}</span>
+      <span class="d-amt">${fmtYuan(d.amount/100)}</span>
       <span class="d-cnt">${d.count}笔</span>
       <span class="d-pct">${pct}%</span>
     </div>`;
@@ -1526,7 +1562,7 @@ async function refreshExpList(){
       const amt=(e.amount_cents/100);
       return `<div class="e-row${e.type==='income'?' income':''}" data-id="${e.id}" data-json="${encodeURIComponent(JSON.stringify(e))}" title="点击查看详情（备注 / 关联 tag）">
         <span class="e-date">${d}</span>
-        <span class="e-amt">¥${amt.toLocaleString()}</span>
+        <span class="e-amt">${fmtYuan(amt)}</span>
         <button class="e-del" title="删除这笔">✕</button>
       </div>`;
     }).join('');
@@ -1744,7 +1780,7 @@ function syncChrome(){
   $('#pNum').style.color=bal<0?'#ff9a9a':'#9be9ff';   // 入不敷出是坏消息，用红字说清楚
   // 日均按当前窗口天数算（日档 1 天、年档 365 天、「全部」按整段时间轴、其余按 30 天）
   const span=lv==='day'?1:(lv==='all'?Math.max(1,Math.round(timelineFull().to-timelineFull().from)):(lv==='year'?365:30));
-  $('#pCount').textContent=`${nUnit==='天'?nExp+' 天有记录':nExp+' 笔'} · 日均支出 ¥${Math.round(tot/span)}`;
+  $('#pCount').textContent=`${nUnit==='天'?nExp+' 天有记录':nExp+' 笔'} · 日均支出 ${fmtYuan(tot/span)}`;
   const pv=prevTotal(),d=pv>0?(tot-pv)/pv*100:0;
   $('#pDelta').textContent=isYearLike(lv)
     ?(lv==='all'?'全部累计':'年度合计')                // 跨期环比需两条全量数据，暂不显示
@@ -1773,7 +1809,7 @@ function renderTop(){
       <span class="dot" style="background:${c.color};box-shadow:0 0 8px ${c.color}"></span>
       <span class="top-name">${c.name}</span>
       <span class="top-bar"><span class="top-fill" style="display:block;width:${Math.round((amts[c.id]||0)/max*100)}%;background:linear-gradient(90deg,${c.color}88,${c.color})"></span></span>
-      <span class="top-amt">¥${(amts[c.id]||0).toLocaleString()}</span>
+      <span class="top-amt">${fmtYuan(amts[c.id]||0)}</span>
     </div>`).join('');
   document.querySelectorAll('.top-row').forEach(el=>{
     el.onmouseenter=()=>setHover({kind:'cat',id:el.dataset.id});
@@ -1795,12 +1831,11 @@ async function switchLedger(id,opts={}){
   try{
     await Data.selectLedger(id);
     refreshTagArrays();refreshMonths();refreshAmounts();
-    TODAY=Math.max(0,MONTHS.length-1);
     const ni=MONTHS.findIndex(m=>m.y===Data._currentMonthY&&m.m===Data._currentMonthM);
     // 换账本后回到月档：新账本的时间跨度/数据都变了，沿用旧档位容易与选中项对不上
     TL.z=1;TL.pan=0;appliedLevel='month';
     resetView();
-    TL.sel={level:'month',idx:ni>=0?ni:TODAY};
+    TL.sel={level:'month',idx:ni>=0?ni:lastMonthIdx()};
   }catch(e){toast('切换账本失败：'+(e.message||e))}
   renderLedgerDD();
   buildGraph();syncChrome();
@@ -1932,17 +1967,18 @@ function setDim(v,opts={}){
   toast(v==='category'?'维度 · 品类（这是什么钱）':'维度 · 情境（和谁 / 什么场景）');
 }
 seg('#dimSeg',v=>setDim(v));
-/** 「回到今天」按当前档位落地：日→今天那天 / 月→最新月 / 年→最新年 */
+/** 「回到今天」按当前档位落地：日→今天那天 / 月→今天所在月 / 年→今年。
+    今天没记账时时间轴里没有「今天」这一格，此时退到最后一个**不晚于今天**的格子
+    （todayIdxIn 兜底）—— 停在哪一格是一回事，把那一格标注成「今天」是另一回事，不能混。 */
 $('#btnToday').onclick=async ()=>{
   const lv=domLevel();
+  const t=todayISO(), ty=Number(t.slice(0,4)), ym=t.slice(0,7);
   if(lv==='day'){
-    const t=new Date().toISOString().slice(0,10);
-    const i=DAYS.findIndex(d=>d.date===t);
-    TL.sel={level:'day',idx:i>=0?i:DAY_TODAY};
+    TL.sel={level:'day',idx:todayIdxIn(DAYS,d=>d.date===t,d=>d.date<=t)};
   }else if(isYearLike(lv)){
-    TL.sel={level:lv,idx:Math.max(0,YEARS.length-1)};
+    TL.sel={level:lv,idx:todayIdxIn(YEARS,y=>y.y===ty,y=>y.y<=ty)};
   }else{
-    TL.sel={level:'month',idx:TODAY};
+    TL.sel={level:'month',idx:todayIdxIn(MONTHS,m=>m.y+'-'+String(m.m).padStart(2,'0')===ym,m=>m.y+'-'+String(m.m).padStart(2,'0')<=ym)};
   }
   TL.pan=0;
   await syncWindowToSel();
@@ -2040,9 +2076,8 @@ $('#nameOk').onclick=async ()=>{
         await Data.createLedger(raw);           // 建后自动选中（含默认维度）
         S.ledgerId=Data.ledgerId;
         refreshTagArrays();refreshMonths();refreshAmounts();
-        TODAY=Math.max(0,MONTHS.length-1);
         const ni=MONTHS.findIndex(m=>m.y===Data._currentMonthY&&m.m===Data._currentMonthM);
-        TL.sel={level:'month',idx:ni>=0?ni:TODAY};
+        TL.sel={level:'month',idx:ni>=0?ni:lastMonthIdx()};
         renderLedgerDD();
         buildGraph();syncChrome();
         pushView();   // 新建后自动切到新账本：同样算一次视图切换
@@ -2199,7 +2234,7 @@ function openExpenseView(exp){
   viewingExpense=exp;
   const isIncome=exp.type==='income';
   const amt=$('#viewAmount');
-  amt.textContent='¥'+(exp.amount_cents/100).toLocaleString();
+  amt.textContent=fmtYuan(exp.amount_cents/100);
   amt.classList.toggle('income',isIncome);
   $('#viewDate').textContent=exp.date;
   const led=(Data.ledgers||[]).find(l=>String(l.id)===String(exp.ledger_id));
@@ -2231,7 +2266,7 @@ $('#viewEdit').onclick=()=>{
 $('#viewDel').onclick=async ()=>{
   const exp=viewingExpense;if(!exp)return;
   const what=exp.type==='income'?'收入':'花销';
-  if(!confirm(`删除这笔${what} ¥${(exp.amount_cents/100).toLocaleString()} ？`))return;
+  if(!confirm(`删除这笔${what} ${fmtYuan(exp.amount_cents/100)} ？`))return;
   try{
     await OrbitAPI.deleteExpense(exp.ledger_id,exp.id);
     closeExpenseView();
@@ -2262,7 +2297,9 @@ function openExpenseEditor(exp){
   document.querySelectorAll('.m-tab').forEach(x=>x.classList.toggle('active',x.textContent.trim()===(isIncome?'收入':'支出')));
   modalIsIncome=isIncome;
   $('#modalMode').textContent='编辑';
-  $('#mAmount').value=(exp.amount_cents/100).toFixed(0);
+  // 金额回填必须精确到分：以前是 toFixed(0)，一笔 ¥12.34 的收入打开编辑器就变成 12，
+  // 切一下类型再保存，小数位就被四舍五入吃掉了（用户实测）。moneyText 直接按「分」排版，无浮点毛刺。
+  $('#mAmount').value=moneyText(exp.amount_cents,false);
   const di=document.querySelector('.m-row input[type=date]');if(di)di.value=exp.date;
   const rm=$('#mNote');if(rm)rm.value=exp.note||'';
   // 账本 select 锁定为该笔所属账本（不支持跨账本迁移）
@@ -2282,7 +2319,7 @@ $('#btnAdd').onclick=()=>{
   syncModalLedgerOptions();
   const sel=document.querySelector('.m-row select');if(sel)sel.disabled=false;
   const di=document.querySelector('.m-row input[type=date]');
-  if(di){di.value=new Date().toISOString().slice(0,10)}
+  if(di){di.value=todayISO()}
   const rm=$('#mNote');if(rm)rm.value='';
   $('#mAmount').value='88';
   resetModalSel();
@@ -2319,17 +2356,18 @@ $('#modalSave').onclick=async ()=>{
       mask.hidden=true;editingExpense=null;
       // 只刷新数据，**不跟着这笔的时间跳窗口**：把一笔账补记/改到别的月份时画面被拽走，
       // 会让人以为记错了地方（用户实测：「节点显示在这个月…必须手动点当月节点才恢复」）。
-      await Data.afterChange();refreshMonths();refreshAmounts();
+      // refreshTagArrays 不能省：afterChange 重拉维度后，渲染数组（CATS/CTXS/SUBS）还是旧的，
+      // 懒创建出来的「未分类」占位就进不了星图与顶部列表（见下方记账分支的同一条注释）。
+      await Data.afterChange();refreshTagArrays();refreshMonths();refreshAmounts();
       const mi=MONTHS.findIndex(m=>m.y===Data._currentMonthY&&m.m===Data._currentMonthM);
       if(mi>=0)TL.sel={level:'month',idx:mi};
-      TODAY=Math.max(0,MONTHS.length-1);
       // 下钻视图的数据（detailExpenses）是按「账本 + 当月 + 该主 tag」单独缓存的，
       // 编辑一笔（尤其改了日期/金额/标签）后必须重拉，否则下钻图里那个账单节点会留在原处 ——
       // 现象就是「把今天的改到昨天，今天的节点还在，切走再切回才消失」。
       if(S.view==='detail'&&detailTag)await reloadDetailExpenses();
       buildGraph();syncChrome();
       if(!expMask.hidden)await refreshExpList();
-      toast('已保存修改 · ¥'+yuan.toLocaleString());
+      toast('已保存修改 · '+fmtYuan(yuan));
       return;
     }
     const created=await OrbitAPI.addExpense(ledgerId,payload);
@@ -2342,19 +2380,22 @@ $('#modalSave').onclick=async ()=>{
       renderLedgerDD();
       pushView();   // 记到了别的账本：随着记账把视图也切走了，算一次视图切换
     }else{
+      // refreshTagArrays 同样不能省：这笔若不选品类，后端会**懒创建**「未分类」占位主 tag，
+      // afterChange 只是把它拉进 Data.cats —— 渲染数组 CATS 若不跟着重建，这颗新 tag
+      // 在星图和顶部列表里根本不存在，于是「刚记的一笔在左边洞察里看不见」、「第一笔
+      // 不选品类的账，星图上一个节点都不多」（切一下维度或账本才会突然出现）。
       await Data.afterChange();
-      refreshMonths();refreshAmounts();
+      refreshTagArrays();refreshMonths();refreshAmounts();
     }
     // 记账后**不跳到这笔所在的月份**：补记上月/去年的账时把画面拽走，用户会以为记错了地方。
     // 数据已经刷新，这笔会在它该在的档位上出现，切过去看即可。
     const mi=MONTHS.findIndex(m=>m.y===Data._currentMonthY&&m.m===Data._currentMonthM);
     if(mi>=0)TL.sel={level:'month',idx:mi};
-    TODAY=Math.max(0,MONTHS.length-1);
     // 与编辑分支同理：在下钻视图里新记一笔，也要重拉 detailExpenses 才会出现新节点
     if(S.view==='detail'&&detailTag)await reloadDetailExpenses();
     buildGraph();syncChrome();
     burst(W/2,H-190,'#9be9ff',30);
-    toast('已记一笔 · ¥'+yuan.toLocaleString());
+    toast('已记一笔 · '+fmtYuan(yuan));
   }catch(e){
     toast('记账失败：'+(e.message||e));
   }
@@ -2398,9 +2439,8 @@ async function boot(){
     try{await Data.selectMonth({year:last.y,month:last.m});}catch(e){}
     refreshDays();refreshMonths();refreshAmounts();
   }
-  TODAY=Math.max(0,MONTHS.length-1);
   const ni=MONTHS.findIndex(m=>m.y===Data._currentMonthY&&m.m===Data._currentMonthM);
-  TL.sel={level:'month',idx:ni>=0?ni:TODAY};
+  TL.sel={level:'month',idx:ni>=0?ni:lastMonthIdx()};
   TL.z=1;TL.pan=0;   // 默认月档（需求基线 §5.4：启动默认月视图）
   renderLedgerDD();
   buildGraph();syncChrome();syncRail&&syncRail();
@@ -2429,6 +2469,14 @@ window.OrbitDebug = {
       yearX:YEARS.map((_,i)=>Math.round(xOfDay(dayNum(`${YEARS[i].y}-07-01`),w))),
       monthX:MONTHS.map((_,i)=>Math.round(xOfDay(dayNum(`${MONTHS[i].y}-${pad2(MONTHS[i].m)}-15`),w))),
       dayX:DAYS.map((_,i)=>Math.round(xOfDay(dayNum(DAYS[i].date),w))),
+      // 「今天」的落点：只有下标 ≥ 0 才说明那一格真是今天（-1 = 今天没记账）。
+      // 星轨上会不会把末尾节点标成「今天」，就看这两个数 —— 画面上看不出来（标注是画布文字）。
+      todayISO:todayISO(),
+      monthToday:MONTH_TODAY,
+      dayToday:DAY_TODAY,
+      yearToday:YEAR_TODAY,
+      lastMonth:(MONTHS.length?MONTHS[MONTHS.length-1].y+'-'+pad2(MONTHS[MONTHS.length-1].m):null),
+      lastDay:(DAYS.length?DAYS[DAYS.length-1].date:null),
     };
     TL.z=saved;
     return out;

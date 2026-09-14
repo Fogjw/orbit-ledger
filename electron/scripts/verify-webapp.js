@@ -583,6 +583,113 @@ async function main() {
   console.log(`[verify] 标签管理删除：删前 [${tagsBefore.join(', ')}] → 删后 [${tagsAfter.join(', ')}]`
     + ` → ${tagDelOk ? '删掉了且其它 tag 保留 ✓' : '✗'}`);
 
+  // 金额显示必须精确到分（用户报：「左侧洞察不显示角和分」）。
+  // 判据不能用整数金额 —— ¥66 这种数取整与不取整长得一样，只有**分位非 0** 的金额才测得出来：
+  // 先记一笔 ¥12.34，再要求「数据层有分位 ⇒ 显示文本里必须有小数点」。
+  const pExpBefore = await js(`document.querySelector('#pExp').textContent.trim()`);
+  await click('#btnAdd');
+  await wait(700);
+  await js(`(() => {
+    const d = document.querySelector('.m-row input[type=date]');
+    if (d) d.value = new Date().toLocaleDateString('sv-SE');
+    const a = document.querySelector('#mAmount');
+    a.value = '12.34'; a.dispatchEvent(new Event('input', { bubbles: true }));
+    return true;
+  })()`);
+  await click('#modalSave');
+  await wait(2600);
+  await wait(900);   // 等面板数字动画走完
+  const cents = JSON.parse(await js(`JSON.stringify({
+    total: window.OrbitData.monthTotal,
+    shown: document.querySelector('#pExp').textContent.trim(),
+    before: ${JSON.stringify(pExpBefore)},
+  })`));
+  const centsOk = Math.round(cents.total * 100) % 100 !== 0 && cents.shown.includes('.')
+    && cents.shown !== cents.before;
+  console.log(`[verify] 记一笔 ¥12.34 后面板支出 ${cents.before} → ${cents.shown}`
+    + `（数据层合计 ${cents.total}）→ ${centsOk ? '角分照实显示 ✓' : '✗ 被取整了'}`);
+
+  // 编辑视图里金额也必须保留小数位（用户报：「编辑中切换成支出竟然会四舍五入成整数」）。
+  // 走真实路径：顶部列表 → 该类的账单明细 → 点那笔 ¥12.34 → 详情 →「编辑」。
+  // 找不到入口时记为「不计入结论」（与 noReset 同一种处理），不让环境差异污染结论。
+  const entered = await js(`(() => {
+    for (const row of document.querySelectorAll('.top-row')) {
+      if (row.querySelector('.top-amt').textContent.includes('.')) { row.click(); return true; }
+    }
+    return false;
+  })()`);
+  await wait(1500);
+  const picked = entered && await js(`(() => {
+    const row = [...document.querySelectorAll('.e-row')]
+      .find((r) => r.querySelector('.e-amt').textContent.includes('12.34'));
+    if (!row) return false;
+    row.click(); return true;
+  })()`);
+  let editorAmtOk = null;
+  if (picked) {
+    await wait(700);
+    await click('#viewEdit');
+    await wait(700);
+    const editorAmt = await js(`document.querySelector('#mAmount').value`);
+    editorAmtOk = editorAmt === '12.34';
+    console.log(`[verify] 编辑框回填金额 = "${editorAmt}" → ${editorAmtOk ? '小数位原样保留 ✓' : '✗ 小数位丢了'}`);
+    await click('#modalClose');
+    await wait(400);
+  } else {
+    console.log('[verify] 注：没能进到那笔 ¥12.34 的编辑浮层，本项不计入结论');
+  }
+
+  // 星轨的「今天」标注只认真实日期（用户报：今天没记账时，末尾那个节点会顶着「✦ 今天」）。
+  // 判据不看星轨上的画布文字（那是 canvas 画的），直接比下标。
+  // 注意「今天恰好是最后一个节点」时下标法没有区分力 —— 所以必须**制造今天没有记录**的场景：
+  // 把今天那两笔挪到昨天，再走一次真实刷新链，此时正确的实现必须给出 -1（谁也不标），
+  // 而旧实现（取末尾）会指向昨天那一格，照样标「今天」。
+  const todayMark = JSON.parse(await js(`(() => {
+    const t = new Date().toLocaleDateString('sv-SE');
+    const days = window.OrbitData.days || [];
+    return JSON.stringify({ today: t, idx: window.OrbitDebug.snapshot().dayToday, at: days.findIndex((d) => d.date === t) });
+  })()`));
+  const todayMarkOk = todayMark.at >= 0 && todayMark.idx === todayMark.at;
+  console.log(`[verify] 「今天」标注：今天=${todayMark.today} 在日序列的下标=${todayMark.at}`
+    + ` · 星轨标注下标=${todayMark.idx} → ${todayMarkOk ? '标在真实今天上 ✓' : '✗'}`);
+
+  const moved = await js(`(async () => {
+    const today = new Date().toLocaleDateString('sv-SE');
+    const d = new Date(); d.setDate(d.getDate() - 1);
+    const yest = d.toLocaleDateString('sv-SE');
+    const { items = [] } = await window.OrbitAPI.listExpenses(window.OrbitData.ledgerId, {});
+    let n = 0;
+    for (const e of items) {
+      if (e.date !== today) continue;
+      const primary = {}, tags = [];
+      for (const t of e.tags) {
+        if (t.role === 'primary') primary[t.dim_key] = t.tag_id;
+        else tags.push(t.tag_id);
+      }
+      await window.OrbitAPI.updateExpense(e.ledger_id, e.id, {
+        type: e.type, amountCents: e.amount_cents, date: yest,
+        note: e.note || undefined, primary, tags,
+      });
+      n++;
+    }
+    return n;
+  })()`);
+  await click('#btnToday');   // 真实刷新链：切时间窗 → 重拉日序列 → 重绘星轨
+  await wait(2400);
+  const noToday = JSON.parse(await js(`(() => {
+    const t = new Date().toLocaleDateString('sv-SE');
+    const days = window.OrbitData.days || [];
+    return JSON.stringify({
+      inDays: days.some((d) => d.date === t),
+      idx: window.OrbitDebug.snapshot().dayToday,
+      last: days.length - 1,
+    });
+  })()`));
+  const todayAbsentOk = moved > 0 && !noToday.inDays && noToday.idx === -1;
+  console.log(`[verify] 把今天那 ${moved} 笔挪到昨天后：日序列里还有今天 = ${noToday.inDays}`
+    + ` · 星轨标注下标 = ${noToday.idx}（末尾是 ${noToday.last}）`
+    + ` → ${todayAbsentOk ? '今天没记录就没人标「今天」 ✓' : '✗ 末尾节点又冒充了今天'}`);
+
   if (warnings.length) {
     console.log(`[verify] 页面告警 ${warnings.length} 条（不影响结论）：`);
     for (const w of warnings.slice(0, 5)) console.log('  ~ ' + String(w).split('\n')[0].slice(0, 120));
@@ -598,6 +705,7 @@ async function main() {
     && yearVisible && year.centerLit > 0 && errors.length === 0 && noReset !== false
     && incomeVisible && toastOnTop && toastClickThrough && tagDelOk && pTitleOk && panelOk && ctxShown && stayPut && bounded
     && dayTipOk && endReachable
+    && centsOk && todayMarkOk && todayAbsentOk && editorAmtOk !== false
     && railHasIncome && yearHasIncome && incomePlaceholderVisible && expensePlaceholderVisible;
   console.log(`[verify] 结论: ${ok ? '通过' : '未通过'}`);
   win.destroy();
