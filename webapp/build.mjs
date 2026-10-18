@@ -31,7 +31,7 @@ async function main() {
   });
 
   // 2) 界面脚本与静态资源：原样复制，保证与桌面端是同一份代码
-  for (const f of ['app.js', 'data.js', 'styles.css', 'logo.svg', 'favicon.svg']) {
+  for (const f of ['app.js', 'data.js', 'timeline-nav.js', 'styles.css', 'logo.svg', 'favicon.svg']) {
     await cp(join(root, 'web', f), join(out, f));
   }
 
@@ -54,6 +54,7 @@ async function main() {
   html = html
     .replace(/<script src="api\.js"><\/script>\s*/g, '')
     .replace(/<script src="data\.js"><\/script>\s*/g, '')
+    .replace(/<script src="timeline-nav\.js"><\/script>\s*/g, '')
     .replace(/<script src="app\.js"><\/script>\s*/g, '')
     .replace('<head>', `<head>\n<meta http-equiv="Content-Security-Policy" content="${CSP}">`)
     .replace('</body>', '  <script type="module" src="./bundle.js"></script>\n</body>');

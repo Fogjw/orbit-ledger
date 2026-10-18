@@ -4,6 +4,9 @@
    L1 = 金额轨迹星座折线；下钻 = 花销×标签二部图专属视图；
    物理 = 锚点系留真漂浮（无中心引力）；星轨 = 日/月/年连续变焦 + 左右拖拽 */
 const $=s=>document.querySelector(s);
+/* 星轨换档 / 视口保持的纯计算在 timeline-nav.js，必须先于本文件加载 */
+const Timeline=(typeof globalThis!=='undefined'?globalThis:window).OrbitTimeline;
+if(!Timeline) throw new Error('[Orbit] 请先加载 timeline-nav.js');
 const clamp=(v,a,b)=>Math.max(a,Math.min(b,v));
 const lerp=(a,b,t)=>a+(b-a)*t;
 function hash01(s){let h=2166136261;for(let i=0;i<s.length;i++){h^=s.charCodeAt(i);h=Math.imul(h,16777619)}return((h>>>0)%10000)/10000}
@@ -876,18 +879,14 @@ function axisNodes(){
   if(lv==='month')return MONTHS.map(m=>dayNum(`${m.y}-${pad2(m.m)}-15`));
   return YEARS.map(y=>dayNum(`${y.y}-07-01`));
 }
-/** 真实天数 → 压缩后的轴天数（单调不减；单步超过 maxGap 就按 maxGap 计） */
+/** 真实天数 → 压缩后的轴天数（规则在 timeline-nav.js，这里只喂当前档位的节点） */
 function axisDay(d,maxGap){
-  const ns=axisNodes();
-  if(ns.length<2||!(maxGap>0))return d;
-  let acc=0,prev=ns[0];
-  if(d<=prev)return d-prev;
-  for(let i=1;i<ns.length;i++){
-    const step=Math.min(ns[i]-prev,maxGap);
-    if(d<=ns[i])return acc+Math.min(d-prev,maxGap);
-    acc+=step;prev=ns[i];
-  }
-  return acc+Math.min(d-prev,maxGap);
+  return Timeline.axisDay(d,axisNodes(),maxGap);
+}
+/** 星轨画布宽度。视口中心按这个宽度算，和绘制用的是同一条轴 */
+function orbitWidth(){
+  const w=oC.getBoundingClientRect().width;
+  return w>10?w:W;
 }
 /** 天序号 → 星轨像素 x（位置在**压缩轴**上量取） */
 function xOfDay(d,w){
@@ -908,15 +907,6 @@ function anchorCenter(maxGap){
     if(m)return axisDay(dayNum(`${m.y}-07-01`),g);
   }
   return axisDay((full.from+full.to)/2,g);
-}
-/** 当前选中节点代表的时间中心（天）—— 跨档衔接时用来找「覆盖它的新节点」 */
-function selCenterDay(){
-  const {level,idx}=TL.sel;
-  if(level==='day'&&DAYS[idx])return dayNum(DAYS[idx].date);
-  if(level==='month'&&MONTHS[idx])return dayNum(`${MONTHS[idx].y}-${pad2(MONTHS[idx].m)}-15`);
-  if(level==='year'&&YEARS[idx])return dayNum(`${YEARS[idx].y}-07-01`);
-  const full=timelineFull();
-  return (full.from+full.to)/2;
 }
 const monthMidDay=m=>dayNum(`${m.y}-${pad2(m.m)}-15`);
 function monthX(w,i){ return xOfDay(monthMidDay(MONTHS[i]),w) }
@@ -1087,19 +1077,38 @@ async function reloadDetailExpenses(){
     detailExpenses=items.filter(e=>e.tags.some(t=>t.role==='primary'&&t.tag_id===detailTag.tagId));
   }catch(e){detailExpenses=[]}
 }
-/** 跨档时：在新档位里找「覆盖当前选中时间」的那个节点（语义缩放的衔接）
-    注意必须在改写 TL.sel **之前**调用 —— 它读的是旧档位的选中时间 */
+/** 换档后新档位里该选中谁。必须在改写 TL.sel **之前**调用（读的是旧档位的选中项）。
+    下钻取当前节点里最右的子节点（右侧离现在更近，8 月 → 8 月最后一天）；
+    上卷取包住当前节点的父周期。算法在 timeline-nav.js。 */
 function idxForLevel(lv){
-  const c=selCenterDay();
-  const nearest=(arr,dayOf)=>{
-    if(!arr.length)return 0;
-    let best=0,bd=Infinity;
-    arr.forEach((it,i)=>{const dd=Math.abs(dayOf(it)-c);if(dd<bd){bd=dd;best=i}});
-    return best;
-  };
-  if(lv==='day')return nearest(DAYS,d=>dayNum(d.date));
-  if(lv==='month')return nearest(MONTHS,m=>dayNum(`${m.y}-${pad2(m.m)}-15`));
-  return nearest(YEARS,y=>dayNum(`${y.y}-07-01`));
+  return Timeline.indexAfterZoom({
+    fromLevel:TL.sel.level,toLevel:lv,selIdx:TL.sel.idx,
+    days:DAYS,months:MONTHS,years:YEARS,
+  });
+}
+/** 把选中节点挪到视口中心所需的 pan。下钻若仍把锚点留在周期中部，
+    最右的那颗星会落在画面外，看起来就像还停在左侧。 */
+function panToFocus(lv,idx){
+  const real=Timeline.focusRealDay(lv,idx,DAYS,MONTHS,YEARS);
+  if(real==null)return 0;
+  const v=viewOf(orbitWidth());
+  return Timeline.panToHold(real,axisNodes(),v.maxGap,anchorCenter(v.maxGap));
+}
+/** 记下视口中心对应的真实日期。记账刷新会改压缩轴：左侧一旦插入节点，
+    后面每个点的轴坐标都右移，只留着原来的 pan，画面就被拽向更早的一侧。 */
+function holdRail(){
+  const w=orbitWidth();
+  if(!(w>10))return null;
+  const v=viewOf(w);
+  return Timeline.realDayAt(v.c,axisNodes(),v.maxGap);
+}
+/** 刷新之后把刚才那个真实日期重新放回视口中心 */
+function releaseRail(real){
+  if(real==null)return;
+  const w=orbitWidth();
+  if(!(w>10))return;
+  const v=viewOf(w);
+  TL.pan=Timeline.panToHold(real,axisNodes(),v.maxGap,anchorCenter(v.maxGap));
 }
 /** 档位切换后对齐选中项（按时间包含关系），并让视口跟过去 */
 let winTimer=null;
@@ -1114,10 +1123,10 @@ function applyLevelChange(quiet){
   const lv=domLevel();
   if(lv===appliedLevel)return;
   appliedLevel=lv;
-  const idx=idxForLevel(lv);          // 先算（读旧选中时间），再落新档位
+  const idx=idxForLevel(lv);          // 先算（读旧选中项），再落新档位
   TL.sel={level:lv,idx};
-  TL.pan=0;
-  resetView();                        // 换档位＝换内容，视角归位
+  TL.pan=panToFocus(lv,idx);          // 新选中的那颗星停在视口中心，而不是周期中部
+  resetView();                        // 换档位＝换星图内容，星图视角归位（星轨 pan 已单独对齐）
   scheduleWindowSync();
   if(!quiet)toast('星轨 · '+LV_NAME[lv]+'视图');
 }
@@ -2358,9 +2367,13 @@ $('#modalSave').onclick=async ()=>{
       // 会让人以为记错了地方（用户实测：「节点显示在这个月…必须手动点当月节点才恢复」）。
       // refreshTagArrays 不能省：afterChange 重拉维度后，渲染数组（CATS/CTXS/SUBS）还是旧的，
       // 懒创建出来的「未分类」占位就进不了星图与顶部列表（见下方记账分支的同一条注释）。
+      // 编辑浮层关掉之后星轨停在原处：先记下视口中心的真实日期，
+      // 刷新（可能在更早处插入节点、下标也会漂）后再对齐。不要把选中态改写成月档下标 ——
+      // 日档里那个下标会指到最早的几天，画面就跳到最左侧。
+      const held=holdRail();
       await Data.afterChange();refreshTagArrays();refreshMonths();refreshAmounts();
-      const mi=MONTHS.findIndex(m=>m.y===Data._currentMonthY&&m.m===Data._currentMonthM);
-      if(mi>=0)TL.sel={level:'month',idx:mi};
+      relockSel();
+      releaseRail(held);
       // 下钻视图的数据（detailExpenses）是按「账本 + 当月 + 该主 tag」单独缓存的，
       // 编辑一笔（尤其改了日期/金额/标签）后必须重拉，否则下钻图里那个账单节点会留在原处 ——
       // 现象就是「把今天的改到昨天，今天的节点还在，切走再切回才消失」。
@@ -2378,19 +2391,25 @@ $('#modalSave').onclick=async ()=>{
       await Data.selectLedger(ledgerId);
       refreshTagArrays();refreshMonths();refreshAmounts();
       renderLedgerDD();
+      // 换了账本，旧的平移和档位都对不上新时间轴。跟切换账本同一套：回到月档、视口归位。
+      TL.z=1;TL.pan=0;appliedLevel='month';
+      relockSel();
+      syncRail();
       pushView();   // 记到了别的账本：随着记账把视图也切走了，算一次视图切换
     }else{
       // refreshTagArrays 同样不能省：这笔若不选品类，后端会**懒创建**「未分类」占位主 tag，
       // afterChange 只是把它拉进 Data.cats —— 渲染数组 CATS 若不跟着重建，这颗新 tag
       // 在星图和顶部列表里根本不存在，于是「刚记的一笔在左边洞察里看不见」、「第一笔
       // 不选品类的账，星图上一个节点都不多」（切一下维度或账本才会突然出现）。
+      // 星轨位置另说：刷新前记下视口中心的真实日期，刷新后放回去。
+      // 以前这里把 TL.sel 改成「当前月的下标」——日档仍用这个下标去 DAYS 里取点，
+      // 取到的是最早的几天，星轨就跳到最左侧。
+      const held=holdRail();
       await Data.afterChange();
       refreshTagArrays();refreshMonths();refreshAmounts();
+      relockSel();
+      releaseRail(held);
     }
-    // 记账后**不跳到这笔所在的月份**：补记上月/去年的账时把画面拽走，用户会以为记错了地方。
-    // 数据已经刷新，这笔会在它该在的档位上出现，切过去看即可。
-    const mi=MONTHS.findIndex(m=>m.y===Data._currentMonthY&&m.m===Data._currentMonthM);
-    if(mi>=0)TL.sel={level:'month',idx:mi};
     // 与编辑分支同理：在下钻视图里新记一笔，也要重拉 detailExpenses 才会出现新节点
     if(S.view==='detail'&&detailTag)await reloadDetailExpenses();
     buildGraph();syncChrome();

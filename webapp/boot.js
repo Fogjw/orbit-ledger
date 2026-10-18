@@ -6,7 +6,7 @@
 import { createLocalApi } from './api-local.js';
 import { createStorage, isFileAccessSupported, pickDirectory, restoreDirectory, ensurePermission } from './storage.js';
 
-const UI_SCRIPTS = ['data.js', 'app.js'];   // 顺序不能反：app.js 依赖 data.js
+const UI_SCRIPTS = ['data.js', 'timeline-nav.js', 'app.js'];   // 顺序不能反：app.js 依赖前两个
 const WASM_DIR = new URL('./sqlite-wasm/', import.meta.url).href;
 const WASM_URL = new URL('./sqlite-wasm/sql-wasm.wasm', import.meta.url).href;
 
