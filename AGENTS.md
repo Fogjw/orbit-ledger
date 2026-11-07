@@ -59,6 +59,7 @@ CI 使用 Node 24；`server/package.json` 要求 Node >= 22.5。
 - 依赖只向下：api → services → repos → db；业务规则不放路由、不放 repo。
 - 注释写意图（输入/输出/为什么这样设计），不复述代码字面。
 - schema 迁移只增不改；改 REST/MCP 契约时同步 `docs/architecture.md`、测试和 `web/`、`webapp/` 调用方。
+- 跨平台：路径用 `app.getPath`/`path.join`，不要写死 `%APPDATA%` 或盘符；Linux 托盘不可用时必须把关窗降级为退出，不能留下无入口的后台进程。
 - 提交用 Conventional Commits + scope，主题中文：`feat(web): ...`、`fix(server): ...`、`test(core): ...`、`chore(ci): ...`、`merge: ...`、`release: x.y.z`。
 - 一个提交只做一件事；测试与对应实现放在同一分支。
 - **禁止提交**：`node_modules/`、`release/`、`webapp/dist/`、`server/data/`、`*.db`、`PLAN.md` / `HANDOFF.md` / 临时脚本、密钥与个人数据。
@@ -69,6 +70,7 @@ CI 使用 Node 24；`server/package.json` 要求 Node >= 22.5。
 - [ ] 需求对应的行为已实现，没有顺手改无关代码；
 - [ ] 同分支补了测试，含失败路径与边界；
 - [ ] `cd server && npm test` 全绿；涉及 `web/`、`webapp/` 时 `npm run build:web` 通过；
+- [ ] 涉及桌面壳层/打包时，对应平台安装包构建通过（Linux: `npm run dist:linux` + `npm run verify:linux`）；
 - [ ] 该短分支的 `CI 通过` 为绿；
 - [ ] 以 `--no-ff` 合入 `develop`，合并后回归仍绿，`develop` 已推送；
 - [ ] **短分支保留**，下一条分支从新 `develop` 拉出；

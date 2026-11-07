@@ -4,17 +4,23 @@
   "private": true,
   "version": "1.1.11",
   "description": "Orbit 星账 · 本地优先的图谱化记账软件（Electron 桌面端 + 浏览器直连 + MCP 同进程）",
+  "author": "Fogjw <1778357215@qq.com>",
+  "license": "MIT",
   "type": "module",
   "main": "electron/main.js",
+  "desktopName": "orbit-ledger.desktop",
   "scripts": {
     "start": "electron .",
     "make:icon": "electron electron/scripts/make-icon.js",
     "shots": "electron electron/scripts/make-shots.js",
     "build:web": "node webapp/build.mjs",
     "verify:web": "electron electron/scripts/verify-webapp.js",
+    "verify:linux": "electron --no-sandbox --ozone-platform=headless --disable-gpu electron/scripts/verify-linux.js",
     "verify:upgrade": "node electron/scripts/verify-upgrade.js",
-    "pack": "electron-builder --win --dir --publish never",
-    "dist": "electron-builder --win nsis --publish never"
+    "pack": "electron-builder --dir --publish never",
+    "dist": "electron-builder --publish never",
+    "dist:win": "electron-builder --win nsis --publish never",
+    "dist:linux": "electron-builder --linux AppImage deb --publish never"
   },
   "devDependencies": {
     "electron": "^44.3.0",
@@ -63,6 +69,29 @@
       "shortcutName": "Orbit 星账",
       "deleteAppDataOnUninstall": false,
       "artifactName": "Orbit-Setup-${version}.exe"
+    },
+    "linux": {
+      "target": [
+        {
+          "target": "AppImage",
+          "arch": [
+            "x64"
+          ]
+        },
+        {
+          "target": "deb",
+          "arch": [
+            "x64"
+          ]
+        }
+      ],
+      "icon": "assets/icon.png",
+      "category": "Office",
+      "synopsis": "本地优先的图谱化记账软件",
+      "description": "Orbit 星账 · 本地优先的图谱化记账软件（Electron 桌面端 + 浏览器直连 + MCP 同进程）",
+      "maintainer": "Fogjw <1778357215@qq.com>",
+      "syncDesktopName": true,
+      "artifactName": "Orbit-${version}-${arch}.${ext}"
     }
   }
 }
