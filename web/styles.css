@@ -30,9 +30,18 @@ canvas{display:block}
 
 .glass{background:var(--glass);border:1px solid var(--border);backdrop-filter:blur(14px) saturate(1.3);-webkit-backdrop-filter:blur(14px) saturate(1.3);box-shadow:0 8px 32px rgba(0,0,10,.45),inset 0 1px 0 rgba(255,255,255,.06)}
 
-/* 顶栏 */
-.topbar{position:fixed;top:14px;left:50%;transform:translateX(-50%);z-index:10;display:flex;align-items:center;gap:12px;padding:9px 14px;border-radius:16px;max-width:min(1060px,calc(100vw - 24px));animation:drop .7s cubic-bezier(.2,.9,.25,1.2)}
-@keyframes drop{from{opacity:0;transform:translate(-50%,-14px)}to{opacity:1;transform:translate(-50%,0)}}
+/* 顶栏（方向 B · 浑仪铜鉴）：贯穿全宽的仪器横梁，不是悬浮毛玻璃胶囊 */
+.topbar{
+  --tb-bg:#0d1110;--tb-ground:#070a09;--tb-text:#e8e2d2;--tb-dim:#92978c;
+  --tb-brass:#b08d57;--tb-star:#e3e9df;--tb-line:rgba(176,141,87,.42);--tb-hair:rgba(176,141,87,.20);
+  position:fixed;top:0;left:0;right:0;z-index:10;height:64px;
+  display:flex;align-items:center;gap:16px;padding:0 24px;
+  background:var(--tb-bg);border-bottom:1px solid var(--tb-line);border-radius:0;
+  transform:none;max-width:none;animation:barIn .45s ease-out;
+  font-family:"Noto Sans CJK SC","PingFang SC","Microsoft YaHei",sans-serif;
+}
+.topbar::after{content:"";position:absolute;left:24px;right:24px;bottom:4px;height:1px;background:var(--tb-hair)}
+@keyframes barIn{from{opacity:0;transform:translateY(-5px)}to{opacity:1;transform:none}}
 /* 左对齐浮层（如下拉菜单）的入场：只做纵向位移。
    不可复用居中版的 drop —— 它的 translate(-50%) 会把 left:0 的元素拽到左偏半个身位，
    动画结束 transform 归位，看上去就是「点一下向右闪一下」。 */
@@ -57,6 +66,31 @@ canvas{display:block}
 .month-total{display:flex;flex-direction:column;align-items:flex-end;line-height:1.2;padding:0 4px}
 .mt-label{font-size:10px;color:var(--dim);letter-spacing:1px}
 .mt-value{font-size:18px;font-weight:800;font-variant-numeric:tabular-nums;text-shadow:0 0 16px rgba(90,215,255,.5)}
+
+/* 顶栏内部：只覆盖顶栏，不影响浮层里的 .btn / .segment */
+.topbar .brand{display:flex;align-items:center;gap:10px;padding-right:18px;border-right:1px solid var(--tb-hair);white-space:nowrap}
+.topbar .logo{display:grid;place-items:center;width:30px;height:30px;border-radius:0;background:transparent;border:1px solid var(--tb-line);box-shadow:inset 0 0 0 3px var(--tb-bg),inset 0 0 0 4px var(--tb-hair)}
+.topbar .logo img{width:23px;height:23px}
+.topbar .brand-text{font-family:"Noto Serif CJK SC","Source Han Serif SC","Songti SC","SimSun",serif;font-weight:500;font-size:17px;letter-spacing:.08em;color:var(--tb-text)}
+.topbar .brand-text em{font-style:normal;color:var(--tb-brass);background:none;-webkit-text-fill-color:currentColor;font-weight:500}
+.topbar .led-btn{max-width:190px;border:1px solid var(--tb-line);border-radius:0;background:transparent;color:var(--tb-text);font:400 12px/1 "Noto Sans CJK SC","PingFang SC","Microsoft YaHei",sans-serif;padding:8px 10px;letter-spacing:.06em}
+.topbar .led-btn:hover{border-color:var(--tb-brass);background:rgba(176,141,87,.08);box-shadow:none}
+.topbar .segment{display:flex;gap:0;padding:0;border:1px solid var(--tb-line);border-radius:0;background:transparent}
+.topbar .seg{border:0;border-radius:0;background:transparent;color:var(--tb-dim);font:400 11px/1 "Noto Sans CJK SC","PingFang SC","Microsoft YaHei",sans-serif;padding:8px 13px;letter-spacing:.12em;transition:color .15s,background .15s}
+.topbar .seg:hover{color:var(--tb-star)}
+.topbar .seg.active{color:var(--tb-star);background:rgba(176,141,87,.14);box-shadow:inset 0 -1px 0 var(--tb-brass)}
+.topbar .btn{border:1px solid var(--tb-line);border-radius:0;background:transparent;color:var(--tb-dim);font:400 11.5px/1 "Noto Sans CJK SC","PingFang SC","Microsoft YaHei",sans-serif;padding:8px 11px;letter-spacing:.06em;transition:color .15s,border-color .15s,background .15s;box-shadow:none;transform:none}
+.topbar .btn:hover{color:var(--tb-star);border-color:var(--tb-brass);background:rgba(176,141,87,.08);box-shadow:none;transform:none}
+.topbar .btn.ghost{color:var(--tb-dim)}
+.topbar .btn.ghost:hover{color:var(--tb-star)}
+.topbar #btnToday::before{content:"";display:inline-block;width:5px;height:5px;margin-right:7px;border:1px solid var(--tb-brass);border-radius:50%;vertical-align:1px}
+.topbar .btn.back{border-color:rgba(176,141,87,.52);color:var(--tb-brass);background:rgba(176,141,87,.08)}
+.topbar .btn.back:hover{color:var(--tb-star);background:rgba(176,141,87,.16)}
+.topbar .btn.primary{border:1px solid var(--tb-brass);background:transparent;color:var(--tb-brass);border-radius:0;font-weight:600;letter-spacing:.1em;box-shadow:none;padding:8px 13px}
+.topbar .btn.primary:hover{background:var(--tb-brass);color:#0b0e0c;box-shadow:none;transform:none}
+.topbar .month-total{align-items:flex-end;padding:0 2px}
+.topbar .mt-label{font:400 9px/1.3 "Noto Sans CJK SC","PingFang SC","Microsoft YaHei",sans-serif;letter-spacing:.16em;color:var(--tb-dim)}
+.topbar .mt-value{font-family:"SFMono-Regular","Cascadia Mono","Consolas",monospace;font-size:20px;font-weight:400;letter-spacing:.02em;color:var(--tb-star);text-shadow:none}
 
 /* 左侧面板 */
 .panel{position:fixed;left:16px;top:86px;z-index:9;width:248px;border-radius:18px;padding:16px 15px;animation:slideL .8s cubic-bezier(.2,.9,.3,1)}
@@ -265,6 +299,6 @@ textarea.m-remark{min-height:66px;max-height:30vh;resize:vertical;line-height:1.
 
 @media (max-width:1100px){.panel{display:none}}
 @media (max-width:760px){
-  .topbar{flex-wrap:wrap;justify-content:center;border-radius:18px;top:8px}
+  .topbar{height:auto;min-height:56px;padding:8px 16px;gap:8px;flex-wrap:wrap;justify-content:flex-start}
   .timeline{bottom:30px}.rail-wrap{display:none}
 }
