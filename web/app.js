@@ -2506,6 +2506,37 @@ window.OrbitDebug = {
     const v=viewOf(w);
     return {c:v.c,pan:TL.pan||0,panLo:v.panLo,panHi:v.panHi,level:domLevel(),sel:TL.sel};
   },
+  /** 只读：当前图谱拓扑 + 节点屏幕坐标。用于冻结「主 tag → 下钻二部图」的语义；
+      不修改任何状态，也不参与渲染。 */
+  graph(){
+    const r=gC.getBoundingClientRect();
+    const nodeView=n=>({
+      kind:n.kind,id:n.id,
+      tagId:n.tagId??n.ref?.tagId??null,
+      refId:n.ref?.id??null,
+      name:n.ref?.name??null,
+      amount:n.amount??null,
+      R:Math.round(n.R*10)/10,
+      screenX:Math.round(r.left+CAM.x+n.x*CAM.z),
+      screenY:Math.round(r.top+CAM.y+n.y*CAM.z),
+    });
+    return {
+      view:S.view,dim:S.dim,focus:S.focus,
+      detailTag:detailTag?{tagId:detailTag.tagId,name:detailTag.name}:null,
+      canvas:{left:Math.round(r.left),top:Math.round(r.top),width:Math.round(r.width),height:Math.round(r.height)},
+      cam:{x:CAM.x,y:CAM.y,z:CAM.z},
+      nodes:nodes.map(nodeView),
+      links:links.map(l=>({id:l.id,s:l.s,t:l.t,shared:l.shared===true,exps:l.exps||null})),
+    };
+  },
+  /** 验证用直通：按主 tag id 进入下钻。真实点击路径由 verify:graph 覆盖；
+      这里给 verify:web 用，避免合成鼠标在长链路里偶发不触发 pointerup。 */
+  enterTag(tagId){
+    const n=nodes.find(n=>n.kind==='cat'&&String(n.ref?.tagId)===String(tagId));
+    if(!n)return false;
+    const p=enterDetail(n.id);
+    return p&&typeof p.then==='function'?p.then(()=>true):true;
+  },
   /** 验证用直通：等价于用户 hover 某个星轨节点，返回提示框文本 */
   tipFor(kind,idx){setHover({kind,id:idx});return tip?tip.textContent.trim():''},
   /** 验证用直通：等价于用户点画布上的第 idx 个节点（合成鼠标事件驱动不了 canvas 命中） */
