@@ -97,6 +97,8 @@ description: >-
 - **新增测试文件必须加进 `server/package.json` 的 `test` 脚本**，否则 CI 不会跑。
 - 用临时目录/内存库；涉及「今天」的用例固定时钟；不提交真实个人账本数据。
 - 涉及 `web/`、`webapp/` 改动时跑 `npm run build:web`；端到端 `npm run verify:web` 只在本地跑（需要 GUI）。
+- 涉及桌面壳层/打包改动时，对应平台构建必须过：Linux 用 `npm run dist:linux`（AppImage + deb），CI 的「Linux 安装包构建」是必过项。
+- Linux 运行冒烟：`npm run verify:linux` 在 Electron 主进程里起真实 HTTP + SQLite（无窗口），CI 与 CD 都会跑。
 
 ## 评审清单
 
