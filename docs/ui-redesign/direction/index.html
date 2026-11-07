@@ -1,0 +1,59 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>Orbit 星账 · 方向选择</title>
+<style>
+  :root{--bg:#0b0d10;--text:#e9e1cf;--dim:#989284;--line:rgba(223,211,184,.18);--accent:#c65a43}
+  *{box-sizing:border-box}
+  body{margin:0;background:var(--bg);color:var(--text);font-family:"PingFang SC","Microsoft YaHei","Noto Sans CJK SC",sans-serif;padding:56px}
+  h1{font-family:"Noto Serif CJK SC","Songti SC","SimSun",serif;font-weight:500;letter-spacing:.08em;font-size:32px;margin:0 0 10px}
+  p.lead{color:var(--dim);line-height:1.8;max-width:720px;margin:0 0 36px}
+  .grid{display:grid;grid-template-columns:repeat(3,1fr);gap:18px;max-width:1180px}
+  a.card{display:block;text-decoration:none;color:inherit;border:1px solid var(--line);padding:20px;background:#11151a}
+  a.card:hover{border-color:var(--accent)}
+  .swatches{display:flex;gap:6px;margin-bottom:18px}
+  .swatches i{width:24px;height:24px;display:block}
+  h2{font-family:"Noto Serif CJK SC","Songti SC","SimSun",serif;font-weight:500;font-size:20px;margin:0 0 8px}
+  .k{font-size:11px;letter-spacing:.18em;color:var(--accent);margin-bottom:10px}
+  .desc{font-size:12px;line-height:1.75;color:var(--dim)}
+  .meta{margin-top:16px;font-size:10px;letter-spacing:.1em;color:#6f6c63}
+  .links{margin-top:30px;font-size:12px;color:var(--dim)}
+  .links a{color:var(--text);margin-right:18px}
+</style>
+</head>
+<body>
+<h1>星账 · 三个方向</h1>
+<p class="lead">同样的信息、同样的图谱逻辑，三种材质与字体系统。先看整体气质，再看「记一笔」账笺。选定一个后，才会写 DESIGN.md 并进入逐界面重构。</p>
+<div class="grid">
+  <a class="card" href="app.html?theme=silk">
+    <div class="swatches"><i style="background:#080b0f"></i><i style="background:#e9e1cf"></i><i style="background:#c65a43"></i><i style="background:#b99a5f"></i></div>
+    <div class="k">A · 推荐</div>
+    <h2>绢本星图</h2>
+    <div class="desc">深墨绢面、宋体题签、朱砂印与蛤白星点。最贴近现在的「星账」，也最容易承载高信息密度。</div>
+    <div class="meta">SILK ATLAS · 宋体 / 细线 / 朱砂</div>
+  </a>
+  <a class="card" href="app.html?theme=brass">
+    <div class="swatches"><i style="background:#070a09"></i><i style="background:#e8e2d2"></i><i style="background:#b08d57"></i><i style="background:#6f8f82"></i></div>
+    <div class="k">B · 仪器感</div>
+    <h2>浑仪铜鉴</h2>
+    <div class="desc">石墨底、失光黄铜、双线刻度。更像一台夜间使用的观测仪器，冷、精确、克制。</div>
+    <div class="meta">ARMillary · 铜 / 刻度 / 环</div>
+  </a>
+  <a class="card" href="app.html?theme=rubbing">
+    <div class="swatches"><i style="background:#12110f"></i><i style="background:#f0e9d9"></i><i style="background:#b33a2b"></i><i style="background:#9fb3a5"></i></div>
+    <div class="k">C · 最大胆</div>
+    <h2>碑拓星图</h2>
+    <div class="desc">炭黑石面、刻线星点、浅色拓纸账笺。最有「刻下来」的长期感，也最重。</div>
+    <div class="meta">STONE RUBBING · 碑 / 拓 / 印</div>
+  </a>
+</div>
+<div class="links">
+  查看账笺状态：
+  <a href="app.html?theme=silk&entry=1">绢本</a>
+  <a href="app.html?theme=brass&entry=1">浑仪</a>
+  <a href="app.html?theme=rubbing&entry=1">碑拓</a>
+</div>
+</body>
+</html>
