@@ -28,8 +28,8 @@ Thumbs.db
 coverage/
 
 # 计划/会话临时文件（不入库，git 跟踪规范）
+# AGENTS.md 是仓库级开发规范，必须入库，不在此列
 PLAN*.md
-AGENTS.md
 docs/HANDOFF.md
 docs/opencode-t*.md
 docs/web-frontend-task.md
