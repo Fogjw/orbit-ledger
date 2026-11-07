@@ -162,6 +162,10 @@ http://localhost:5310/mcp
 源码结构与开发流程如下（产品文档见 [docs/architecture.md](docs/architecture.md)：分层、数据模型、业务规则与 REST / MCP 契约；
 界面层的口径约定见 [docs/frontend-rendering.md](docs/frontend-rendering.md)：金额显示、时间轴与「今天」、渲染缓存刷新链）。
 
+分支模型：`main` 是生产代码，只接受 `develop` 的 `--no-ff` 合并，推送即触发 CD 发布；
+`develop` 是开发默认分支，短分支（`feat/*`、`fix/*` 等）从它拉出，CI 通过后以 `--no-ff` 合回。
+日常开发、测试与发版细则见 [AGENTS.md](AGENTS.md)。
+
 | 目录 | 说明 |
 |---|---|
 | `core/` | 共享业务层：业务规则 + SQL（纯 JS）—— 桌面端与纯前端版共用同一份 |
@@ -190,8 +194,9 @@ npm run verify:upgrade                       # 端到端：装两次，验证覆
 `ELECTRON_MIRROR=https://npmmirror.com/mirrors/electron/`、
 `ELECTRON_BUILDER_BINARIES_MIRROR=https://npmmirror.com/mirrors/electron-builder-binaries/`。
 
-持续集成与发布：`.github/workflows/ci.yml`（push/PR 跑回归）、`release.yml`（推 `v*` 标签打包并发 Release）、
-`pages.yml`（构建纯前端版并部署 GitHub Pages）。发版时版本号写在仓库根 `package.json`，
-workflow 会校验 tag 与它一致。
+持续集成与发布：`.github/workflows/ci.yml`（任意分支 push、PR 到 `develop` / `main` 都会跑，
+短分支必须等到「CI 通过」）、`release.yml`（push 到 `main` 即 CD：校验版本 → 打包 → 创建 tag 与 Release）、
+`pages.yml`（push 到 `main` 构建纯前端版并部署 GitHub Pages）。
+发版前在 `develop` 的短分支里升仓库根 `package.json` 的版本并合入；`main` 上不再手工改版本或推 tag。
 
 截图由 `npm run shots` 生成（Electron 自己渲染并截屏，尺寸与等待时机都可复现）。
