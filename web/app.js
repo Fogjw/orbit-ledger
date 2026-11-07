@@ -1786,7 +1786,7 @@ function syncChrome(){
   animateNum($('#pNum'),bal,fmtYuan);
   animateNum($('#pExp'),tot,fmtYuan);
   animateNum($('#pInc'),inc,fmtYuan);
-  $('#pNum').style.color=bal<0?'#ff9a9a':'#9be9ff';   // 入不敷出是坏消息，用红字说清楚
+  $('#pNum').style.color=bal<0?'#c96a5a':'#e3e9df';   // 入不敷出是坏消息，用红字说清楚
   // 日均按当前窗口天数算（日档 1 天、年档 365 天、「全部」按整段时间轴、其余按 30 天）
   const span=lv==='day'?1:(lv==='all'?Math.max(1,Math.round(timelineFull().to-timelineFull().from)):(lv==='year'?365:30));
   $('#pCount').textContent=`${nUnit==='天'?nExp+' 天有记录':nExp+' 笔'} · 日均支出 ${fmtYuan(tot/span)}`;
@@ -1809,15 +1809,15 @@ function renderTop(){
   const pw=periodWord();
   if(!items.length){
     $('#topList').innerHTML=`<div style="color:#8b96b5;font-size:12px">${pw}暂无支出</div>`;
-    $('#insightBox').innerHTML=`✨ ${pw}暂无支出，快去点亮第一颗星。`;
+    $('#insightBox').innerHTML=`${pw}暂无支出。`;
     return;
   }
   const max=amts[items[0].id]||1;
   $('#topList').innerHTML=items.map(c=>`
     <div class="top-row" data-id="${c.id}">
-      <span class="dot" style="background:${c.color};box-shadow:0 0 8px ${c.color}"></span>
+      <span class="dot" style="background:${c.color}"></span>
       <span class="top-name">${c.name}</span>
-      <span class="top-bar"><span class="top-fill" style="display:block;width:${Math.round((amts[c.id]||0)/max*100)}%;background:linear-gradient(90deg,${c.color}88,${c.color})"></span></span>
+      <span class="top-bar"><span class="top-fill" style="display:block;width:${Math.round((amts[c.id]||0)/max*100)}%;background:${c.color}"></span></span>
       <span class="top-amt">${fmtYuan(amts[c.id]||0)}</span>
     </div>`).join('');
   document.querySelectorAll('.top-row').forEach(el=>{
@@ -1826,7 +1826,7 @@ function renderTop(){
     el.onclick=()=>{const tag=(CATS.concat(CTXS)).find(c=>c.id===el.dataset.id);if(tag)openExpenseList(tag)};
   });
   const topName=items[0]?items[0].name:'—';
-  $('#insightBox').innerHTML=`✨ ${pw} <b>${topName}</b> 是最大支出星系`;
+  $('#insightBox').innerHTML=`${pw} 最大支出星系：<b>${topName}</b>`;
 }
 /** 程序化同步段控选中态（不触发回调）：浏览器前进/后退恢复视图时用 */
 function setSegActive(id,v){$(id).querySelectorAll('.seg').forEach(b=>b.classList.toggle('active',b.dataset.v===v))}

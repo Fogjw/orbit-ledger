@@ -92,34 +92,44 @@ canvas{display:block}
 .topbar .mt-label{font:400 9px/1.3 "Noto Sans CJK SC","PingFang SC","Microsoft YaHei",sans-serif;letter-spacing:.16em;color:var(--tb-dim)}
 .topbar .mt-value{font-family:"SFMono-Regular","Cascadia Mono","Consolas",monospace;font-size:20px;font-weight:400;letter-spacing:.02em;color:var(--tb-star);text-shadow:none}
 
-/* 左侧面板 */
-.panel{position:fixed;left:16px;top:86px;z-index:9;width:248px;border-radius:18px;padding:16px 15px;animation:slideL .8s cubic-bezier(.2,.9,.3,1)}
+/* 左侧面板：孔制读数，不是卡片 */
+.panel{
+  position:fixed;left:0;top:64px;bottom:190px;z-index:9;width:268px;
+  padding:18px 20px 12px;display:flex;flex-direction:column;overflow:hidden;
+  background:linear-gradient(180deg,#0d1110,#0a0d0b);
+  border-right:1px solid rgba(176,141,87,.42);border-radius:0;
+  animation:panelIn .45s ease-out;
+}
+@keyframes panelIn{from{opacity:0;transform:translateX(-5px)}to{opacity:1;transform:none}}
 @keyframes slideL{from{opacity:0;transform:translateX(-16px)}to{opacity:1;transform:none}}
-.p-title{font-size:11px;letter-spacing:2px;color:var(--dim);display:flex;align-items:center;gap:8px}
-.live-dot{width:7px;height:7px;border-radius:50%;background:#6fe3a8;box-shadow:0 0 10px #6fe3a8;animation:blink 1.8s infinite}
-@keyframes blink{50%{opacity:.4}}
-.p-num{font-size:34px;font-weight:800;font-variant-numeric:tabular-nums;text-shadow:0 0 24px rgba(120,180,255,.35)}
-/* 每个数字前面都得有标签：面板里同时有结余/支出/收入三个数，不标出来没法读 */
-.p-balance{display:flex;align-items:baseline;gap:9px;margin:8px 0 7px}
-.p-balance .p-num{font-size:34px}
-.p-key{font-size:11px;letter-spacing:2px;color:var(--dim);flex:none}
-.p-val{font-size:13.5px;font-weight:700;font-variant-numeric:tabular-nums}
-.p-exp{color:#e8eefc}
-.p-inc{color:#6fe3a8}
-.p-sub{display:flex;align-items:center;gap:8px;margin-top:3px}
-.chip{font-size:10.5px;padding:3px 8px;border-radius:20px;font-weight:700}
-.chip.up{color:#8df0bd;background:rgba(111,227,168,.12);border:1px solid rgba(111,227,168,.3)}
-.p-count{font-size:11px;color:var(--dim);margin-top:7px}
-.p-sec{margin:15px 0 8px;font-size:11px;letter-spacing:2px;color:var(--dim2)}
-.top-row{display:flex;align-items:center;gap:9px;padding:7px 8px;border-radius:11px;cursor:pointer;transition:background .2s;border:1px solid transparent}
-.top-row:hover,.top-row.hot{background:rgba(120,170,255,.07);border-color:var(--border)}
-.dot{width:9px;height:9px;border-radius:50%;flex:none}
-.top-name{font-size:12.5px;font-weight:600;width:44px}
-.top-bar{flex:1;height:6px;border-radius:4px;background:rgba(255,255,255,.07);overflow:hidden}
-.top-fill{height:100%;border-radius:4px}
-.top-amt{font-size:11.5px;color:var(--dim);font-variant-numeric:tabular-nums;min-width:44px;text-align:right}
-.insight{font-size:12px;line-height:1.75;color:#c4cde6;background:rgba(90,140,255,.06);border:1px solid var(--border);border-radius:12px;padding:10px 11px}
-.insight b{color:#9be9ff}
+.p-title{font-size:9.5px;letter-spacing:.2em;color:#92978c;display:flex;align-items:center;gap:8px}
+.live-dot{width:5px;height:5px;border-radius:50%;background:transparent;border:1px solid #b08d57;box-shadow:none;animation:none}
+.p-num{font-family:"SFMono-Regular","Cascadia Mono","Consolas",monospace;font-size:32px;font-weight:400;font-variant-numeric:tabular-nums;letter-spacing:-.03em;text-shadow:none;color:#e3e9df}
+.p-balance{display:flex;align-items:baseline;gap:8px;margin:12px 0 8px;padding-bottom:10px;border-bottom:1px solid rgba(223,211,184,.14)}
+.p-balance .p-num{font-size:32px}
+.p-key{font-size:9px;letter-spacing:.18em;color:#7d8278;flex:none}
+.p-val{font-family:"SFMono-Regular","Cascadia Mono","Consolas",monospace;font-size:12px;font-weight:400;font-variant-numeric:tabular-nums;color:#e8e2d2}
+.p-exp{color:#e8e2d2}
+.p-inc{color:#7fb0a4}
+.p-sub{display:flex;align-items:baseline;gap:8px;margin-top:4px}
+.panel .chip{font-size:9px;padding:3px 6px;border-radius:0;font-weight:400;letter-spacing:.03em}
+.panel .chip.up{color:#b08d57;background:transparent;border:1px solid rgba(176,141,87,.35)}
+.p-count{font-size:10px;color:#92978c;margin-top:6px;letter-spacing:.02em}
+.p-sec{margin:10px 0 4px;padding-top:6px;border-top:1px solid rgba(223,211,184,.14);font-size:9px;letter-spacing:.2em;color:#7d8278}
+.panel .top-row{
+  display:grid;grid-template-columns:6px 1fr 56px;grid-template-areas:"dot name amt" "dot bar amt";
+  column-gap:8px;row-gap:2px;padding:4px 0;border:0;border-bottom:1px solid rgba(223,211,184,.10);
+  border-radius:0;background:none;cursor:pointer;transition:background .15s;
+}
+.panel .top-row:last-child{border-bottom:0}
+.panel .top-row:hover,.panel .top-row.hot{background:rgba(176,141,87,.07);border-color:rgba(223,211,184,.10)}
+.panel .dot{grid-area:dot;width:5px;height:5px;border-radius:50%;flex:none;align-self:center}
+.panel .top-name{grid-area:name;width:auto;font-size:11.5px;font-weight:400;letter-spacing:.04em;color:#e8e2d2}
+.panel .top-bar{grid-area:bar;height:2px;border-radius:0;background:rgba(223,211,184,.14);overflow:hidden}
+.panel .top-fill{height:100%;border-radius:0;box-shadow:none}
+.panel .top-amt{grid-area:amt;font-family:"SFMono-Regular","Cascadia Mono","Consolas",monospace;font-size:10.5px;color:#92978c;text-align:right;align-self:center;min-width:0}
+.panel .insight{font-size:10.5px;line-height:1.55;color:#9a9e93;background:none;border:0;border-top:1px solid rgba(223,211,184,.14);border-radius:0;padding:8px 0 0;margin:10px 0 0}
+.panel .insight b{color:#e3e9df;font-weight:500}
 
 /* 右侧粒度轨 */
 .rail-wrap{position:fixed;right:16px;top:50%;transform:translateY(-50%);z-index:9;display:flex;flex-direction:column;align-items:center;gap:8px;padding:12px 9px;border-radius:16px}
