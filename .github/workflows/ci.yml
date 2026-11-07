@@ -92,12 +92,55 @@ jobs:
           test -f webapp/dist/sqlite-wasm/sql-wasm.wasm
           echo "构建产物完整"
 
+  linux-build:
+    name: Linux 安装包构建
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+          cache: npm
+          cache-dependency-path: |
+            package-lock.json
+            server/package-lock.json
+
+      # 根依赖 = Electron + electron-builder；服务依赖会被打进 app.asar
+      - name: 安装应用依赖
+        run: npm ci
+
+      - name: 安装服务依赖
+        working-directory: server
+        run: npm ci
+
+      # 和 release.yml 用同一条命令：CI 绿就说明 Linux 安装包本身能出
+      - name: 构建 AppImage 与 deb
+        run: npm run dist:linux
+
+      # 无窗口冒烟：验证 Electron 的 Node / node:sqlite / Express 在 Linux 上真的能起
+      - name: 内嵌服务冒烟（无需 GUI）
+        run: npm run verify:linux
+
+      - name: 检查 Linux 产物
+        run: |
+          set -e
+          ls -lh release/*.AppImage release/*.deb
+          for f in release/*.AppImage; do
+            test -x "$f"
+            file "$f" | grep -q 'ELF 64-bit'
+          done
+          for f in release/*.deb; do
+            dpkg-deb --info "$f" >/dev/null
+          done
+          echo "Linux 安装包产物完整"
+
   # 聚合门禁：分支保护只需要盯这一个检查，避免漏配某个 job。
   # 用 always() + 显式校验，保证上游失败时本 job 是 failure 而不是 skipped。
   ci-passed:
     name: CI 通过
     if: always()
-    needs: [server-test, web-syntax, webapp-build]
+    needs: [server-test, web-syntax, webapp-build, linux-build]
     runs-on: ubuntu-latest
     steps:
       - name: 汇总上游任务结果
@@ -106,6 +149,8 @@ jobs:
           echo "server-test:   ${{ needs.server-test.result }}"
           echo "web-syntax:    ${{ needs.web-syntax.result }}"
           echo "webapp-build:  ${{ needs.webapp-build.result }}"
+          echo "linux-build:   ${{ needs.linux-build.result }}"
           test "${{ needs.server-test.result }}" = "success"
           test "${{ needs.web-syntax.result }}" = "success"
           test "${{ needs.webapp-build.result }}" = "success"
+          test "${{ needs.linux-build.result }}" = "success"

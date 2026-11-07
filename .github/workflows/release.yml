@@ -1,4 +1,4 @@
-# 发布（CD）：develop 合入 main 后，在 Windows runner 上打包 NSIS 安装包并创建 Release
+# 发布（CD）：develop 合入 main 后，同时打包 Windows 与 Linux 安装包并创建 Release
 #
 # 触发：
 #   push 到 main —— 每次从 develop 同步合入的发布提交都会发布一个新版本
@@ -6,7 +6,7 @@
 #
 # 版本规则：
 #   版本号必须在 develop 的短分支里升好（package.json 与 package-lock.json 一起），
-#   这里先查同名 tag / Release 是否已存在，已存在就直接失败，避免重复发布。
+#   prepare 先查同名 tag / Release 是否已存在，已存在就直接失败，避免重复发布。
 #   不要在 main 上改版本，也不要手工推 tag —— tag 由 gh release create --target 创建。
 name: Release
 
@@ -24,8 +24,76 @@ concurrency:
   cancel-in-progress: false
 
 jobs:
+  prepare:
+    name: 校验发布版本
+    runs-on: ubuntu-latest
+    outputs:
+      version: ${{ steps.version.outputs.version }}
+      tag: ${{ steps.version.outputs.tag }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+
+      - name: 读取版本并检查是否已发布
+        id: version
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -e
+          version=$(node -p "require('./package.json').version")
+          tag="v$version"
+          echo "version=$version" >> "$GITHUB_OUTPUT"
+          echo "tag=$tag" >> "$GITHUB_OUTPUT"
+          echo "准备发布 $tag"
+
+          if [ "$GITHUB_REF" != "refs/heads/main" ]; then
+            echo "非 main 手动触发：跳过已发布检查，只验证打包"
+            exit 0
+          fi
+
+          if gh release view "$tag" >/dev/null 2>&1; then
+            echo "::error::版本 $version 已经发布过：每次 develop → main 都必须先在 develop 升版本"
+            exit 1
+          fi
+          if git ls-remote --exit-code --tags origin "refs/tags/$tag" >/dev/null 2>&1; then
+            echo "::error::tag $tag 已存在但没有对应 Release，请检查是否手工推过 tag"
+            exit 1
+          fi
+
+  regression:
+    name: 发布前全量回归
+    needs: prepare
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+          cache: npm
+          cache-dependency-path: |
+            package-lock.json
+            server/package-lock.json
+
+      - name: 安装应用依赖
+        run: npm ci
+
+      - name: 安装服务依赖
+        working-directory: server
+        run: npm ci
+
+      # main 上的合并提交不再经过 PR，发布前用全量回归兜住合并冲突引入的问题
+      - name: 全量回归
+        working-directory: server
+        run: npm test
+
   windows-installer:
-    name: 打包并发布 Windows 安装包
+    name: Windows 安装包
+    needs: [prepare, regression]
     runs-on: windows-latest
     steps:
       - uses: actions/checkout@v4
@@ -38,28 +106,6 @@ jobs:
             package-lock.json
             server/package-lock.json
 
-      - name: 读取版本并检查是否已发布
-        if: github.ref == 'refs/heads/main'
-        shell: bash
-        env:
-          GH_TOKEN: ${{ github.token }}
-        run: |
-          set -e
-          version=$(node -p "require('./package.json').version")
-          tag="v$version"
-          echo "VERSION=$version" >> "$GITHUB_ENV"
-          echo "TAG=$tag" >> "$GITHUB_ENV"
-          echo "准备发布 $tag"
-
-          if gh release view "$tag" >/dev/null 2>&1; then
-            echo "::error::版本 $version 已经发布过：每次 develop → main 都必须先在 develop 升版本"
-            exit 1
-          fi
-          if git ls-remote --exit-code --tags origin "refs/tags/$tag" >/dev/null 2>&1; then
-            echo "::error::tag $tag 已存在但没有对应 Release，请检查是否手工推过 tag"
-            exit 1
-          fi
-
       # 根依赖 = Electron + electron-builder（应用清单在仓库根）
       - name: 安装应用依赖
         run: npm ci
@@ -69,16 +115,8 @@ jobs:
         working-directory: server
         run: npm ci
 
-      # main 上的合并提交不再经过 PR，发布前用全量回归兜住合并冲突引入的问题
-      - name: 发布前全量回归
-        shell: bash
-        run: |
-          cd server
-          npm test
-
-      # 图标 assets/icon.png 已入库，CI 不需要再跑 make:icon（那需要 GUI 渲染）
       - name: 打包（NSIS 安装包）
-        run: npm run dist
+        run: npm run dist:win
 
       - name: 收集产物
         shell: bash
@@ -93,17 +131,77 @@ jobs:
             release/latest.yml
           if-no-files-found: error
 
+  linux-installer:
+    name: Linux 安装包
+    needs: [prepare, regression]
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+          cache: npm
+          cache-dependency-path: |
+            package-lock.json
+            server/package-lock.json
+
+      - name: 安装应用依赖
+        run: npm ci
+
+      - name: 安装服务依赖
+        working-directory: server
+        run: npm ci
+
+      - name: 内嵌服务冒烟（无需 GUI）
+        run: npm run verify:linux
+
+      - name: 打包（AppImage + deb）
+        run: npm run dist:linux
+
+      - name: 检查产物
+        run: |
+          set -e
+          ls -lh release/*.AppImage release/*.deb release/latest-linux.yml
+          for f in release/*.AppImage; do test -x "$f"; done
+          for f in release/*.deb; do dpkg-deb --info "$f" >/dev/null; done
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: orbit-linux-installer
+          path: |
+            release/*.AppImage
+            release/*.deb
+            release/latest-linux.yml
+          if-no-files-found: error
+
+  publish:
+    name: 创建 Release
+    needs: [prepare, windows-installer, linux-installer]
+    if: github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          path: release-assets
+          merge-multiple: true
+
+      - name: 检查各平台产物
+        run: |
+          set -e
+          ls -lh release-assets
+          test -n "$(find release-assets -maxdepth 1 -name '*.exe' -print -quit)"
+          test -n "$(find release-assets -maxdepth 1 -name '*.AppImage' -print -quit)"
+          test -n "$(find release-assets -maxdepth 1 -name '*.deb' -print -quit)"
+
       - name: 创建 tag 与 Release
-        if: github.ref == 'refs/heads/main'
         shell: bash
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
           set -e
-          gh release create "$TAG" \
-            release/*.exe \
-            release/*.blockmap \
-            release/latest.yml \
+          gh release create "${{ needs.prepare.outputs.tag }}" \
+            release-assets/* \
             --target "$GITHUB_SHA" \
-            --title "Orbit 星账 $TAG" \
+            --title "Orbit 星账 ${{ needs.prepare.outputs.tag }}" \
             --generate-notes
