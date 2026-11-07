@@ -3,9 +3,9 @@
 > 长期设计资产，不是临时计划。每个界面合入 `develop` 后更新本表；跨会话以本表为准。
 
 - 基线 commit：`b2f2ae0`（Linux 支持合入后的 develop）
-- 当前分支：`chore/ui-baseline`
-- 当前阶段：阶段 0 · 基线与守护（用户已确认，合入 develop）
-- 下一步：等第二个 skill 到位，再进入阶段 1 的「中式星图 × 浑仪」方向定稿。
+- 当前分支：`docs/ui-direction`
+- 当前阶段：阶段 1 · 中式星图方向（style tile 已完成，待用户选择）
+- 下一步：用户选 A/B/C 后写 `DESIGN.md`，再合入 `develop`；之后进入阶段 2.1 顶栏。
 - 约束：账单图谱逻辑冻结；信息量不减少；一界面一分支一合入；合入后保留短分支。
 
 ## 阶段
@@ -13,7 +13,7 @@
 | 阶段 | 内容 | 分支 | 状态 | 用户确认 |
 |---|---|---|---|---|
 | 0 | 清单 / 图谱快照 / E2E / 基线截图 | `chore/ui-baseline` | 完成，合入 develop | 已确认 |
-| 1 | 中式星图方向、PRODUCT.md / DESIGN.md、style tile | 待开 | 等第二个 skill | - |
+| 1 | 中式星图方向、PRODUCT.md / DESIGN.md、style tile | `docs/ui-direction` | style tile 完成，待选择 | 待选择 |
 | 2.1 | 顶栏 | 待开 | 未开始 | - |
 | 2.2 | 左侧仪表盘 | 待开 | 未开始 | - |
 | 2.3 | 底部星轨 | 待开 | 未开始 | - |
@@ -34,7 +34,7 @@
 - [x] `verify-graph.js`：真实坐标点击主 tag，验证 8 副 tag / 14 账单 / 27 归属线 / 9 共享线
 - [x] 可复现 review 截图脚本（目标 1440×900；当前环境实际 1229×684）
 - [x] 当前提交的基线截图（6 张）
-- [ ] 用户确认基线
+- [x] 用户确认基线
 
 ## 阶段 0 验证记录（2026-11-08）
 
@@ -49,11 +49,31 @@
   - 当前显示器工作区 1229×684，不是 1440×900；截图记录的是真实可见尺寸。大屏环境可重跑脚本补 1440/1920。
 - 已知：`docs/ui-redesign/review/` 不入库；`webapp/verify-shot.png`、`verify-year.png` 也不入库。
 
+## 阶段 1 交付（进行中）
+
+- [x] `PRODUCT.md`：产品事实、约束与原则
+- [x] `docs/ui-redesign/DIRECTIONS.md`：参考母题、A/B/C 三方向、选择标准
+- [x] `docs/ui-redesign/direction/app.html`：三套视觉（`?theme=silk|brass|rubbing`）
+- [x] `docs/ui-redesign/direction/app.html?...&entry=1`：记一笔账笺状态
+- [x] `docs/ui-redesign/direction/index.html`：方向入口
+- [x] `electron/scripts/make-direction-shots.js` + `shots:direction`：6 张 review 图
+- [ ] 用户选择 A/B/C
+- [ ] 按选择写 `DESIGN.md`
+- [ ] 合入 `develop`
+
+### 方向
+
+| 代号 | 名称 | 关键词 | 状态 |
+|---|---|---|---|
+| A | 绢本星图 | 宋体、朱砂、蛤白、细线、页边注记 | 推荐，待选 |
+| B | 浑仪铜鉴 | 石墨、旧铜、双线刻度、环、冷 | 备选 |
+| C | 碑拓星图 | 炭黑、刻线、浅色拓纸账笺、最重 | 备选 |
+
 ## 合入记录
 
 | 日期 | 界面 | 分支 | commit | 确认 | 备注 |
 |---|---|---|---|---|---|
-| 2026-11-08 | 阶段 0 基线 | `chore/ui-baseline` | 本次合并 | 已确认 | 只改测试/文档/只读调试接口，无生产 UI 改动 |
+| 2026-11-08 | 阶段 0 基线 | `chore/ui-baseline` | 7c890fa | 已确认 | 只改测试/文档/只读调试接口，无生产 UI 改动 |
 
 ## 备注
 
