@@ -163,8 +163,8 @@ http://localhost:5310/mcp
 界面层的口径约定见 [docs/frontend-rendering.md](docs/frontend-rendering.md)：金额显示、时间轴与「今天」、渲染缓存刷新链）。
 
 分支模型：`main` 是生产代码，只接受 `develop` 的 `--no-ff` 合并，推送即触发 CD 发布；
-`develop` 是开发默认分支，短分支（`feat/*`、`fix/*` 等）从它拉出，CI 通过后以 `--no-ff` 合回。
-日常开发、测试与发版细则见 [AGENTS.md](AGENTS.md)。
+`develop` 是开发默认分支，短分支（`feat/*`、`fix/*` 等）从它拉出，CI 通过后以 `--no-ff` 合回并保留。
+日常开发、测试与发版细则见 [AGENTS.md](AGENTS.md)；按任务拆分的项目技能在 `.agents/skills/`。
 
 | 目录 | 说明 |
 |---|---|
