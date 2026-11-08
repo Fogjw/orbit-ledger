@@ -34,6 +34,7 @@
   "build": {
     "appId": "com.fogjw.orbit-ledger",
     "productName": "Orbit 星账",
+    "electronDist": "node_modules/electron/dist",
     "directories": {
       "buildResources": "assets",
       "output": "release"

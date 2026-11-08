@@ -218,7 +218,7 @@ npm run verify:upgrade                       # 端到端：装两次，验证覆
 受限网络下打包需要镜像：
 `ELECTRON_MIRROR=https://npmmirror.com/mirrors/electron/`、
 `ELECTRON_BUILDER_BINARIES_MIRROR=https://npmmirror.com/mirrors/electron-builder-binaries/`。
-Linux 打 rpm 需要 `rpmbuild`（`sudo apt-get install rpm`），解包需要系统 7zip（`p7zip-full`）。
+Linux 打 rpm 需要 `rpmbuild`（`sudo apt-get install rpm`）；打包含有系统 7zip（`p7zip-full`），并复用本地 `node_modules/electron/dist`，不下载 Electron zip。
 
 持续集成与发布：`.github/workflows/ci.yml`（任意分支 push、PR 到 `develop` / `main` 都会跑，
 短分支必须等到「CI 通过」，其中包含 Linux deb/rpm 构建）、

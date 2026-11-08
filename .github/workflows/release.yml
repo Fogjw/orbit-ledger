@@ -153,6 +153,11 @@ jobs:
         working-directory: server
         run: npm ci
 
+      # CI 的 npm ci 不会稳定执行 Electron postinstall；显式准备本地 Electron dist，
+      # 供 electron-builder 的 electronDist 使用，避免下载 Electron zip。
+      - name: 准备 Electron 运行库
+        run: node node_modules/electron/install.js
+
       - name: 安装 rpmbuild 与 7zip
         run: sudo apt-get update && sudo apt-get install -y rpm p7zip-full
 
