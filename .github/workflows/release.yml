@@ -157,7 +157,15 @@ jobs:
         run: npm run verify:linux
 
       - name: 打包（AppImage + deb）
-        run: npm run dist:linux
+        shell: bash
+        run: |
+          # 与 CI 相同：官方二进制下载偶发 504 时用镜像重试，不改变产物内容。
+          if npm run dist:linux; then
+            exit 0
+          fi
+          echo "::warning::官方下载失败，使用 ELECTRON_BUILDER_BINARIES_MIRROR 重试"
+          rm -rf "$HOME/.cache/electron-builder"
+          ELECTRON_BUILDER_BINARIES_MIRROR="https://npmmirror.com/mirrors/electron-builder-binaries/" npm run dist:linux
 
       - name: 检查产物
         run: |
