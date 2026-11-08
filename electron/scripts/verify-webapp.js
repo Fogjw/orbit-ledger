@@ -418,7 +418,7 @@ async function main() {
   })()`));
   const panelOk = panel.keys.join('/') === '结余/支出/收入'
     && panel.exp === '¥66' && panel.inc === '¥0' && panel.bal === '-¥66'
-    && panel.color.includes('255, 154, 154');
+    && panel.color.includes('201, 106, 90');
   console.log(`[verify] 面板 ${panel.keys.join(' / ')} → 支出 ${panel.exp} · 收入 ${panel.inc} · 结余 ${panel.bal}`
     + `（${panel.color || '默认色'}）→ ${panelOk ? '标签齐全、数字算对、超支标红 ✓' : '✗'}`);
 
