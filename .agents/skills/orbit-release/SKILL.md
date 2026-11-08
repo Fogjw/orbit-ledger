@@ -38,8 +38,8 @@ git push origin main
 ```
 
 - 发版短分支同样**保留**，不删除。
-- push `main` 后看 Actions：Release 会校验版本 → 跑全量回归 → **同时**打包 Windows NSIS 与 Linux AppImage/deb → 创建 `vX.Y.Z` 与 GitHub Release；Pages 会部署网页版。
-- 发布产物应包含 `Orbit-Setup-<version>.exe`、`Orbit-<version>-x86_64.AppImage`、`Orbit-<version>-amd64.deb`，以及 Windows 的 `latest.yml`/blockmap 和 Linux 的 `latest-linux.yml`。
+- push `main` 后看 Actions：Release 会校验版本 → 跑全量回归 → **同时**打包 Windows NSIS 与 Linux deb/rpm → 创建 `vX.Y.Z` 与 GitHub Release；Pages 会部署网页版。
+- 发布产物应包含 `Orbit-Setup-<version>.exe`、`Orbit-<version>-amd64.deb`、`Orbit-<version>-x86_64.rpm`，以及 Windows 的 `latest.yml`/blockmap。Linux 不发布 AppImage。
 - 发版前用 `gh release list --limit 1` 确认最新已发布版本；新版本必须高于它。例如最新是 `v1.1.11`，下一次至少是 `1.1.12`。
 - 发版分支合入 `develop` 后、合入 `main` 前，必须确认 `develop` 的 CI 为绿。
 
@@ -75,6 +75,6 @@ git push origin develop
 |---|---|
 | Release 在「读取版本并检查是否已发布」失败 | 版本是否已发布；是否忘了 `npm version` |
 | `tag ... 已存在但没有对应 Release` | 是否有人手工推过 tag；确认后升新版本 |
-| 打包失败 | 先看全量回归是否通过；再看 Electron/NSIS/AppImage/fpm 下载与网络镜像 |
-| Linux 产物缺失 | 看 `npm run dist:linux` 是否同时产出 AppImage 与 deb；检查 `assets/icon.png` 与 `linux` 配置 |
+| 打包失败 | 先看全量回归是否通过；再看 Electron/NSIS/fpm 下载与网络镜像 |
+| Linux 产物缺失 | 看 `npm run dist:linux` 是否同时产出 deb 与 rpm；检查 `assets/icon.png` 与 `linux` 配置 |
 | Pages 没更新 | `pages.yml` 只在 `main` push 且路径命中时触发；看 Actions 日志 |

@@ -52,11 +52,11 @@ Windows 的两个容易踩的点：
 到同一个 [Releases](https://github.com/Fogjw/orbit-ledger/releases/latest) 下载：
 
 - **Debian / Ubuntu 用 `.deb`**：`sudo apt install ./Orbit-<版本>-amd64.deb`。
-  安装时会处理 Chromium 沙箱（用户命名空间不可用时设置 SUID；Ubuntu 24+ 还会安装 AppArmor 配置），
-  Ubuntu 24+ 优先用它。
-- **通用 AppImage**：`chmod +x Orbit-<版本>-x86_64.AppImage`，再双击或 `./Orbit-<版本>-x86_64.AppImage`。
-  AppImage 不经过安装器；如果启动时提示 Chromium sandbox 错误，可用 `--no-sandbox` 启动
-  （会关闭 Chromium 沙箱，只建议在信任安装包时使用）。
+  安装时会处理 Chromium 沙箱（用户命名空间不可用时设置 SUID；Ubuntu 24+ 还会安装 AppArmor 配置）。
+- **Fedora / RHEL 用 `.rpm`**：`sudo dnf install ./Orbit-<版本>-x86_64.rpm`（或 `sudo rpm -i ...`）。
+  同样由安装包处理沙箱与桌面入口。
+
+Linux 提供 **deb 与 rpm**，不提供 AppImage。
 
 Linux 下账本默认在 `~/.config/Orbit 星账/orbit.db`。
 托盘依赖桌面环境的 StatusNotifier/AppIndicator：若桌面不显示托盘图标，关窗后应用可能仍在后台，
@@ -166,11 +166,11 @@ http://localhost:5310/mcp
 不会。账本在数据目录里，卸载只清程序目录。
 另外如果检测到程序目录里**也**躺着 `orbit.db`（有人习惯放一起），
 卸载会把它们先复制到 `%APPDATA%\Orbit 星账\卸载救出\` 再继续，并弹窗告诉你。
-Linux 上用 deb 卸载只删程序，`~/.config/Orbit 星账` 不动；AppImage 删掉文件即可。
+Linux 上用 deb/rpm 卸载只删程序，`~/.config/Orbit 星账` 不动。
 
 **能装在别的盘、数据放别的地方吗？**
 Windows 安装向导里两处都能改（见上）。数据目录允许放在任意位置，包括同步盘。
-Linux 的 deb 固定装到 `/opt`；AppImage 可以放在任意目录，数据目录同样可手动迁移。
+Linux 的 deb/rpm 固定装到 `/opt`；数据目录同样可手动迁移。
 
 **换了电脑怎么迁移？**
 把 `orbit.db`（连同同目录的 `-wal` / `-shm`，如果在）一起拷过去，放到新机器的数据目录即可；
@@ -203,9 +203,9 @@ cd server && npm test                        # node:test 全量回归
 
 # 桌面端
 npm install && npm start                     # 起窗口（内嵌同一个服务）
-npm run dist                                 # 当前平台安装包（Windows exe / Linux AppImage+deb）
+npm run dist                                 # 当前平台安装包（Windows exe / Linux deb+rpm）
 npm run dist:win                             # Windows NSIS → release/Orbit-Setup-<版本>.exe
-npm run dist:linux                           # Linux AppImage + deb → release/Orbit-<版本>-*
+npm run dist:linux                           # Linux deb + rpm → release/Orbit-<版本>-*
 npm run pack                                 # 当前平台目录，不产安装包
 
 # 纯前端版
@@ -218,10 +218,13 @@ npm run verify:upgrade                       # 端到端：装两次，验证覆
 受限网络下打包需要镜像：
 `ELECTRON_MIRROR=https://npmmirror.com/mirrors/electron/`、
 `ELECTRON_BUILDER_BINARIES_MIRROR=https://npmmirror.com/mirrors/electron-builder-binaries/`。
+Linux 打 rpm 需要系统 `rpmbuild`、`7zip` 和 `fpm`：
+`sudo apt-get install rpm p7zip-full ruby ruby-dev build-essential && sudo gem install fpm -v 1.17.0`。
+打包复用本地 `node_modules/electron/dist`，不下载 Electron zip。
 
 持续集成与发布：`.github/workflows/ci.yml`（任意分支 push、PR 到 `develop` / `main` 都会跑，
-短分支必须等到「CI 通过」，其中包含 Linux AppImage/deb 构建）、
-`release.yml`（push 到 `main` 即 CD：校验版本 → 打包 Windows 与 Linux → 创建 tag 与 Release）、
+短分支必须等到「CI 通过」，其中包含 Linux deb/rpm 构建）、
+`release.yml`（push 到 `main` 即 CD：校验版本 → 打包 Windows exe 与 Linux deb/rpm → 创建 tag 与 Release）、
 `pages.yml`（push 到 `main` 构建纯前端版并部署 GitHub Pages）。
 发版前在 `develop` 的短分支里升仓库根 `package.json` 的版本并合入；`main` 上不再手工改版本或推 tag。
 
