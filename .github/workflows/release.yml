@@ -163,6 +163,20 @@ jobs:
       - name: 安装 rpmbuild 与 7zip
         run: sudo apt-get update && sudo apt-get install -y rpm p7zip-full
 
+      # fpm 的 .7z 由 electron-builder 下载后还要再下 7zip 解包；直接预解，绕开 504
+      - name: 准备 fpm
+        shell: bash
+        run: |
+          set -e
+          FPM_URL="https://github.com/electron-userland/electron-builder-binaries/releases/download/fpm@2.1.4/fpm-1.17.0-ruby-3.4.3-linux-amd64.7z"
+          curl -fL --retry 5 --retry-delay 5 -o /tmp/fpm.7z "$FPM_URL"
+          rm -rf /tmp/fpm && mkdir -p /tmp/fpm
+          7z x -y -o/tmp/fpm /tmp/fpm.7z >/dev/null
+          FPM_BIN="$(find /tmp/fpm -maxdepth 2 -type f -name fpm | head -1)"
+          test -n "$FPM_BIN"
+          chmod +x "$FPM_BIN"
+          echo "CUSTOM_FPM_PATH=$FPM_BIN" >> "$GITHUB_ENV"
+
       - name: 内嵌服务冒烟（无需 GUI）
         run: npm run verify:linux
 
