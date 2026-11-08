@@ -114,9 +114,21 @@ jobs:
         working-directory: server
         run: npm ci
 
+      # CI 的 npm ci 不会稳定执行 Electron postinstall；显式准备本地 Electron dist，
+      # 供 electron-builder 的 electronDist 使用，避免下载 Electron zip。
+      - name: 准备 Electron 运行库
+        run: node node_modules/electron/install.js
+
+      # rpm 目标由 fpm 调用 rpmbuild；7zip 用于解 Electron 包，避免运行时下载工具
+      - name: 安装 rpmbuild 与 7zip
+        run: sudo apt-get update && sudo apt-get install -y rpm p7zip-full
+
       # 和 release.yml 用同一条命令：CI 绿就说明 Linux 安装包本身能出
-      - name: 构建 AppImage 与 deb
-        run: npm run dist:linux
+      - name: 构建 deb 与 rpm
+        shell: bash
+        run: |
+          export ELECTRON_BUILDER_7ZIP_PATH="$(command -v 7zz || command -v 7z || command -v 7za)"
+          npm run dist:linux
 
       # 无窗口冒烟：验证 Electron 的 Node / node:sqlite / Express 在 Linux 上真的能起
       - name: 内嵌服务冒烟（无需 GUI）
@@ -125,13 +137,13 @@ jobs:
       - name: 检查 Linux 产物
         run: |
           set -e
-          ls -lh release/*.AppImage release/*.deb
-          for f in release/*.AppImage; do
-            test -x "$f"
-            file "$f" | grep -q 'ELF 64-bit'
-          done
+          ls -lh release/*.deb release/*.rpm
           for f in release/*.deb; do
             dpkg-deb --info "$f" >/dev/null
+          done
+          for f in release/*.rpm; do
+            test -f "$f"
+            file "$f" | grep -qi 'RPM'
           done
           echo "Linux 安装包产物完整"
 

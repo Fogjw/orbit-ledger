@@ -1,4 +1,4 @@
-# 发布（CD）：develop 合入 main 后，同时打包 Windows 与 Linux 安装包并创建 Release
+# 发布（CD）：develop 合入 main 后，同时打包 Windows exe 与 Linux deb/rpm 并创建 Release
 #
 # 触发：
 #   push 到 main —— 每次从 develop 同步合入的发布提交都会发布一个新版本
@@ -153,26 +153,39 @@ jobs:
         working-directory: server
         run: npm ci
 
+      # CI 的 npm ci 不会稳定执行 Electron postinstall；显式准备本地 Electron dist，
+      # 供 electron-builder 的 electronDist 使用，避免下载 Electron zip。
+      - name: 准备 Electron 运行库
+        run: node node_modules/electron/install.js
+
+      - name: 安装 rpmbuild 与 7zip
+        run: sudo apt-get update && sudo apt-get install -y rpm p7zip-full
+
       - name: 内嵌服务冒烟（无需 GUI）
         run: npm run verify:linux
 
-      - name: 打包（AppImage + deb）
-        run: npm run dist:linux
+      - name: 打包（deb + rpm）
+        shell: bash
+        run: |
+          export ELECTRON_BUILDER_7ZIP_PATH="$(command -v 7zz || command -v 7z || command -v 7za)"
+          npm run dist:linux
 
       - name: 检查产物
         run: |
           set -e
-          ls -lh release/*.AppImage release/*.deb release/latest-linux.yml
-          for f in release/*.AppImage; do test -x "$f"; done
+          ls -lh release/*.deb release/*.rpm
           for f in release/*.deb; do dpkg-deb --info "$f" >/dev/null; done
+          for f in release/*.rpm; do
+            test -f "$f"
+            file "$f" | grep -qi 'RPM'
+          done
 
       - uses: actions/upload-artifact@v4
         with:
           name: orbit-linux-installer
           path: |
-            release/*.AppImage
             release/*.deb
-            release/latest-linux.yml
+            release/*.rpm
           if-no-files-found: error
 
   publish:
@@ -191,8 +204,8 @@ jobs:
           set -e
           ls -lh release-assets
           test -n "$(find release-assets -maxdepth 1 -name '*.exe' -print -quit)"
-          test -n "$(find release-assets -maxdepth 1 -name '*.AppImage' -print -quit)"
           test -n "$(find release-assets -maxdepth 1 -name '*.deb' -print -quit)"
+          test -n "$(find release-assets -maxdepth 1 -name '*.rpm' -print -quit)"
 
       - name: 创建 tag 与 Release
         shell: bash

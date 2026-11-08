@@ -23,7 +23,7 @@
     "pack": "electron-builder --dir --publish never",
     "dist": "electron-builder --publish never",
     "dist:win": "electron-builder --win nsis --publish never",
-    "dist:linux": "electron-builder --linux AppImage deb --publish never"
+    "dist:linux": "electron-builder --linux deb rpm --publish never"
   },
   "devDependencies": {
     "electron": "^44.3.0",
@@ -34,6 +34,7 @@
   "build": {
     "appId": "com.fogjw.orbit-ledger",
     "productName": "Orbit 星账",
+    "electronDist": "node_modules/electron/dist",
     "directories": {
       "buildResources": "assets",
       "output": "release"
@@ -76,13 +77,13 @@
     "linux": {
       "target": [
         {
-          "target": "AppImage",
+          "target": "deb",
           "arch": [
             "x64"
           ]
         },
         {
-          "target": "deb",
+          "target": "rpm",
           "arch": [
             "x64"
           ]
