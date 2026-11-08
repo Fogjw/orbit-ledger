@@ -757,62 +757,55 @@ function tlMonthColor(mi){
   if(all.length)return all[mi%all.length].color;
   return '#9be9ff';
 }
+function baselineY(h){return h*.46}
 function drawOrbit(t){
   const r=oC.getBoundingClientRect();if(r.width<10)return;
   const w=r.width,h=r.height;
   oc.clearRect(0,0,w,h);
   const dl=domLevel();
-  // 地形（按当前档位的口径）
-  oc.save();
   const vals=isYearLike(dl)?YEARS.map(y=>y.total):dl==='day'?DAYS.map(d=>d.total):MONTHS.map(m=>m.total);
-  const n=vals.length,mx=Math.max(1,...vals);   // mx 兜底 1：空窗口时避免除零
-  if(n>1){
-    oc.beginPath();
-    for(let i=0;i<n;i++){const x=30+i/(n-1)*(w-60),y=h*.62-(vals[i]/mx)*h*.30;i?oc.lineTo(x,y):oc.moveTo(x,y)}
-    oc.lineTo(w-30,h);oc.lineTo(30,h);oc.closePath();
-    const tg=oc.createLinearGradient(0,0,0,h);
-    tg.addColorStop(0,'rgba(110,150,255,.16)');tg.addColorStop(1,'rgba(110,150,255,0)');
-    oc.fillStyle=tg;oc.fill();
+  const n=vals.length,mx=Math.max(1,...vals);
+  // 金额的纵向"读数柱"：保留原来面积图表达的信息，但换成仪器刻度，不做渐变填充
+  oc.save();oc.strokeStyle='rgba(176,141,87,.16)';oc.lineWidth=1;
+  for(let i=0;i<n;i++){
+    let x;
+    if(dl==='day')x=dayX(w,i);
+    else if(isYearLike(dl))x=xOfDay(dayNum(`${YEARS[i].y}-07-01`),w);
+    else x=monthX(w,i);
+    if(x<0||x>w)continue;
+    const bh=(vals[i]/mx)*(h*.28);
+    oc.beginPath();oc.moveTo(x,baselineY(h));oc.lineTo(x,baselineY(h)-bh);oc.stroke();
   }
   oc.restore();
-
-  // **只画当前档位**（不做中间态混合）：两套节点叠在一起很难看，
-  // 切换的「顺」由节点入场动画提供，而不是让新旧两套并存。
+  orbitBase(w,h);
   if(dl==='day')drawOrbitDay(w,h,t,1);
   else if(isYearLike(dl))drawOrbitYear(w,h,t,1);
   else drawOrbitMonth(w,h,t,1);
 }
 function orbitBase(w,h){
-  oc.save();oc.lineCap='round';
-  for(const[lw,a]of[[12,.04],[5,.08],[1.6,.18]]){
-    oc.strokeStyle=`rgba(140,175,235,${a})`;oc.lineWidth=lw;
-    oc.beginPath();oc.moveTo(30,h*.55);
-    oc.bezierCurveTo(w*.34,h*.38,w*.66,h*.70,w-30,h*.55);oc.stroke();
+  const y=baselineY(h);
+  oc.save();
+  oc.strokeStyle='rgba(176,141,87,.28)';oc.lineWidth=1;
+  oc.beginPath();oc.moveTo(0,y);oc.lineTo(w,y);oc.stroke();
+  oc.strokeStyle='rgba(176,141,87,.13)';
+  for(let x=0;x<w;x+=18){
+    const major=x%90===0;
+    oc.beginPath();oc.moveTo(x,y+2);oc.lineTo(x,y+(major?8:4));oc.stroke();
   }
   oc.restore();
 }
-/* 星轨光点（无硬边） + 节点折线 */
 function tlStar(x,y,R,color,a){
-  oc.save();oc.globalCompositeOperation='lighter';
-  const hs=R*6;oc.globalAlpha=a*.55;oc.drawImage(glowSprite(color),x-hs/2,y-hs/2,hs,hs);
-  const gr=oc.createRadialGradient(x,y,0,x,y,R);
-  gr.addColorStop(0,'rgba(255,255,255,1)');gr.addColorStop(.4,'rgba(255,255,255,.9)');
-  gr.addColorStop(.62,color);gr.addColorStop(1,rgba(color,0));
-  oc.globalAlpha=a*.95;oc.fillStyle=gr;oc.beginPath();oc.arc(x,y,R,0,7);oc.fill();
+  oc.save();oc.globalAlpha=a;
+  oc.beginPath();oc.arc(x,y,R,0,7);oc.fillStyle=color;oc.fill();
+  oc.lineWidth=1;oc.strokeStyle='rgba(227,233,223,.55)';oc.stroke();
   oc.restore();
 }
 function tlPoly(pts,a){
   if(pts.length<2||a<=.02)return;
-  oc.save();oc.strokeStyle=`rgba(170,195,240,${.30*a})`;oc.lineWidth=1;
+  oc.save();oc.strokeStyle=`rgba(176,141,87,${.24*a})`;oc.lineWidth=1;
   oc.beginPath();pts.forEach((p,i)=>i?oc.lineTo(p.x,p.y):oc.moveTo(p.x,p.y));oc.stroke();
   oc.restore();
 }
-/* ---------- 星轨统一时间轴 ----------
-   三档（日/月/年）**共用一条连续时间轴**：节点的 x = 它代表的时间点在当前视口里的位置。
-   变焦只改变视口跨度（日档≈1 个月、月档≈1 年、年档=全部），于是放大/缩小看到的是
-   「同一条星轨的局部放大」，而不是三套互不相干的数据 ——
-   在年视图选中 2025 再滚到月视图，看到的就是 2025 那一段的十二个月；
-   继续放大到日档，看到的就是某个选中的月里每一天。反向缩小同理。 */
 const DAY_MS=86400000;
 const pad2=n=>String(n).padStart(2,'0');
 /** 'YYYY-MM-DD' → 天序号（UTC，避免时区偏移） */
@@ -912,49 +905,45 @@ const monthMidDay=m=>dayNum(`${m.y}-${pad2(m.m)}-15`);
 function monthX(w,i){ return xOfDay(monthMidDay(MONTHS[i]),w) }
 function monthXY(w,h,i){
   const m=MONTHS[i];
-  return{x:monthX(w,i),
-    y:h*.50+(hash01(m.full+'y')-.5)*46+Math.sin(i*1.7)*6};
+  return{x:monthX(w,i),y:baselineY(h)+(hash01(m.full+'y')-.5)*2};
 }
 function drawOrbitMonth(w,h,t,al){
-  orbitBase(w,h);
   const trail=[];
   for(let i=0;i<MONTHS.length;i++){const p=monthXY(w,h,i);if(p.x>-70&&p.x<w+70)trail.push(p)}
   tlPoly(trail,al);
   for(let i=0;i<MONTHS.length;i++){
     const m=MONTHS[i],p=monthXY(w,h,i);
     if(p.x<-30||p.x>w+30)continue;
-    if(m.m===1){ // 年份分隔
-      oc.save();oc.globalAlpha=al*.5;oc.strokeStyle='rgba(150,175,220,.35)';oc.setLineDash([3,5]);oc.lineWidth=1;
-      oc.beginPath();oc.moveTo(p.x,10);oc.lineTo(p.x,h-6);oc.stroke();oc.setLineDash([]);
-      oc.fillStyle='rgba(139,150,181,.85)';oc.font='10px Inter,sans-serif';oc.textAlign='center';
-      oc.fillText(m.y,p.x,20);oc.restore();
+    if(m.m===1){
+      oc.save();oc.globalAlpha=al*.8;oc.strokeStyle='rgba(176,141,87,.22)';oc.setLineDash([2,4]);oc.lineWidth=1;
+      oc.beginPath();oc.moveTo(p.x,7);oc.lineTo(p.x,h-6);oc.stroke();oc.setLineDash([]);
+      oc.fillStyle='rgba(146,151,140,.9)';oc.font='9px "SFMono-Regular","Cascadia Mono",monospace';oc.textAlign='center';
+      oc.fillText(m.y,p.x,12);oc.restore();
     }
     const age=(MONTHS.length-1-i)/(MONTHS.length-1);
     const R=clamp(2.6+Math.sqrt(m.total)*.10,3,7)+(i===MONTH_TODAY?2:0);
     const hov=S.hoverKind==='month'&&TL.sel.level==='month'&&S.hover===i;
     const foc=TL.sel.level==='month'&&TL.sel.idx===i;
-    oc.save();oc.globalAlpha=al*(1-.55*age);
-    oc.globalCompositeOperation='lighter';
-    const hs=R*5;oc.drawImage(glowSprite(tlMonthColor(i)),p.x-hs/2,p.y-hs/2,hs,hs);
+    oc.save();oc.globalAlpha=al*(.72+.28*(1-age));
+    tlStar(p.x,p.y,R*(hov?1.2:1),tlMonthColor(i),1);
     oc.restore();
-    oc.save();oc.globalAlpha=al*(hov?1:(1-.5*age));
-    tlStar(p.x,p.y,R*(hov?1.25:1),tlMonthColor(i),1);
     if(i===MONTH_TODAY){
-      // 双层呼吸环：内外相位错开，比单环同相呼吸更自然
-      const b1=Math.sin(t*1.8), b2=Math.sin(t*1.8+1.15);
-      oc.strokeStyle=`rgba(160,240,255,${.50+.28*b1})`;oc.lineWidth=1.6;
-      oc.beginPath();oc.arc(p.x,p.y,(R+7)*(1+.10*b1),0,7);oc.stroke();
-      oc.strokeStyle=`rgba(120,200,255,${.24+.16*b2})`;oc.lineWidth=1;
-      oc.beginPath();oc.arc(p.x,p.y,(R+13)*(1+.07*b2),0,7);oc.stroke();
-    }
-    else if(foc){oc.strokeStyle='rgba(255,255,255,.8)';oc.lineWidth=1.2;oc.beginPath();oc.arc(p.x,p.y,R+4,0,7);oc.stroke()}
-    if(hov){oc.strokeStyle='#fff';oc.lineWidth=1.4;oc.beginPath();oc.arc(p.x,p.y,R+5,0,7);oc.stroke()}
-    oc.restore();
-    if(i%2===0||i===MONTH_TODAY||foc||hov){
-      oc.save();oc.globalAlpha=al*.85;oc.fillStyle=i===MONTH_TODAY?'#9df3ff':'#8b96b5';
-      oc.font=(i===MONTH_TODAY?'700 11px':'10px')+' Inter,"PingFang SC",sans-serif';oc.textAlign='center';
-      oc.fillText(i===MONTH_TODAY?'✦ 今天 '+m.label:m.label,p.x,p.y+R+15);
+      oc.save();
+      oc.strokeStyle='rgba(176,141,87,.62)';oc.lineWidth=1;
+      oc.beginPath();oc.moveTo(p.x,5);oc.lineTo(p.x,h-5);oc.stroke();
+      oc.strokeStyle='rgba(176,141,87,.92)';oc.lineWidth=1.4;
+      oc.beginPath();oc.arc(p.x,p.y,R+6,0,7);oc.stroke();
       oc.restore();
+    }else if(foc){
+      oc.save();oc.strokeStyle='rgba(227,233,223,.88)';oc.lineWidth=1.2;
+      oc.beginPath();oc.arc(p.x,p.y,R+5,0,7);oc.stroke();oc.restore();
+    }
+    if(hov){oc.save();oc.strokeStyle='#e3e9df';oc.lineWidth=1.4;oc.beginPath();oc.arc(p.x,p.y,R+5,0,7);oc.stroke();oc.restore()}
+    if(i%2===0||i===MONTH_TODAY||foc||hov){
+      oc.save();oc.globalAlpha=al;
+      oc.fillStyle=i===MONTH_TODAY?'#b08d57':'#7d8278';
+      oc.font=(i===MONTH_TODAY?'600 10px':'9.5px')+' "Noto Sans CJK SC","PingFang SC",sans-serif';
+      oc.textAlign='center';oc.fillText(i===MONTH_TODAY?'今天 '+m.label:m.label,p.x,p.y+R+16);oc.restore();
     }
   }
 }
@@ -962,9 +951,8 @@ function drawOrbitMonth(w,h,t,al){
    于是画出来的正好是「当前这一段」里的每一天 */
 function dayX(w,i){ return xOfDay(dayNum(DAYS[i].date),w) }
 /* 日节点纵坐标：正弦 + 哈希抖动，不规律的起伏 */
-function dayY(h,i){return h*.55+Math.sin(i*.5)*6+(hash01('dy'+i)-.5)*18}
+function dayY(h,i){return baselineY(h)+(hash01('dy'+i)-.5)*2}
 function drawOrbitDay(w,h,t,al){
-  orbitBase(w,h);
   const trail=[];
   for(let i=0;i<DAYS.length;i++){const tx=dayX(w,i);if(tx>-20&&tx<w+20)trail.push({x:tx,y:dayY(h,i)})}
   tlPoly(trail,al);
@@ -973,51 +961,51 @@ function drawOrbitDay(w,h,t,al){
     const d=DAYS[i], age=(DAYS.length-1-i)/(DAYS.length-1);
     const y=dayY(h,i);
     const R=clamp(2.5+Math.sqrt(d.total)*.32,3,7.5)+(i===DAY_TODAY?2:0);
-    const col=d.color||'#9be9ff';
+    const col=d.color||'#b08d57';
     const hov=S.hoverKind==='day'&&TL.sel.level==='day'&&S.hover===i;
     const foc=TL.sel.level==='day'&&TL.sel.idx===i;
-    oc.save();oc.globalAlpha=al*(1-.5*age);
-    oc.globalCompositeOperation='lighter';
-    const hs=R*5;oc.drawImage(glowSprite(col),x-hs/2,y-hs/2,hs,hs);
+    oc.save();oc.globalAlpha=al*(.72+.28*(1-age));
+    tlStar(x,y,R*(hov?1.2:1),col,1);
     oc.restore();
-    oc.save();oc.globalAlpha=al*(hov?1:(1-.45*age));
-    tlStar(x,y,R*(hov?1.3:1),col,1);
-    if(i===DAY_TODAY){oc.strokeStyle=`rgba(160,240,255,${.5+.3*Math.sin(t*2.2)})`;oc.lineWidth=1.5;
-      oc.beginPath();oc.arc(x,y,R+6,0,7);oc.stroke()}
-    else if(foc){oc.strokeStyle='rgba(255,255,255,.8)';oc.lineWidth=1.2;oc.beginPath();oc.arc(x,y,R+4,0,7);oc.stroke()}
-    oc.restore();
+    if(i===DAY_TODAY){
+      oc.save();oc.strokeStyle='rgba(176,141,87,.62)';oc.lineWidth=1;
+      oc.beginPath();oc.moveTo(x,5);oc.lineTo(x,h-5);oc.stroke();
+      oc.strokeStyle='rgba(176,141,87,.92)';oc.lineWidth=1.4;oc.beginPath();oc.arc(x,y,R+6,0,7);oc.stroke();oc.restore();
+    }else if(foc){
+      oc.save();oc.strokeStyle='rgba(227,233,223,.88)';oc.lineWidth=1.2;oc.beginPath();oc.arc(x,y,R+5,0,7);oc.stroke();oc.restore();
+    }
     if(i%5===0||i===DAY_TODAY||foc){
-      oc.save();oc.globalAlpha=al*.8;oc.fillStyle=i===DAY_TODAY?'#9df3ff':'#7c87a3';
-      oc.font='10px Inter,sans-serif';oc.textAlign='center';
-      const lb=i===DAY_TODAY?'✦今天':DAYS[i].label.replace('月','/').replace('日','');
-      oc.fillText(lb,x,y+R+14);oc.restore();
+      oc.save();oc.globalAlpha=al;oc.fillStyle=i===DAY_TODAY?'#b08d57':'#7d8278';
+      oc.font='9.5px "Noto Sans CJK SC","PingFang SC",sans-serif';oc.textAlign='center';
+      const lb=i===DAY_TODAY?'今天':DAYS[i].label.replace('月','/').replace('日','');
+      oc.fillText(lb,x,y+R+15);oc.restore();
     }
   }
 }
-function yearY(h,i){return h*[.40,.60,.44][i%3]}
+function yearY(h,i){return baselineY(h)+(hash01('yy'+i)-.5)*2}
 function drawOrbitYear(w,h,t,al){
-  orbitBase(w,h);
-  const yearX=(i)=>xOfDay(dayNum(`${YEARS[i].y}-07-01`),w);   // 同样走统一时间轴
+  const yearX=(i)=>xOfDay(dayNum(`${YEARS[i].y}-07-01`),w);
   tlPoly(YEARS.map((_,i)=>({x:yearX(i),y:yearY(h,i)})),al);
   YEARS.forEach((y,i)=>{
     const x=yearX(i), yy=yearY(h,i);
     const R=clamp(6+Math.sqrt(y.total)*.09,9,15);
-    const col=y.color||'#9be9ff';
+    const col=y.color||'#b08d57';
     const hov=S.hoverKind==='year'&&TL.sel.level==='year'&&S.hover===i;
     const foc=TL.sel.level==='year'&&TL.sel.idx===i;
     oc.save();oc.globalAlpha=al;
-    oc.globalCompositeOperation='lighter';
-    const hs=R*5;oc.drawImage(glowSprite(col),x-hs/2,yy-hs/2,hs,hs);
-    oc.restore();
-    oc.save();oc.globalAlpha=al;
     tlStar(x,yy,R*(hov?1.15:1),col,1);
-    if(foc){oc.strokeStyle='rgba(255,255,255,.85)';oc.lineWidth=1.4;oc.beginPath();oc.arc(x,yy,R+5,0,7);oc.stroke()}
-    if(i===YEAR_TODAY){oc.strokeStyle=`rgba(160,240,255,${.5+.3*Math.sin(t*2.2)})`;oc.lineWidth=1.5;
-      oc.beginPath();oc.arc(x,yy,R+8,0,7);oc.stroke()}
     oc.restore();
-    oc.save();oc.globalAlpha=al;oc.fillStyle='#dfe7fa';oc.font='700 12px Inter,"PingFang SC",sans-serif';oc.textAlign='center';
+    if(foc){
+      oc.save();oc.strokeStyle='rgba(227,233,223,.88)';oc.lineWidth=1.4;oc.beginPath();oc.arc(x,yy,R+5,0,7);oc.stroke();oc.restore();
+    }
+    if(i===YEAR_TODAY){
+      oc.save();oc.strokeStyle='rgba(176,141,87,.62)';oc.lineWidth=1;
+      oc.beginPath();oc.moveTo(x,5);oc.lineTo(x,h-5);oc.stroke();
+      oc.strokeStyle='rgba(176,141,87,.92)';oc.lineWidth=1.4;oc.beginPath();oc.arc(x,yy,R+8,0,7);oc.stroke();oc.restore();
+    }
+    oc.save();oc.globalAlpha=al;oc.fillStyle='#e3e9df';oc.font='600 11px "Noto Sans CJK SC","PingFang SC",sans-serif';oc.textAlign='center';
     oc.fillText(y.label+(i===YEAR_TODAY?' · 今':''),x,yy+R+17);
-    oc.font='10.5px Inter,sans-serif';oc.fillStyle='rgba(150,165,195,.85)';
+    oc.font='10px "SFMono-Regular","Cascadia Mono",monospace';oc.fillStyle='rgba(146,151,140,.9)';
     oc.fillText(fmtYuan(y.total),x,yy+R+31);
     oc.restore();
   });
