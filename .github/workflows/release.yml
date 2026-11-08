@@ -135,6 +135,8 @@ jobs:
     name: Linux 安装包
     needs: [prepare, regression]
     runs-on: ubuntu-latest
+    env:
+      ELECTRON_MIRROR: https://npmmirror.com/mirrors/electron/
     steps:
       - uses: actions/checkout@v4
 

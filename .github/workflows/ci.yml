@@ -95,6 +95,9 @@ jobs:
   linux-build:
     name: Linux 安装包构建
     runs-on: ubuntu-latest
+    # Electron 官方 release 资产偶发 504；npmmirror 的 electron 镜像稳定可用
+    env:
+      ELECTRON_MIRROR: https://npmmirror.com/mirrors/electron/
     steps:
       - uses: actions/checkout@v4
 
