@@ -95,6 +95,10 @@ jobs:
   linux-build:
     name: Linux 安装包构建
     runs-on: ubuntu-latest
+    # Electron 官方 release 资产偶发 504；npmmirror 的 electron 镜像稳定可用
+    env:
+      ELECTRON_MIRROR: https://npmmirror.com/mirrors/electron/
+      USE_SYSTEM_FPM: "true"
     steps:
       - uses: actions/checkout@v4
 
@@ -119,9 +123,16 @@ jobs:
       - name: 准备 Electron 运行库
         run: node node_modules/electron/install.js
 
-      # rpm 目标由 fpm 调用 rpmbuild；7zip 用于解 Electron 包，避免运行时下载工具
-      - name: 安装 rpmbuild 与 7zip
-        run: sudo apt-get update && sudo apt-get install -y rpm p7zip-full
+      # fpm 由系统 RubyGems 提供；rpmbuild 用于 rpm，7zip 用于解包。
+      # 不再从 GitHub 下载 electron-builder-binaries（该 CDN 当前 504）。
+      - name: 安装系统打包工具
+        shell: bash
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y rpm p7zip-full ruby ruby-dev build-essential
+          sudo gem install fpm -v 1.17.0 --no-document
+          fpm --version
+
 
       # 和 release.yml 用同一条命令：CI 绿就说明 Linux 安装包本身能出
       - name: 构建 deb 与 rpm
