@@ -114,13 +114,16 @@ jobs:
         working-directory: server
         run: npm ci
 
-      # rpm 目标由 fpm 调用 rpmbuild；ubuntu-latest 默认没有
-      - name: 安装 rpmbuild
-        run: sudo apt-get update && sudo apt-get install -y rpm
+      # rpm 目标由 fpm 调用 rpmbuild；7zip 用于解 Electron 包，避免运行时下载工具
+      - name: 安装 rpmbuild 与 7zip
+        run: sudo apt-get update && sudo apt-get install -y rpm p7zip-full
 
       # 和 release.yml 用同一条命令：CI 绿就说明 Linux 安装包本身能出
       - name: 构建 deb 与 rpm
-        run: npm run dist:linux
+        shell: bash
+        run: |
+          export ELECTRON_BUILDER_7ZIP_PATH="$(command -v 7zz || command -v 7z || command -v 7za)"
+          npm run dist:linux
 
       # 无窗口冒烟：验证 Electron 的 Node / node:sqlite / Express 在 Linux 上真的能起
       - name: 内嵌服务冒烟（无需 GUI）

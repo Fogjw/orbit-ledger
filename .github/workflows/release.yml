@@ -153,14 +153,17 @@ jobs:
         working-directory: server
         run: npm ci
 
-      - name: 安装 rpmbuild
-        run: sudo apt-get update && sudo apt-get install -y rpm
+      - name: 安装 rpmbuild 与 7zip
+        run: sudo apt-get update && sudo apt-get install -y rpm p7zip-full
 
       - name: 内嵌服务冒烟（无需 GUI）
         run: npm run verify:linux
 
       - name: 打包（deb + rpm）
-        run: npm run dist:linux
+        shell: bash
+        run: |
+          export ELECTRON_BUILDER_7ZIP_PATH="$(command -v 7zz || command -v 7z || command -v 7za)"
+          npm run dist:linux
 
       - name: 检查产物
         run: |
