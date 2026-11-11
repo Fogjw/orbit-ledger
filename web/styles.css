@@ -332,6 +332,47 @@ textarea.m-remark{min-height:66px;max-height:30vh;resize:vertical;line-height:1.
 .m-input:focus{border-color:rgba(140,190,255,.55)}
 .m-remark{margin-top:10px}
 .m-foot{display:flex;justify-content:flex-end;gap:10px;margin-top:16px}
+
+/* 记一笔：右侧账笺，不是居中玻璃弹窗 */
+#modalMask{display:block;background:rgba(2,4,10,.58);backdrop-filter:none;-webkit-backdrop-filter:none}
+#modalMask[hidden]{display:none}
+#modalMask .modal{
+  position:fixed;top:0;right:0;bottom:0;width:min(440px,100vw);max-height:none;
+  padding:22px 26px 18px;border-radius:0;border-left:1px solid rgba(176,141,87,.46);
+  background:#0d1110;box-shadow:-26px 0 70px rgba(0,0,0,.55);
+  display:flex;flex-direction:column;overflow-y:auto;animation:sheetIn .28s ease-out;
+}
+@keyframes sheetIn{from{opacity:0;transform:translateX(22px)}to{opacity:1;transform:none}}
+#modalMask .m-head{padding-bottom:12px;border-bottom:1px solid rgba(223,211,184,.14);margin-bottom:0}
+#modalMask #modalMode{font:500 15px/1.2 "Noto Serif CJK SC","Source Han Serif SC","Songti SC",serif;letter-spacing:.14em;color:#e3e9df}
+#modalMask .m-tabs{border:1px solid rgba(223,211,184,.18);border-radius:0;background:transparent;padding:0;gap:0}
+#modalMask .m-tab{border-radius:0;padding:7px 12px;font:400 11px/1 "Noto Sans CJK SC","PingFang SC",sans-serif;color:#92978c;letter-spacing:.08em}
+#modalMask .m-tab.active{background:rgba(176,141,87,.14);color:#e3e9df;box-shadow:inset 0 -1px 0 #b08d57;background-image:none}
+#modalMask .m-close{color:#92978c;font-size:16px}
+#modalMask .m-close:hover{color:#e3e9df}
+#modalMask .m-amount{justify-content:flex-start;gap:8px;margin:20px 0 4px;padding-bottom:12px;border-bottom:1px solid rgba(223,211,184,.14)}
+#modalMask .m-amount span{font:400 22px/1 "SFMono-Regular","Cascadia Mono",monospace;color:#b08d57}
+#modalMask .m-amount input{flex:1;min-width:0;width:auto;text-align:left;font:400 42px/1 "SFMono-Regular","Cascadia Mono",monospace;color:#e3e9df;text-shadow:none;letter-spacing:-.03em}
+#modalMask .m-label{margin:16px 0 8px;font:400 9px/1 "Noto Sans CJK SC","PingFang SC",sans-serif;letter-spacing:.18em;color:#92978c}
+#modalMask .chip-add{border-radius:0;border:1px solid rgba(223,211,184,.18);color:#92978c;font:400 10px/1 "Noto Sans CJK SC","PingFang SC",sans-serif;letter-spacing:.04em;padding:4px 7px}
+#modalMask .chip-add:hover{color:#e3e9df;border-color:#b08d57;box-shadow:none}
+#modalMask .m-chips{gap:6px}
+#modalMask .m-chip{border-radius:0;border:1px solid rgba(223,211,184,.16);background:transparent;color:#e8e2d2;font:400 11.5px/1 "Noto Sans CJK SC","PingFang SC",sans-serif;padding:7px 10px}
+#modalMask .m-chip:hover{border-color:rgba(176,141,87,.6);background:rgba(176,141,87,.06)}
+#modalMask .m-chip.on{border-color:#b08d57;background:rgba(176,141,87,.14);color:#e3e9df;box-shadow:none}
+#modalMask .m-chip-sub{padding:5px 8px;font-size:11px;border-radius:0}
+#modalMask .m-subwrap{border-radius:0;background:rgba(223,211,184,.025);border:1px solid rgba(223,211,184,.14);max-height:140px}
+#modalMask .m-sub-label{font:400 9.5px/1.3 "Noto Sans CJK SC","PingFang SC",sans-serif;letter-spacing:.08em;color:#92978c}
+#modalMask .m-row{margin-top:14px;gap:12px}
+#modalMask .m-row label{font:400 9px/1.2 "Noto Sans CJK SC","PingFang SC",sans-serif;letter-spacing:.14em;color:#92978c;gap:5px}
+#modalMask .m-input{border-radius:0;border:1px solid rgba(223,211,184,.16);background:#0a0d0b;color:#e8e2d2;font:400 12px/1.4 "Noto Sans CJK SC","PingFang SC",sans-serif;padding:8px 9px}
+#modalMask .m-input:focus{border-color:#b08d57}
+#modalMask .m-remark{flex:1;min-height:82px;margin-top:14px;resize:none;line-height:1.6}
+#modalMask .m-foot{margin-top:16px;padding-top:12px;border-top:1px solid rgba(223,211,184,.14);gap:8px}
+#modalMask .btn{border-radius:0;border:1px solid rgba(223,211,184,.18);background:transparent;color:#92978c;font:400 11.5px/1 "Noto Sans CJK SC","PingFang SC",sans-serif;letter-spacing:.06em;padding:9px 12px;box-shadow:none;transform:none}
+#modalMask .btn:hover{color:#e3e9df;border-color:#b08d57;background:rgba(176,141,87,.08);box-shadow:none;transform:none}
+#modalMask .btn.primary{border-color:#b08d57;background:#b08d57;color:#0b0e0c;font-weight:600}
+#modalMask .btn.primary:hover{background:#c9a46a;border-color:#c9a46a;color:#0b0e0c}
 .n-modal{width:min(320px,calc(100vw - 32px))}
 .n-title{font-weight:800;font-size:14px;letter-spacing:1px;margin-right:auto}
 .e-modal{width:min(460px,calc(100vw - 32px))}
