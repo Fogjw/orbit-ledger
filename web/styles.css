@@ -131,11 +131,32 @@ canvas{display:block}
 .panel .insight{font-size:10.5px;line-height:1.55;color:#9a9e93;background:none;border:0;border-top:1px solid rgba(223,211,184,.14);border-radius:0;padding:8px 0 0;margin:10px 0 0}
 .panel .insight b{color:#e3e9df;font-weight:500}
 
-/* 右侧粒度轨 */
-.rail-wrap{position:fixed;right:16px;top:50%;transform:translateY(-50%);z-index:9;display:flex;flex-direction:column;align-items:center;gap:8px;padding:12px 9px;border-radius:16px}
-.rail-mark{font-size:11px;color:var(--dim)}
-.rail{position:relative;width:8px;height:22vh;min-height:130px;border-radius:6px;background:linear-gradient(180deg,transparent,rgba(90,215,255,.4) 30%,rgba(180,140,255,.5) 55%,rgba(90,215,255,.4) 75%,transparent);cursor:ns-resize;box-shadow:0 0 16px rgba(110,160,255,.25)}
-.rail-handle{position:absolute;left:50%;top:38%;transform:translate(-50%,-50%);width:20px;height:20px;border-radius:50%;background:radial-gradient(circle at 35% 30%,#fff,#9be9ff 45%,#2f6fe0 80%);box-shadow:0 0 16px rgba(120,220,255,.9);cursor:grab;border:2px solid rgba(255,255,255,.7)}
+/* 右侧粒度轨：垂直校准尺，不是发光滑杆 */
+.rail-wrap{
+  position:fixed;right:0;top:64px;bottom:150px;z-index:9;width:52px;
+  display:flex;flex-direction:column;padding:14px 0 12px;
+  border-left:1px solid rgba(176,141,87,.30);background:#0d1110;border-radius:0;transform:none;
+}
+.rail-scale{position:relative;flex:1;width:100%;min-height:0}
+.rail-level{
+  position:absolute;left:3px;transform:translateY(-50%);pointer-events:none;
+  font:400 9px/1 "Noto Sans CJK SC","PingFang SC","Microsoft YaHei",sans-serif;
+  letter-spacing:.06em;color:#92978c;white-space:nowrap;
+}
+.rail{position:absolute;right:6px;top:0;bottom:0;width:16px;border-radius:0;background:none;box-shadow:none;cursor:ns-resize}
+.rail::before{content:"";position:absolute;left:50%;top:0;bottom:0;width:1px;background:rgba(176,141,87,.38);transform:translateX(-50%)}
+.rail::after{
+  content:"";position:absolute;left:0;top:0;bottom:0;width:16px;
+  background:
+    repeating-linear-gradient(180deg,rgba(176,141,87,.26) 0 1px,transparent 1px 12px),
+    repeating-linear-gradient(180deg,rgba(176,141,87,.56) 0 1px,transparent 1px 60px);
+}
+.rail-handle{
+  position:absolute;left:50%;top:38%;transform:translate(-50%,-50%);
+  width:30px;height:10px;border-radius:0;border:0;background:#b08d57;box-shadow:none;cursor:grab;
+}
+.rail-handle::before{content:"";position:absolute;left:50%;top:-5px;bottom:-5px;width:1px;background:#e3e9df;transform:translateX(-50%)}
+.rail-handle:active{cursor:grabbing;background:#d0aa70}
 
 /* 底部星轨：全宽刻度长轨 */
 .timeline{position:fixed;left:0;right:0;bottom:0;z-index:9;width:auto;height:150px;padding:13px 28px 0;border-radius:0;background:#0d1110;border-top:1px solid rgba(176,141,87,.42);animation:tlIn .4s ease-out}
