@@ -450,6 +450,94 @@ textarea.m-remark{min-height:66px;max-height:30vh;resize:vertical;line-height:1.
 .btn.danger:hover{border-color:#ff7a9e;background:rgba(255,80,120,.18);box-shadow:0 0 14px rgba(255,90,130,.25)}
 .e-foot{margin-top:14px}
 
+/* 命名 / 详情 / 花销明细：三块居中的仪器登记板 */
+#nameMask,#viewMask,#expMask{background:rgba(2,4,10,.58);backdrop-filter:none;-webkit-backdrop-filter:none}
+#nameMask .modal,#viewMask .modal,#expMask .modal{
+  border-radius:0;border:1px solid rgba(176,141,87,.42);background:#0d1110;
+  box-shadow:0 24px 60px rgba(0,0,0,.55);max-height:86vh;padding:22px 24px 16px;
+  animation:plateIn .25s ease-out;
+}
+@keyframes plateIn{from{opacity:0;transform:translateY(6px)}to{opacity:1;transform:none}}
+#nameMask .modal{width:min(360px,calc(100vw - 32px))}
+#viewMask .modal{width:min(460px,calc(100vw - 32px))}
+#expMask .modal{width:min(500px,calc(100vw - 32px));display:flex;flex-direction:column;overflow:hidden}
+#nameMask .m-head,#viewMask .m-head,#expMask .m-head{padding-bottom:12px;border-bottom:1px solid rgba(223,211,184,.14);margin-bottom:0}
+#nameMask .n-title,#viewMask .n-title,#expMask .n-title{font:500 15px/1.2 "Noto Serif CJK SC","Source Han Serif SC","Songti SC",serif;letter-spacing:.14em;color:#e3e9df;font-weight:500}
+#nameMask .m-close,#viewMask .m-close,#expMask .m-close{color:#92978c;font-size:16px}
+#nameMask .m-close:hover,#viewMask .m-close:hover,#expMask .m-close:hover{color:#e3e9df}
+#nameMask .m-input,#viewMask .m-input,#expMask .m-input{border-radius:0;border:1px solid rgba(223,211,184,.16);background:#0a0d0b;color:#e8e2d2;font:400 12px/1.4 "Noto Sans CJK SC","PingFang SC",sans-serif;padding:9px 10px}
+#nameMask .m-input:focus,#viewMask .m-input:focus,#expMask .m-input:focus{border-color:#b08d57}
+#nameMask .m-foot,#viewMask .m-foot,#expMask .m-foot{margin-top:14px;padding-top:11px;border-top:1px solid rgba(223,211,184,.14);gap:8px}
+#nameMask .btn,#viewMask .btn,#expMask .btn{border-radius:0;border:1px solid rgba(223,211,184,.18);background:transparent;color:#92978c;font:400 11.5px/1 "Noto Sans CJK SC","PingFang SC",sans-serif;letter-spacing:.06em;padding:8px 12px;box-shadow:none;transform:none}
+#nameMask .btn:hover,#viewMask .btn:hover,#expMask .btn:hover{color:#e3e9df;border-color:#b08d57;background:rgba(176,141,87,.08);box-shadow:none;transform:none}
+#nameMask .btn.primary,#viewMask .btn.primary,#expMask .btn.primary{border-color:#b08d57;background:#b08d57;color:#0b0e0c;font-weight:600}
+#nameMask .btn.primary:hover,#viewMask .btn.primary:hover,#expMask .btn.primary:hover{background:#c9a46a;border-color:#c9a46a;color:#0b0e0c}
+#viewMask .btn.danger,#expMask .btn.danger{border-color:rgba(176,106,92,.45);background:rgba(176,106,92,.08);color:#d08a78}
+#viewMask .btn.danger:hover,#expMask .btn.danger:hover{border-color:#b06a5c;background:rgba(176,106,92,.16);color:#e3a08e;box-shadow:none}
+#nameMask .chip-add,#viewMask .chip-add,#expMask .chip-add{border-radius:0;border:1px solid rgba(223,211,184,.18);color:#92978c;font:400 10px/1 "Noto Sans CJK SC","PingFang SC",sans-serif;letter-spacing:.04em;padding:4px 7px}
+#nameMask .chip-add:hover,#viewMask .chip-add:hover,#expMask .chip-add:hover{color:#e3e9df;border-color:#b08d57;box-shadow:none}
+
+/* 命名 */
+#nameMask .m-head .m-close{margin-left:auto}
+#nameMask .m-input{margin-top:14px}
+#nameMask .n-colors{margin-top:12px;padding-top:11px;border-top:1px solid rgba(223,211,184,.14);border-radius:0;background:none}
+#nameMask .nc-head{display:flex;align-items:center;justify-content:space-between;margin-bottom:9px;gap:8px}
+#nameMask .nc-label{font:400 9px/1 "Noto Sans CJK SC","PingFang SC",sans-serif;letter-spacing:.18em;color:#92978c}
+#nameMask .nc-swatches{gap:7px;margin-bottom:9px}
+#nameMask .nc-dot,#expMask .nc-dot{width:18px;height:18px;border-radius:0;border:1px solid transparent;box-shadow:none;opacity:.9;transition:border-color .15s,opacity .15s}
+#nameMask .nc-dot:hover,#expMask .nc-dot:hover{opacity:1;transform:none}
+#nameMask .nc-dot.on,#expMask .nc-dot.on{border-color:#e3e9df;box-shadow:none;opacity:1}
+#nameMask .nc-custom,#expMask .nc-custom{font:400 9.5px/1 "Noto Sans CJK SC","PingFang SC",sans-serif;color:#92978c;gap:8px}
+#nameMask .nc-custom input[type=color],#expMask .nc-custom input[type=color]{width:30px;height:20px;border-radius:0;border:1px solid rgba(223,211,184,.18);background:transparent}
+
+/* 账单详情 */
+#viewMask .v-amount{font:400 32px/1.1 "SFMono-Regular","Cascadia Mono",monospace;color:#e3e9df;letter-spacing:-.02em;margin:18px 0 12px;padding-bottom:12px;border-bottom:1px solid rgba(223,211,184,.14)}
+#viewMask .v-amount.income{color:#7fb0a4}
+#viewMask .v-rows{display:flex;flex-direction:column;gap:0;padding:0;border:0;border-radius:0;background:none}
+#viewMask .v-row{display:flex;align-items:baseline;justify-content:space-between;gap:12px;padding:7px 0;border-bottom:1px solid rgba(223,211,184,.10);font-size:12px}
+#viewMask .v-row:last-child{border-bottom:0}
+#viewMask .v-row span{color:#92978c;font:400 9px/1 "Noto Sans CJK SC","PingFang SC",sans-serif;letter-spacing:.14em;min-width:38px}
+#viewMask .v-row b{color:#e8e2d2;font:400 11.5px/1.4 "SFMono-Regular","Cascadia Mono",monospace;font-weight:400}
+#viewMask .v-sec{font:400 9px/1 "Noto Sans CJK SC","PingFang SC",sans-serif;letter-spacing:.18em;color:#7d8278;margin:14px 0 7px}
+#viewMask .v-tags{gap:5px}
+#viewMask .v-tag{display:inline-flex;align-items:center;gap:5px;font:400 11px/1 "Noto Sans CJK SC","PingFang SC",sans-serif;color:#e8e2d2;border:1px solid rgba(223,211,184,.16);border-radius:0;padding:5px 8px;background:transparent}
+#viewMask .v-tag.primary{border-color:#b08d57;background:rgba(176,141,87,.12)}
+#viewMask .v-tag.unnamed{opacity:.55;border-style:dashed}
+#viewMask .v-tag i{font:400 8.5px/1 "SFMono-Regular",monospace;color:#92978c;letter-spacing:.04em}
+#viewMask .v-empty{font:400 11px/1.5 "Noto Sans CJK SC","PingFang SC",sans-serif;color:#7d8278}
+#viewMask .v-note{font:400 12px/1.65 "Noto Sans CJK SC","PingFang SC",sans-serif;color:#e8e2d2;white-space:pre-wrap;word-break:break-word;max-height:30vh;min-height:64px;overflow-y:auto;padding:9px 10px;border-radius:0;background:#0a0d0b;border:1px solid rgba(223,211,184,.14)}
+#viewMask .v-note.empty{color:#7d8278}
+
+/* 花销明细 */
+#expMask .e-head-actions{gap:6px}
+#expMask .e-colors{margin:10px 0 12px;padding:10px 0 0;border:0;border-top:1px solid rgba(223,211,184,.14);border-radius:0;background:none}
+#expMask .nc-head{margin-bottom:8px}
+#expMask .nc-label{font:400 9px/1 "Noto Sans CJK SC","PingFang SC",sans-serif;letter-spacing:.18em;color:#92978c}
+#expMask .nc-swatches{gap:7px;margin-bottom:9px}
+#expMask .e-sub{font:400 9px/1.4 "Noto Sans CJK SC","PingFang SC",sans-serif;color:#92978c;letter-spacing:.12em;margin-bottom:10px;padding-bottom:8px;border-bottom:1px solid rgba(223,211,184,.10)}
+#expMask .e-dist{margin:0 0 10px;padding:8px 0;border:0;border-top:1px solid rgba(223,211,184,.14);border-bottom:1px solid rgba(223,211,184,.10);border-radius:0;background:none}
+#expMask .d-head{font:400 9px/1 "Noto Sans CJK SC","PingFang SC",sans-serif;letter-spacing:.18em;color:#7d8278;margin-bottom:8px}
+#expMask .d-row{grid-template-columns:70px 1fr 62px 34px 32px;gap:8px;padding:4px 0;font-size:11px}
+#expMask .d-name{color:#e8e2d2}
+#expMask .d-bar{height:2px;border-radius:0;background:rgba(223,211,184,.14)}
+#expMask .d-bar i{border-radius:0;opacity:.9}
+#expMask .d-amt{color:#e8e2d2;font-family:"SFMono-Regular","Cascadia Mono",monospace;font-size:10.5px}
+#expMask .d-cnt,#expMask .d-pct{font-family:"SFMono-Regular","Cascadia Mono",monospace;font-size:9.5px;color:#92978c}
+#expMask .d-tip{font:400 9px/1.5 "Noto Sans CJK SC","PingFang SC",sans-serif;color:#7d8278}
+#expMask .e-list{gap:0;max-height:42vh;overflow-y:auto;scrollbar-width:thin;scrollbar-color:#4a463c #090c0a;margin-top:2px}
+#expMask .e-list::-webkit-scrollbar{width:5px}
+#expMask .e-list::-webkit-scrollbar-track{background:#090c0a}
+#expMask .e-list::-webkit-scrollbar-thumb{background:#4a463c;border:0;border-radius:0}
+#expMask .e-row{display:flex;align-items:center;gap:10px;padding:8px 0;border:0;border-bottom:1px solid rgba(223,211,184,.10);border-radius:0;background:none;cursor:pointer;transition:background .15s}
+#expMask .e-row:hover{background:rgba(176,141,87,.06);border-color:rgba(223,211,184,.10)}
+#expMask .e-row .e-date{font:400 9.5px/1.3 "SFMono-Regular","Cascadia Mono",monospace;color:#92978c;width:62px;flex:none;font-variant-numeric:tabular-nums}
+#expMask .e-row .e-amt{margin-left:auto;font:400 12px/1 "SFMono-Regular","Cascadia Mono",monospace;color:#e3e9df;flex:none;font-variant-numeric:tabular-nums}
+#expMask .e-row.income .e-amt{color:#7fb0a4}
+#expMask .e-row .e-del{border:1px solid transparent;border-radius:0;background:transparent;color:#7d8278;font-size:12px;cursor:pointer;padding:2px 4px;flex:none}
+#expMask .e-row .e-del:hover{color:#d08a78;border-color:rgba(176,106,92,.35);background:rgba(176,106,92,.08)}
+#expMask .e-empty{text-align:center;color:#92978c;font:400 11.5px/1.5 "Noto Sans CJK SC","PingFang SC",sans-serif;padding:18px 0}
+#expMask .e-foot{margin-top:12px}
+
 @media (max-width:1100px){.panel{display:none}}
 @media (max-width:760px){
   .topbar{height:auto;min-height:56px;padding:8px 16px;gap:8px;flex-wrap:wrap;justify-content:flex-start}

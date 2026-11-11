@@ -44,6 +44,8 @@ async function main() {
       menu: Boolean(q('#ledgerMenu')) && !q('#ledgerMenu').hidden,
       tagMgr: Boolean(q('#tagMask')) && !q('#tagMask').hidden,
       expList: Boolean(q('#expMask')) && !q('#expMask').hidden,
+      view: Boolean(q('#viewMask')) && !q('#viewMask').hidden,
+      name: Boolean(q('#nameMask')) && !q('#nameMask').hidden,
       detail: Boolean(q('#btnBack')) && !q('#btnBack').hidden,
       back: (q('#btnBack')?.textContent || '').trim(),
       total: (q('#mtValue')?.textContent || '').trim(),
@@ -71,6 +73,15 @@ async function main() {
   await click('#btnAdd');
   await wait(1400);
   await shot('02-entry');
+  // 命名 + 取色：从记一笔里的「新建品类」打开
+  const openedName = await js(`Boolean(document.querySelector('#btnAddCat'))`);
+  if (openedName) {
+    await click('#btnAddCat');
+    await wait(700);
+    await shot('08-name');
+    await click('#nameClose');
+    await wait(400);
+  }
   await click('#modalClose');
   await wait(500);
 
@@ -100,6 +111,19 @@ async function main() {
   if (openedList) {
     await wait(900);
     await shot('05-expense-list');
+    // 从明细点一笔，截「账单详情」——只读视图，关闭后回到明细
+    const openedView = await js(`(() => {
+      const row = document.querySelector('#expList .e-row');
+      if (!row) return false;
+      row.click();
+      return true;
+    })()`);
+    if (openedView) {
+      await wait(800);
+      await shot('07-view-detail');
+      await click('#viewClose');
+      await wait(500);
+    }
     await click('#expDone');
     await wait(500);
   } else {
