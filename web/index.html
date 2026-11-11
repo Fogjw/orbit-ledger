@@ -66,11 +66,15 @@
 
   <!-- 右侧粒度轨 -->
   <div class="rail-wrap" id="railWrap" title="星轨变焦：上=日 下=全部（可拖动，滚轮亦可）">
-    <span class="rail-mark">日</span>
-    <div class="rail" id="rail">
-      <div class="rail-handle" id="railHandle"></div>
+    <div class="rail-scale" id="railScale">
+      <span class="rail-level" style="top:2%">日</span>
+      <span class="rail-level" style="top:33.33%">月</span>
+      <span class="rail-level" style="top:66.66%">年</span>
+      <span class="rail-level" style="top:98%">全部</span>
+      <div class="rail" id="rail">
+        <div class="rail-handle" id="railHandle"></div>
+      </div>
     </div>
-    <span class="rail-mark">全部</span>
   </div>
 
   <!-- 底部星轨 -->

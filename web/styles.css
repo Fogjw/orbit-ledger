@@ -134,21 +134,26 @@ canvas{display:block}
 /* 右侧粒度轨：垂直校准尺，不是发光滑杆 */
 .rail-wrap{
   position:fixed;right:0;top:64px;bottom:150px;z-index:9;width:52px;
-  display:flex;flex-direction:column;align-items:center;gap:8px;padding:14px 0 12px;
+  display:flex;flex-direction:column;padding:14px 0 12px;
   border-left:1px solid rgba(176,141,87,.30);background:#0d1110;border-radius:0;transform:none;
 }
-.rail-mark{font:400 9px/1 "Noto Sans CJK SC","PingFang SC","Microsoft YaHei",sans-serif;letter-spacing:.18em;color:#92978c}
-.rail{position:relative;flex:1;width:18px;min-height:0;margin:2px 0;border-radius:0;background:none;box-shadow:none;cursor:ns-resize}
-.rail::before{content:"";position:absolute;left:50%;top:0;bottom:0;width:1px;background:rgba(176,141,87,.34);transform:translateX(-50%)}
+.rail-scale{position:relative;flex:1;width:100%;min-height:0}
+.rail-level{
+  position:absolute;left:3px;transform:translateY(-50%);pointer-events:none;
+  font:400 9px/1 "Noto Sans CJK SC","PingFang SC","Microsoft YaHei",sans-serif;
+  letter-spacing:.06em;color:#92978c;white-space:nowrap;
+}
+.rail{position:absolute;right:6px;top:0;bottom:0;width:16px;border-radius:0;background:none;box-shadow:none;cursor:ns-resize}
+.rail::before{content:"";position:absolute;left:50%;top:0;bottom:0;width:1px;background:rgba(176,141,87,.38);transform:translateX(-50%)}
 .rail::after{
-  content:"";position:absolute;left:0;top:0;bottom:0;width:18px;
+  content:"";position:absolute;left:0;top:0;bottom:0;width:16px;
   background:
-    repeating-linear-gradient(180deg,rgba(176,141,87,.24) 0 1px,transparent 1px 12px),
-    repeating-linear-gradient(180deg,rgba(176,141,87,.52) 0 1px,transparent 1px 60px);
+    repeating-linear-gradient(180deg,rgba(176,141,87,.26) 0 1px,transparent 1px 12px),
+    repeating-linear-gradient(180deg,rgba(176,141,87,.56) 0 1px,transparent 1px 60px);
 }
 .rail-handle{
   position:absolute;left:50%;top:38%;transform:translate(-50%,-50%);
-  width:30px;height:9px;border-radius:0;border:0;background:#b08d57;box-shadow:none;cursor:grab;
+  width:30px;height:10px;border-radius:0;border:0;background:#b08d57;box-shadow:none;cursor:grab;
 }
 .rail-handle::before{content:"";position:absolute;left:50%;top:-5px;bottom:-5px;width:1px;background:#e3e9df;transform:translateX(-50%)}
 .rail-handle:active{cursor:grabbing;background:#d0aa70}
