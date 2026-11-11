@@ -212,20 +212,21 @@ canvas{display:block}
 .led-btn .led-name{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 /* 高度按视口给：原来固定 320px，账本一多就把「导出/导入备份、删除账本」挤出滚动区，
    视觉上等于这些入口不存在 */
-.dd-menu{position:absolute;top:calc(100% + 8px);left:0;z-index:60;min-width:200px;max-height:min(72vh,560px);overflow:auto;border-radius:14px;padding:6px;animation:dropL .25s cubic-bezier(.2,.9,.3,1.1)}
-.dd-item{display:flex;align-items:center;gap:9px;width:100%;padding:9px 11px;border:0;background:transparent;color:var(--text);font:600 13px var(--font);border-radius:10px;cursor:pointer;text-align:left;transition:background .15s}
-.dd-item:hover{background:rgba(120,170,255,.1)}
-.dd-item.active{background:rgba(110,150,255,.16)}
-.dd-item .dd-dot{width:10px;height:10px;border-radius:50%;flex:none;box-shadow:0 0 8px currentColor}
+.dd-menu{position:absolute;top:calc(100% + 8px);left:0;z-index:60;min-width:230px;max-height:min(72vh,560px);overflow:auto;border:1px solid rgba(176,141,87,.42);border-radius:0;background:#0d1110;padding:0;box-shadow:0 16px 40px rgba(0,0,0,.55);animation:dropL .25s cubic-bezier(.2,.9,.3,1.1)}
+.dd-item{display:flex;align-items:center;gap:8px;width:100%;padding:9px 12px;border:0;border-bottom:1px solid rgba(223,211,184,.10);background:transparent;color:#e8e2d2;font:400 12px/1.2 "Noto Sans CJK SC","PingFang SC","Microsoft YaHei",sans-serif;border-radius:0;cursor:pointer;text-align:left;transition:background .15s,color .15s}
+.dd-item:hover{background:rgba(176,141,87,.08)}
+.dd-item.active{background:rgba(176,141,87,.13)}
+.dd-item .dd-dot{width:6px;height:6px;border-radius:50%;flex:none;box-shadow:none}
 .dd-item .dd-name{flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
-.dd-item .dd-check{color:#9be9ff;font-size:12px}
-.dd-sep{height:1px;background:var(--border);margin:5px 8px}
-.dd-new{display:flex;align-items:center;gap:8px;width:100%;padding:9px 11px;border:1px dashed var(--border2);background:transparent;color:var(--dim);font:600 12px var(--font);border-radius:10px;cursor:pointer;text-align:left}
-.dd-new:hover{color:#fff;border-color:rgba(140,190,255,.5)}
-.dd-rename{display:flex;align-items:center;gap:8px;width:100%;padding:8px 11px;border:0;background:transparent;color:#a9c6e8;font:600 12px var(--font);border-radius:10px;cursor:pointer;text-align:left;margin-top:2px}
-.dd-rename:hover{color:#fff;background:rgba(120,170,255,.1)}
-.dd-danger{display:flex;align-items:center;gap:8px;width:100%;padding:8px 11px;border:0;background:transparent;color:#c97b90;font:600 12px var(--font);border-radius:10px;cursor:pointer;text-align:left;margin-top:2px}
-.dd-danger:hover{color:#ff9db4;background:rgba(255,80,120,.1)}
+.dd-item .dd-check{color:#b08d57;font-size:10px}
+.dd-sep{height:1px;background:rgba(223,211,184,.12);margin:0}
+.dd-new{display:flex;align-items:center;gap:8px;width:100%;padding:9px 12px;border:0;border-bottom:1px solid rgba(223,211,184,.10);background:transparent;color:#b08d57;font:400 11.5px/1.2 "Noto Sans CJK SC","PingFang SC","Microsoft YaHei",sans-serif;border-radius:0;cursor:pointer;text-align:left;transition:background .15s}
+.dd-new:hover{background:rgba(176,141,87,.08);color:#e3e9df}
+.dd-rename{display:flex;align-items:center;gap:8px;width:100%;padding:9px 12px;border:0;border-bottom:1px solid rgba(223,211,184,.10);background:transparent;color:#a9a497;font:400 11.5px/1.2 "Noto Sans CJK SC","PingFang SC","Microsoft YaHei",sans-serif;border-radius:0;cursor:pointer;text-align:left;transition:background .15s,color .15s}
+.dd-rename:hover{background:rgba(176,141,87,.08);color:#e3e9df}
+.dd-danger{display:flex;align-items:center;gap:8px;width:100%;padding:9px 12px;border:0;background:transparent;color:#b06a5c;font:400 11.5px/1.2 "Noto Sans CJK SC","PingFang SC","Microsoft YaHei",sans-serif;border-radius:0;cursor:pointer;text-align:left;transition:background .15s,color .15s}
+.dd-danger:hover{background:rgba(176,106,92,.10);color:#d08a78}
+
 .m-chips{display:flex;flex-wrap:wrap;gap:8px}
 .m-chip{border:1px solid var(--border2);background:rgba(255,255,255,.03);color:var(--text);font:600 12px var(--font);border-radius:20px;padding:7px 13px;cursor:pointer;transition:all .18s;display:flex;align-items:center;gap:6px}
 .m-chip i{width:8px;height:8px;border-radius:50%;display:inline-block}
@@ -264,6 +265,52 @@ canvas{display:block}
 .t-mv:hover:not([disabled]),.t-edit:hover{color:#9be9ff;background:rgba(110,150,255,.12)}
 .t-del:hover:not([disabled]){color:#ff9a9a;background:rgba(255,90,90,.14)}
 .t-mv[disabled],.t-del[disabled]{opacity:.2;cursor:default}
+
+/* 标签管理：居中的仪器登记板，不是玻璃卡片 */
+#tagMask{background:rgba(2,4,10,.58);backdrop-filter:none;-webkit-backdrop-filter:none}
+#tagMask .modal{
+  width:min(480px,calc(100vw - 32px));max-height:86vh;border-radius:0;border:1px solid rgba(176,141,87,.42);
+  background:#0d1110;box-shadow:0 24px 60px rgba(0,0,0,.55);padding:22px 24px 16px;
+  display:flex;flex-direction:column;overflow:hidden;animation:tagIn .25s ease-out;
+}
+@keyframes tagIn{from{opacity:0;transform:translateY(6px)}to{opacity:1;transform:none}}
+#tagMask .m-head{padding-bottom:12px;border-bottom:1px solid rgba(223,211,184,.14);margin-bottom:0}
+#tagMask .n-title{font:500 15px/1.2 "Noto Serif CJK SC","Source Han Serif SC","Songti SC",serif;letter-spacing:.14em;color:#e3e9df}
+#tagMask .m-close{color:#92978c;font-size:16px}
+#tagMask .m-close:hover{color:#e3e9df}
+#tagMask .segment{border:1px solid rgba(223,211,184,.18);border-radius:0;background:transparent;padding:0;gap:0}
+#tagMask .seg{border-radius:0;padding:7px 12px;font:400 11px/1 "Noto Sans CJK SC","PingFang SC",sans-serif;color:#92978c;letter-spacing:.08em;background:transparent}
+#tagMask .seg.active{background:rgba(176,141,87,.14);color:#e3e9df;box-shadow:inset 0 -1px 0 #b08d57}
+#tagMask .t-tip{margin:10px 0 0;padding-bottom:9px;border-bottom:1px solid rgba(223,211,184,.10);font:400 9.5px/1.55 "Noto Sans CJK SC","PingFang SC",sans-serif;letter-spacing:.04em;color:#92978c}
+#tagMask .t-list{gap:0;max-height:54vh;margin-top:0;overflow-y:auto;scrollbar-width:thin;scrollbar-color:#4a463c #090c0a}
+#tagMask .t-list::-webkit-scrollbar{width:5px}
+#tagMask .t-list::-webkit-scrollbar-track{background:#090c0a}
+#tagMask .t-list::-webkit-scrollbar-thumb{background:#4a463c;border:0;border-radius:0}
+#tagMask .t-list::-webkit-scrollbar-thumb:hover{background:#6b6556}
+#tagMask .t-row{
+  display:flex;align-items:center;gap:7px;padding:7px 0;border:0;border-bottom:1px solid rgba(223,211,184,.10);
+  border-radius:0;background:transparent;transition:background .15s;
+}
+#tagMask .t-row:hover{background:rgba(176,141,87,.06)}
+#tagMask .t-row.t-sub{margin-left:16px;background:transparent;border-style:solid;border-bottom-color:rgba(223,211,184,.08)}
+#tagMask .t-row.t-unnamed{opacity:.55}
+#tagMask .t-dot{width:6px;height:6px;box-shadow:none}
+#tagMask .t-name{font:400 12px/1.3 "Noto Sans CJK SC","PingFang SC",sans-serif;color:#e8e2d2;letter-spacing:.02em}
+#tagMask .t-row.t-sub .t-name{font-size:11.5px;color:#a9a497}
+#tagMask .t-badge{border-radius:0;border:1px solid rgba(176,141,87,.35);color:#b08d57;font:400 8.5px/1 "SFMono-Regular",monospace;padding:2px 4px;letter-spacing:.06em}
+#tagMask .t-mv,#tagMask .t-edit,#tagMask .t-del{
+  border:1px solid transparent;border-radius:0;background:transparent;color:#7d8278;
+  font:400 11px/1 "Noto Sans CJK SC","PingFang SC",sans-serif;padding:4px 5px;cursor:pointer;flex:none;
+}
+#tagMask .t-mv:hover:not([disabled]),#tagMask .t-edit:hover{color:#e3e9df;border-color:rgba(176,141,87,.35);background:rgba(176,141,87,.08)}
+#tagMask .t-del:hover:not([disabled]){color:#d08a78;border-color:rgba(176,106,92,.35);background:rgba(176,106,92,.08)}
+#tagMask .t-mv[disabled],#tagMask .t-del[disabled]{opacity:.2;cursor:default}
+#tagMask .m-foot{margin-top:12px;padding-top:11px;border-top:1px solid rgba(223,211,184,.14);gap:8px}
+#tagMask .btn{border-radius:0;border:1px solid rgba(223,211,184,.18);background:transparent;color:#92978c;font:400 11.5px/1 "Noto Sans CJK SC","PingFang SC",sans-serif;letter-spacing:.06em;padding:8px 12px;box-shadow:none;transform:none}
+#tagMask .btn:hover{color:#e3e9df;border-color:#b08d57;background:rgba(176,141,87,.08);box-shadow:none;transform:none}
+#tagMask .btn.primary{border-color:#b08d57;background:#b08d57;color:#0b0e0c;font-weight:600}
+#tagMask .btn.primary:hover{background:#c9a46a;border-color:#c9a46a;color:#0b0e0c}
+#tagMask .e-empty,#tagMask .t-list .e-empty{padding:18px 0;color:#92978c;font:400 12px/1.5 "Noto Sans CJK SC","PingFang SC",sans-serif}
 /* 账单详情（显示视图）：与编辑视图分离 —— 只读，备注给足空间 */
 #viewMask{z-index:116}
 .v-modal{width:min(440px,calc(100vw - 32px))}
