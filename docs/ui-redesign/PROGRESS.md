@@ -4,8 +4,8 @@
 
 - 基线 commit：`b2f2ae0`（Linux 支持合入后的 develop）
 - 当前分支：`ui/polish`
-- 当前阶段：阶段 2.10 · 全局收尾（实现完成，待用户确认）
-- 下一步：用户确认后合入，并更新 README 截图。
+- 当前阶段：阶段 2.10 · 全局收尾（完成，合入 develop）
+- 下一步：UI 重构完成；是否 develop → main 发版待定。
 - 约束：账单图谱逻辑冻结；信息量不减少；一界面一分支一合入；合入后保留短分支。
 
 ## 阶段
@@ -23,7 +23,7 @@
 | 2.7 | 下钻二部图（只改视觉） | `ui/graph` | 完成，合入 develop | 已确认 |
 | 2.8 | 账本菜单 + 标签管理 | `ui/menus` | 完成，合入 develop | 已确认 |
 | 2.9 | 花销明细 + 账单详情/编辑 + 命名/取色 | `ui/details` | 完成，合入 develop | 已确认 |
-| 2.10 | 全局收尾、旧玻璃/渐变清理、README 截图 | `ui/polish` | 实现完成，待确认 | 待确认 |
+| 2.10 | 全局收尾、旧玻璃/渐变清理、README 截图 | `ui/polish` | 完成，合入 develop | 已确认 |
 
 ## 阶段 0 交付
 
@@ -248,7 +248,7 @@
 - 取色板是方形色块；自定义颜色输入保留；不再有圆点缩放/白色光晕。
 - `make-ui-shots.js` 增加 `07-view-detail` 与 `08-name` 两个 review 状态，方便以后回归。
 
-## 阶段 2.10 交付（待确认）
+## 阶段 2.10 交付（完成）
 
 - [x] 删除背景的紫蓝 nebula 光斑、径向暗角、玻璃类与相关动画。
 - [x] 全局 tokens 换成 B：石墨底、黄铜、氧化铜绿、暖白、宋体/无衬线/等宽三层字体。
@@ -257,8 +257,8 @@
 - [x] 更新 `docs/screenshots/overview.png` / `entry.png` / `ledger-menu.png` / `detail.png`。
 - [x] `npm test` / `npm run build:web` / `npm run verify:web` / `npm run verify:graph` 通过。
 - [x] 截图：`docs/ui-redesign/review/polish-2.10.png`。
-- [ ] 用户确认
-- [ ] 合入 `develop`
+- [x] 用户确认
+- [x] 合入 `develop`
 
 ### 阶段 2.10 设计点
 
@@ -282,11 +282,12 @@
 | 2026-11-08 | 阶段 2.7 星图 | `ui/graph` | 3f25aae | 已确认 | 石墨星图；逻辑未动 |
 | 2026-11-08 | 阶段 2.8 菜单/标签 | `ui/menus` | 2e431a3 | 已确认 | 仪器菜单与登记板 |
 | 2026-11-08 | 阶段 2.9 明细/详情/取色 | `ui/details` | 6460367 | 已确认 | 三块登记板 |
+| 2026-11-08 | 阶段 2.10 全局收尾 | `ui/polish` | 本次合并 | 已确认 | 清理旧玻璃/光斑；README 截图更新 |
 
 ## 备注
 
 - `docs/ui-redesign/review/` 只放本地 review 截图，不入库。
-- 现有 `docs/screenshots/` 只在阶段 2.10 全局收尾时更新。
+- `docs/screenshots/` 已更新为 B 方向当前界面；后续发版前如 UI 再变需同步。
 - `.dsh/`（Impeccable 安装）保持本地未跟踪，不随 UI 提交。
 - 阶段 0 只动测试/文档/只读调试接口，不改任何生产 UI。
 - Linux 打包已改为 deb + rpm，CI 用系统 fpm + Electron 镜像（`ccba250`），不再依赖 electron-builder 的 GitHub 资产。
