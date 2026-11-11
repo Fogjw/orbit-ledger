@@ -1,14 +1,16 @@
-# 持续集成：每次 push / PR 都跑一遍后端全量回归与前端脚本语法检查
+# 持续集成：任意分支 push、指向 develop / main 的 PR 都跑一遍
 # 设计取舍：
 #  - 跑在 ubuntu 上：node:sqlite 跨平台，测试不依赖 GUI 或 Windows，几分钟内出结果
-#  - 不在这里打包 Electron：Windows 打包要下载 ~230MB 运行时 + NSIS，留给 release.yml（按 tag 触发）
+#  - 不在这里打包 Electron：Windows 打包要下载 ~230MB 运行时 + NSIS，留给 release.yml（main 推送触发）
 #  - 金额守恒是全项目的正确性生死线，所以后端测试是必过项，不做「允许失败」
+#  - 短分支必须等聚合任务「CI 通过」变绿，才允许 --no-ff 合入 develop
 name: CI
 
 on:
   push:
-    branches: [main]
+    branches: ['**']
   pull_request:
+    branches: [develop, main]
   workflow_dispatch:
 
 concurrency:
@@ -89,3 +91,90 @@ jobs:
           test -f webapp/dist/bundle.js
           test -f webapp/dist/sqlite-wasm/sql-wasm.wasm
           echo "构建产物完整"
+
+  linux-build:
+    name: Linux 安装包构建
+    runs-on: ubuntu-latest
+    # Electron 官方 release 资产偶发 504；npmmirror 的 electron 镜像稳定可用
+    env:
+      ELECTRON_MIRROR: https://npmmirror.com/mirrors/electron/
+      USE_SYSTEM_FPM: "true"
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+          cache: npm
+          cache-dependency-path: |
+            package-lock.json
+            server/package-lock.json
+
+      # 根依赖 = Electron + electron-builder；服务依赖会被打进 app.asar
+      - name: 安装应用依赖
+        run: npm ci
+
+      - name: 安装服务依赖
+        working-directory: server
+        run: npm ci
+
+      # CI 的 npm ci 不会稳定执行 Electron postinstall；显式准备本地 Electron dist，
+      # 供 electron-builder 的 electronDist 使用，避免下载 Electron zip。
+      - name: 准备 Electron 运行库
+        run: node node_modules/electron/install.js
+
+      # fpm 由系统 RubyGems 提供；rpmbuild 用于 rpm，7zip 用于解包。
+      # 不再从 GitHub 下载 electron-builder-binaries（该 CDN 当前 504）。
+      - name: 安装系统打包工具
+        shell: bash
+        run: |
+          sudo apt-get update
+          # ubuntu-latest 自带 build-essential；不重复装可避开 apt 镜像的网络抖动
+          sudo apt-get install -y rpm p7zip-full ruby ruby-dev
+          sudo gem install fpm -v 1.17.0 --no-document
+          fpm --version
+
+
+      # 和 release.yml 用同一条命令：CI 绿就说明 Linux 安装包本身能出
+      - name: 构建 deb 与 rpm
+        shell: bash
+        run: |
+          export ELECTRON_BUILDER_7ZIP_PATH="$(command -v 7zz || command -v 7z || command -v 7za)"
+          npm run dist:linux
+
+      # 无窗口冒烟：验证 Electron 的 Node / node:sqlite / Express 在 Linux 上真的能起
+      - name: 内嵌服务冒烟（无需 GUI）
+        run: npm run verify:linux
+
+      - name: 检查 Linux 产物
+        run: |
+          set -e
+          ls -lh release/*.deb release/*.rpm
+          for f in release/*.deb; do
+            dpkg-deb --info "$f" >/dev/null
+          done
+          for f in release/*.rpm; do
+            test -f "$f"
+            file "$f" | grep -qi 'RPM'
+          done
+          echo "Linux 安装包产物完整"
+
+  # 聚合门禁：分支保护只需要盯这一个检查，避免漏配某个 job。
+  # 用 always() + 显式校验，保证上游失败时本 job 是 failure 而不是 skipped。
+  ci-passed:
+    name: CI 通过
+    if: always()
+    needs: [server-test, web-syntax, webapp-build, linux-build]
+    runs-on: ubuntu-latest
+    steps:
+      - name: 汇总上游任务结果
+        run: |
+          set -e
+          echo "server-test:   ${{ needs.server-test.result }}"
+          echo "web-syntax:    ${{ needs.web-syntax.result }}"
+          echo "webapp-build:  ${{ needs.webapp-build.result }}"
+          echo "linux-build:   ${{ needs.linux-build.result }}"
+          test "${{ needs.server-test.result }}" = "success"
+          test "${{ needs.web-syntax.result }}" = "success"
+          test "${{ needs.webapp-build.result }}" = "success"
+          test "${{ needs.linux-build.result }}" = "success"

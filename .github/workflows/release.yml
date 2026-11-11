@@ -1,22 +1,99 @@
-# 发布：推 `v*` 标签时在 Windows runner 上打包 NSIS 安装包，上传产物并创建 Release
-# 触发方式：
-#   git tag v1.0.1 && git push origin v1.0.1     # 正式发布
-#   或在 Actions 页面手动 workflow_dispatch      # 只验证打包链路，不创建 Release
-# 版本一致性：tag（去掉 v）必须等于仓库根 package.json 的 version，否则直接失败 ——
-# 免得装出来的包和 Release 名字对不上。
+# 发布（CD）：develop 合入 main 后，同时打包 Windows exe 与 Linux deb/rpm 并创建 Release
+#
+# 触发：
+#   push 到 main —— 每次从 develop 同步合入的发布提交都会发布一个新版本
+#   workflow_dispatch —— 只验证打包链路；只有从 main 手动触发时才创建 Release
+#
+# 版本规则：
+#   版本号必须在 develop 的短分支里升好（package.json 与 package-lock.json 一起），
+#   prepare 先查同名 tag / Release 是否已存在，已存在就直接失败，避免重复发布。
+#   不要在 main 上改版本，也不要手工推 tag —— tag 由 gh release create --target 创建。
 name: Release
 
 on:
   push:
-    tags: ['v*']
+    branches: [main]
   workflow_dispatch:
 
 permissions:
-  contents: write   # 创建 Release / 上传附件需要
+  contents: write   # 创建 tag / Release / 上传附件需要
+
+concurrency:
+  # 发布不能并发：排队执行，避免两个 main 推送抢同一个版本号
+  group: release-main
+  cancel-in-progress: false
 
 jobs:
+  prepare:
+    name: 校验发布版本
+    runs-on: ubuntu-latest
+    outputs:
+      version: ${{ steps.version.outputs.version }}
+      tag: ${{ steps.version.outputs.tag }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+
+      - name: 读取版本并检查是否已发布
+        id: version
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -e
+          version=$(node -p "require('./package.json').version")
+          tag="v$version"
+          echo "version=$version" >> "$GITHUB_OUTPUT"
+          echo "tag=$tag" >> "$GITHUB_OUTPUT"
+          echo "准备发布 $tag"
+
+          if [ "$GITHUB_REF" != "refs/heads/main" ]; then
+            echo "非 main 手动触发：跳过已发布检查，只验证打包"
+            exit 0
+          fi
+
+          if gh release view "$tag" >/dev/null 2>&1; then
+            echo "::error::版本 $version 已经发布过：每次 develop → main 都必须先在 develop 升版本"
+            exit 1
+          fi
+          if git ls-remote --exit-code --tags origin "refs/tags/$tag" >/dev/null 2>&1; then
+            echo "::error::tag $tag 已存在但没有对应 Release，请检查是否手工推过 tag"
+            exit 1
+          fi
+
+  regression:
+    name: 发布前全量回归
+    needs: prepare
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+          cache: npm
+          cache-dependency-path: |
+            package-lock.json
+            server/package-lock.json
+
+      - name: 安装应用依赖
+        run: npm ci
+
+      - name: 安装服务依赖
+        working-directory: server
+        run: npm ci
+
+      # main 上的合并提交不再经过 PR，发布前用全量回归兜住合并冲突引入的问题
+      - name: 全量回归
+        working-directory: server
+        run: npm test
+
   windows-installer:
-    name: 打包 Windows 安装包
+    name: Windows 安装包
+    needs: [prepare, regression]
     runs-on: windows-latest
     steps:
       - uses: actions/checkout@v4
@@ -29,18 +106,6 @@ jobs:
             package-lock.json
             server/package-lock.json
 
-      - name: 校验 tag 与 package.json 版本一致
-        if: startsWith(github.ref, 'refs/tags/v')
-        shell: bash
-        run: |
-          tag="${GITHUB_REF_NAME#v}"
-          pkg=$(node -p "require('./package.json').version")
-          echo "tag=$tag  package.json=$pkg"
-          if [ "$tag" != "$pkg" ]; then
-            echo "::error::tag $tag 与 package.json 的版本 $pkg 不一致"
-            exit 1
-          fi
-
       # 根依赖 = Electron + electron-builder（应用清单在仓库根）
       - name: 安装应用依赖
         run: npm ci
@@ -50,9 +115,8 @@ jobs:
         working-directory: server
         run: npm ci
 
-      # 图标 assets/icon.png 已入库，CI 不需要再跑 make:icon（那需要 GUI 渲染）
       - name: 打包（NSIS 安装包）
-        run: npm run dist
+        run: npm run dist:win
 
       - name: 收集产物
         shell: bash
@@ -67,13 +131,102 @@ jobs:
             release/latest.yml
           if-no-files-found: error
 
-      - name: 创建 Release 并附上安装包
-        if: startsWith(github.ref, 'refs/tags/v')
+  linux-installer:
+    name: Linux 安装包
+    needs: [prepare, regression]
+    runs-on: ubuntu-latest
+    env:
+      ELECTRON_MIRROR: https://npmmirror.com/mirrors/electron/
+      USE_SYSTEM_FPM: "true"
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+          cache: npm
+          cache-dependency-path: |
+            package-lock.json
+            server/package-lock.json
+
+      - name: 安装应用依赖
+        run: npm ci
+
+      - name: 安装服务依赖
+        working-directory: server
+        run: npm ci
+
+      # CI 的 npm ci 不会稳定执行 Electron postinstall；显式准备本地 Electron dist，
+      # 供 electron-builder 的 electronDist 使用，避免下载 Electron zip。
+      - name: 准备 Electron 运行库
+        run: node node_modules/electron/install.js
+
+      # fpm 由系统 RubyGems 提供；rpmbuild 用于 rpm，7zip 用于解包。
+      # 不再从 GitHub 下载 electron-builder-binaries（该 CDN 当前 504）。
+      - name: 安装系统打包工具
+        shell: bash
+        run: |
+          sudo apt-get update
+          # ubuntu-latest 自带 build-essential；不重复装可避开 apt 镜像的网络抖动
+          sudo apt-get install -y rpm p7zip-full ruby ruby-dev
+          sudo gem install fpm -v 1.17.0 --no-document
+          fpm --version
+
+
+      - name: 内嵌服务冒烟（无需 GUI）
+        run: npm run verify:linux
+
+      - name: 打包（deb + rpm）
+        shell: bash
+        run: |
+          export ELECTRON_BUILDER_7ZIP_PATH="$(command -v 7zz || command -v 7z || command -v 7za)"
+          npm run dist:linux
+
+      - name: 检查产物
+        run: |
+          set -e
+          ls -lh release/*.deb release/*.rpm
+          for f in release/*.deb; do dpkg-deb --info "$f" >/dev/null; done
+          for f in release/*.rpm; do
+            test -f "$f"
+            file "$f" | grep -qi 'RPM'
+          done
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: orbit-linux-installer
+          path: |
+            release/*.deb
+            release/*.rpm
+          if-no-files-found: error
+
+  publish:
+    name: 创建 Release
+    needs: [prepare, windows-installer, linux-installer]
+    if: github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          path: release-assets
+          merge-multiple: true
+
+      - name: 检查各平台产物
+        run: |
+          set -e
+          ls -lh release-assets
+          test -n "$(find release-assets -maxdepth 1 -name '*.exe' -print -quit)"
+          test -n "$(find release-assets -maxdepth 1 -name '*.deb' -print -quit)"
+          test -n "$(find release-assets -maxdepth 1 -name '*.rpm' -print -quit)"
+
+      - name: 创建 tag 与 Release
         shell: bash
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
-          gh release create "$GITHUB_REF_NAME" \
-            release/*.exe \
-            --title "Orbit 星账 $GITHUB_REF_NAME" \
+          set -e
+          gh release create "${{ needs.prepare.outputs.tag }}" \
+            release-assets/* \
+            --target "$GITHUB_SHA" \
+            --title "Orbit 星账 ${{ needs.prepare.outputs.tag }}" \
             --generate-notes

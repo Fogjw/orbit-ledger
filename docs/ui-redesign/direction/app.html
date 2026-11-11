@@ -1,0 +1,166 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>Orbit 星账 · 方向 style tile</title>
+<link rel="stylesheet" href="styles.css" />
+</head>
+<body data-theme="silk">
+  <div class="sky" aria-hidden="true"></div>
+
+  <header class="topbar">
+    <div class="brand"><span class="brand-mark">星</span><span class="brand-name">Orbit <em>星账</em></span></div>
+    <button class="ledger">生活费 <span>⌄</span></button>
+    <nav class="segments"><button class="active">品类</button><button>情境</button></nav>
+    <button class="quiet">回到今天</button>
+    <div class="spacer"></div>
+    <div class="period"><span>2026 / 11 · 支出</span><strong>¥2,825</strong></div>
+    <button class="add">＋ 记一笔</button>
+  </header>
+
+  <aside class="notes">
+    <div class="notes-head"><span>星图注记</span><em>2026.11</em></div>
+    <div class="balance"><span>结余</span><strong>¥747</strong></div>
+    <div class="metrics">
+      <div><span>支出</span><strong>¥2,825</strong></div>
+      <div><span>收入</span><strong class="income">¥3,572</strong></div>
+      <div><span>较上期</span><strong class="down">▼ 80.9%</strong></div>
+    </div>
+    <div class="rule"></div>
+    <div class="section-title">TOP 星官</div>
+    <ol class="top-list">
+      <li><i style="--c:#d95c4a"></i><span>居住</span><em style="--w:82%;--c:#d95c4a"></em><b>¥1,847</b></li>
+      <li><i style="--c:#c99a5b"></i><span>餐饮</span><em style="--w:42%;--c:#c99a5b"></em><b>¥599</b></li>
+      <li><i style="--c:#6fa39a"></i><span>日用</span><em style="--w:22%;--c:#6fa39a"></em><b>¥207</b></li>
+      <li><i style="--c:#a78a9f"></i><span>娱乐</span><em style="--w:16%;--c:#a78a9f"></em><b>¥148</b></li>
+      <li><i style="--c:#7d8fa6"></i><span>交通</span><em style="--w:8%;--c:#7d8fa6"></em><b>¥24</b></li>
+    </ol>
+    <p class="insight">本月「居住」为最大支出星官；餐饮的 47% 发生在「朋友」情境。</p>
+    <div class="detail-mini">
+      <div class="mini-head">下钻 · 居住 <span>副星 × 账单</span></div>
+      <div class="mini-graph">
+        <svg viewBox="0 0 200 96" preserveAspectRatio="none" aria-hidden="true">
+          <line x1="38" y1="34" x2="94" y2="48" />
+          <line x1="38" y1="34" x2="145" y2="38" />
+          <line x1="162" y1="66" x2="94" y2="48" />
+          <line x1="162" y1="66" x2="145" y2="38" />
+          <line class="mini-share" x1="38" y1="34" x2="162" y2="66" />
+        </svg>
+        <i class="mini-sub" style="left:19%;top:30%"></i>
+        <i class="mini-sub" style="left:72.5%;top:34%"></i>
+        <i class="mini-sub" style="left:81%;top:66%"></i>
+        <i class="mini-exp" style="left:47%;top:47%"></i>
+        <i class="mini-exp" style="left:47%;top:70%"></i>
+      </div>
+    </div>
+  </aside>
+
+  <main class="graph">
+    <svg class="constellation" viewBox="0 0 100 100" preserveAspectRatio="none" aria-hidden="true">
+      <polyline vector-effect="non-scaling-stroke" points="30,38 52,52 66,31 44,21 78,46 86,36" />
+      <polyline class="income-line" vector-effect="non-scaling-stroke" points="46,91 61,91" />
+    </svg>
+
+    <div class="star cat" style="--x:30%;--y:38%;--s:21;--c:#d95c4a">
+      <i class="core"></i><span class="label">居住<em>¥1,847</em></span>
+    </div>
+    <div class="star cat" style="--x:52%;--y:52%;--s:17;--c:#c99a5b">
+      <i class="core"></i><span class="label">餐饮<em>¥599</em></span>
+    </div>
+    <div class="star cat" style="--x:66%;--y:31%;--s:14;--c:#6fa39a">
+      <i class="core"></i><span class="label up">日用<em>¥207</em></span>
+    </div>
+    <div class="star cat" style="--x:44%;--y:21%;--s:12;--c:#a78a9f">
+      <i class="core"></i><span class="label up">学习<em>¥118</em></span>
+    </div>
+    <div class="star cat hot" style="--x:78%;--y:46%;--s:11;--c:#a78a9f">
+      <i class="core"></i><span class="label">娱乐<em>¥148</em></span>
+    </div>
+    <div class="star cat" style="--x:86%;--y:36%;--s:9;--c:#7d8fa6">
+      <i class="core"></i><span class="label">交通<em>¥24</em></span>
+    </div>
+    <div class="star income" style="--x:46%;--y:91%;--s:13;--c:#93b7a7">
+      <i class="core"></i><span class="label">收入·生活费<em>¥2,916</em></span>
+    </div>
+    <div class="star income" style="--x:61%;--y:91%;--s:11;--c:#93b7a7">
+      <i class="core"></i><span class="label">收入·转账<em>¥656</em></span>
+    </div>
+
+    <div class="graph-hint">拖拽星体 · 悬停看关联 · 点击主星下钻</div>
+  </main>
+
+  <aside class="rail" aria-hidden="true">
+    <span>日</span>
+    <div class="rail-track"><i class="rail-handle"></i></div>
+    <span>全部</span>
+  </aside>
+
+  <footer class="timeline">
+    <div class="tl-head"><span>星轨 · 时序</span><span>滚轮换档 · 左右拖拽</span></div>
+    <div class="track">
+      <div class="tl-node" style="--x:8%"><i></i><span>1月</span></div>
+      <div class="tl-node" style="--x:20%"><i></i><span>3月</span></div>
+      <div class="tl-node" style="--x:32%"><i></i><span>5月</span></div>
+      <div class="tl-node" style="--x:44%"><i></i><span>7月</span></div>
+      <div class="tl-node" style="--x:56%"><i></i><span>9月</span></div>
+      <div class="tl-node" style="--x:68%"><i></i><span>11月</span></div>
+      <div class="tl-node today" style="--x:86%"><i></i><span>今天</span></div>
+    </div>
+  </footer>
+
+  <div class="zoom"><button>−</button><span class="zoom-line"><i></i></span><button>＋</button><em>100%</em></div>
+
+  <div class="sheet-mask" id="sheet">
+    <section class="sheet">
+      <header class="sheet-head">
+        <div><span class="sheet-kicker">账笺 · ENTRY</span><h2>记一笔</h2></div>
+        <button class="sheet-close">×</button>
+      </header>
+      <div class="sheet-tabs"><button class="active">支出</button><button>收入</button></div>
+      <div class="sheet-amount"><span>¥</span><strong>88</strong><em>.00</em></div>
+      <div class="sheet-field">
+        <div class="sheet-label">品类 <small>未分类也可</small></div>
+        <div class="chips">
+          <button class="chip on"><i style="--c:#c99a5b"></i>餐饮</button>
+          <button class="chip"><i style="--c:#d95c4a"></i>居住</button>
+          <button class="chip"><i style="--c:#6fa39a"></i>日用</button>
+          <button class="chip"><i style="--c:#7d8fa6"></i>交通</button>
+          <button class="chip">＋ 新建</button>
+        </div>
+      </div>
+      <div class="sheet-field">
+        <div class="sheet-label">情境</div>
+        <div class="chips">
+          <button class="chip"><i style="--c:#93b7a7"></i>朋友</button>
+          <button class="chip"><i style="--c:#93b7a7"></i>加班</button>
+          <button class="chip"><i style="--c:#93b7a7"></i>出差</button>
+          <button class="chip">未分类</button>
+        </div>
+      </div>
+      <div class="sheet-row">
+        <label>日期<input value="2026-11-08" /></label>
+        <label>账本<input value="生活费" /></label>
+      </div>
+      <label class="sheet-note">备注<textarea placeholder="可写多行；Ctrl/Cmd+Enter 保存"></textarea></label>
+      <div class="sheet-recent">
+        <div class="sheet-label">最近 <small>仅示例</small></div>
+        <div class="recent-row"><span>11/05 · 餐饮</span><b>¥88.00</b></div>
+        <div class="recent-row"><span>11/01 · 居住</span><b>¥1,777.00</b></div>
+      </div>
+      <p class="sheet-footnote">保存后这笔账会落在当前星图；未选标签自动归入「未分类」。</p>
+      <footer class="sheet-foot">
+        <button class="quiet">取消</button>
+        <button class="add">存入星图</button>
+      </footer>
+    </section>
+  </div>
+
+<script>
+  const params = new URLSearchParams(location.search);
+  const theme = params.get('theme') || 'silk';
+  document.body.dataset.theme = ['silk', 'brass', 'rubbing'].includes(theme) ? theme : 'silk';
+  if (params.get('entry') === '1') document.body.classList.add('entry');
+</script>
+</body>
+</html>

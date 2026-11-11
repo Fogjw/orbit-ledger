@@ -28,8 +28,8 @@ Thumbs.db
 coverage/
 
 # 计划/会话临时文件（不入库，git 跟踪规范）
+# AGENTS.md 是仓库级开发规范，必须入库，不在此列
 PLAN*.md
-AGENTS.md
 docs/HANDOFF.md
 docs/opencode-t*.md
 docs/web-frontend-task.md
@@ -39,6 +39,15 @@ server/data/
 
 # npm 本地缓存（受限网络下的 --cache 目录）
 .npm-cache/
+
+# electron / electron-builder 本地缓存（CI 与受限环境可能没有可写的 ~/.cache）
+.cache/
+
+# Impeccable 本机安装（含引擎二进制，不入库）
+.dsh/
+
+# UI 重构的本地 review 截图；产品截图只在全局收尾时更新 docs/screenshots
+docs/ui-redesign/review/
 
 # 纯前端版：源码入库，构建产物与验证截图不入库
 webapp/dist/

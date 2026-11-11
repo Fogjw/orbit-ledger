@@ -10,16 +10,12 @@
 <body>
   <!-- 深空背景 -->
   <canvas id="bg"></canvas>
-  <div class="nebula n1"></div>
-  <div class="nebula n2"></div>
-  <div class="nebula n3"></div>
-  <div class="vignette"></div>
 
   <!-- 主图谱 -->
   <canvas id="graph"></canvas>
 
   <!-- 顶部工具栏 -->
-  <header class="topbar glass">
+  <header class="topbar">
     <div class="brand">
       <!-- 应用 logo：与桌面端窗口/安装包图标同一份图形（web/logo.svg），不再各处内联 -->
       <span class="logo"><img src="logo.svg" alt="Orbit" width="26" height="26" /></span>
@@ -27,8 +23,8 @@
     </div>
 
     <div class="ledger-dd">
-      <button class="btn ghost led-btn" id="ledgerBtn" title="切换账本">◈ 生活费 ▾</button>
-      <div class="dd-menu glass" id="ledgerMenu" hidden></div>
+      <button class="btn ghost led-btn" id="ledgerBtn" title="切换账本">生活费 ▾</button>
+      <div class="dd-menu" id="ledgerMenu" hidden></div>
     </div>
 
     <div class="segment" id="dimSeg">
@@ -36,7 +32,7 @@
       <button class="seg" data-v="context">情境</button>
     </div>
 
-    <button class="btn ghost" id="btnToday" title="回到今天">◉ 回到今天</button>
+    <button class="btn ghost" id="btnToday" title="回到今天">回到今天</button>
     <button class="btn back" id="btnBack" hidden>← 主视图</button>
 
     <div class="spacer"></div>
@@ -50,7 +46,7 @@
   </header>
 
   <!-- 左侧洞察面板 -->
-  <aside class="panel glass" id="insightPanel">
+  <aside class="panel" id="insightPanel">
     <div class="p-title"><span id="pTitle">本月星图</span> <span class="live-dot"></span></div>
     <div class="p-total">
       <div class="p-balance"><span class="p-key">结余</span><span class="p-num" id="pNum">¥0</span></div>
@@ -65,17 +61,20 @@
   </aside>
 
   <!-- 右侧粒度轨 -->
-  <div class="rail-wrap glass" id="railWrap" title="星轨变焦：上=日 下=年（可拖动，滚轮亦可）">
-    <span class="rail-mark">日</span>
-    <div class="rail" id="rail">
-      <div class="rail-glow"></div>
-      <div class="rail-handle" id="railHandle"></div>
+  <div class="rail-wrap" id="railWrap" title="星轨变焦：上=日 下=全部（可拖动，滚轮亦可）">
+    <div class="rail-scale" id="railScale">
+      <span class="rail-level" style="top:2%">日</span>
+      <span class="rail-level" style="top:33.33%">月</span>
+      <span class="rail-level" style="top:66.66%">年</span>
+      <span class="rail-level" style="top:98%">全部</span>
+      <div class="rail" id="rail">
+        <div class="rail-handle" id="railHandle"></div>
+      </div>
     </div>
-    <span class="rail-mark">全部</span>
   </div>
 
   <!-- 底部星轨 -->
-  <footer class="timeline glass">
+  <footer class="timeline">
     <div class="tl-head">
       <span class="tl-title">星轨 · 时间</span>
       <span class="tl-tip" id="tlTip">点击星星切换月份</span>
@@ -86,7 +85,7 @@
   <div class="hint">拖拽星体 · 悬停看关联 · 点击星星下钻 · 滚轮缩放星轨 · 星轨可左右拖</div>
 
   <!-- 画布缩放条（滚轮已用于星轨的年/月/日切换，故画布缩放走显式控件） -->
-  <div class="zoom-bar glass" id="zoomBar">
+  <div class="zoom-bar" id="zoomBar">
     <button class="zb-btn" id="zoomOut" title="缩小画布">－</button>
     <input type="range" id="zoomRange" min="0.4" max="2.6" step="0.02" value="1" aria-label="画布缩放" />
     <button class="zb-btn" id="zoomIn" title="放大画布">＋</button>
@@ -97,7 +96,7 @@
 
   <!-- 记一笔浮层 -->
   <div class="modal-mask" id="modalMask" hidden>
-    <div class="modal glass">
+    <div class="modal">
       <div class="m-head">
         <span class="n-title" id="modalMode">记一笔</span>
         <div class="m-tabs"><button class="m-tab active">支出</button><button class="m-tab">收入</button></div>
@@ -137,7 +136,7 @@
 
   <!-- 命名浮层（新建账本 / 新建 tag 共用） -->
   <div class="modal-mask" id="nameMask" hidden>
-    <div class="modal glass n-modal">
+    <div class="modal n-modal">
       <div class="m-head">
         <span class="n-title" id="nameTitle">新建</span>
         <button class="m-close" id="nameClose">✕</button>
@@ -161,7 +160,7 @@
 
   <!-- 账单详情（显示视图）：只读，看金额/日期/账本/关联标签/备注；编辑才进完整浮层 -->
   <div class="modal-mask" id="viewMask" hidden>
-    <div class="modal glass v-modal">
+    <div class="modal v-modal">
       <div class="m-head">
         <span class="n-title">账单详情</span>
         <button class="m-close" id="viewClose">✕</button>
@@ -187,7 +186,7 @@
 
   <!-- 花销明细浮层（点品类主星：本月该品类逐笔 + 删除） -->
   <div class="modal-mask" id="expMask" hidden>
-    <div class="modal glass e-modal">
+    <div class="modal e-modal">
       <div class="m-head">
         <span class="n-title" id="expTitle">花销明细</span>
         <div class="e-head-actions">
@@ -222,7 +221,7 @@
 
   <!-- 标签管理浮层（排序 / 重命名）：顺序即 tags.position，影响记一笔候选与星图节点排布 -->
   <div class="modal-mask" id="tagMask" hidden>
-    <div class="modal glass t-modal">
+    <div class="modal t-modal">
       <div class="m-head">
         <span class="n-title">标签管理</span>
         <div class="segment" id="tagDimSeg">

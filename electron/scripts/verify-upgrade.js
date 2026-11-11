@@ -25,6 +25,13 @@ import { migrate } from '../../core/schema.js';
 import { seedIfEmpty } from '../../core/seed.js';
 import { createExpenseService } from '../../core/services/expenseService.js';
 
+// 这个脚本验证的是 NSIS 安装 / 覆盖安装 / 卸载，只在 Windows 上有意义。
+// 在 Linux 上提前说清楚，比让它读 process.env.APPDATA 崩溃更好。
+if (process.platform !== 'win32') {
+  console.error('verify:upgrade 只支持 Windows：它要验证 NSIS 安装、覆盖安装与卸载');
+  process.exit(1);
+}
+
 const ROOT = join(dirname(fileURLToPath(import.meta.url)), '..', '..');
 const CFG_DIR = join(process.env.APPDATA, 'Orbit 星账');
 const CFG = join(CFG_DIR, 'data-path.txt');

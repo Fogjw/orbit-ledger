@@ -2,19 +2,28 @@
   "name": "orbit-ledger",
   "productName": "Orbit 星账",
   "private": true,
-  "version": "1.1.11",
+  "version": "1.2.0",
   "description": "Orbit 星账 · 本地优先的图谱化记账软件（Electron 桌面端 + 浏览器直连 + MCP 同进程）",
+  "author": "Fogjw <1778357215@qq.com>",
+  "license": "MIT",
   "type": "module",
   "main": "electron/main.js",
+  "desktopName": "orbit-ledger.desktop",
   "scripts": {
     "start": "electron .",
     "make:icon": "electron electron/scripts/make-icon.js",
     "shots": "electron electron/scripts/make-shots.js",
+    "shots:ui": "electron electron/scripts/make-ui-shots.js",
+    "shots:direction": "electron electron/scripts/make-direction-shots.js",
     "build:web": "node webapp/build.mjs",
     "verify:web": "electron electron/scripts/verify-webapp.js",
+    "verify:graph": "electron --no-sandbox electron/scripts/verify-graph.js",
+    "verify:linux": "electron --no-sandbox --ozone-platform=headless --disable-gpu electron/scripts/verify-linux.js",
     "verify:upgrade": "node electron/scripts/verify-upgrade.js",
-    "pack": "electron-builder --win --dir --publish never",
-    "dist": "electron-builder --win nsis --publish never"
+    "pack": "electron-builder --dir --publish never",
+    "dist": "electron-builder --publish never",
+    "dist:win": "electron-builder --win nsis --publish never",
+    "dist:linux": "electron-builder --linux deb rpm --publish never"
   },
   "devDependencies": {
     "electron": "^44.3.0",
@@ -25,6 +34,7 @@
   "build": {
     "appId": "com.fogjw.orbit-ledger",
     "productName": "Orbit 星账",
+    "electronDist": "node_modules/electron/dist",
     "directories": {
       "buildResources": "assets",
       "output": "release"
@@ -63,6 +73,29 @@
       "shortcutName": "Orbit 星账",
       "deleteAppDataOnUninstall": false,
       "artifactName": "Orbit-Setup-${version}.exe"
+    },
+    "linux": {
+      "target": [
+        {
+          "target": "deb",
+          "arch": [
+            "x64"
+          ]
+        },
+        {
+          "target": "rpm",
+          "arch": [
+            "x64"
+          ]
+        }
+      ],
+      "icon": "assets/icon.png",
+      "category": "Office",
+      "synopsis": "本地优先的图谱化记账软件",
+      "description": "Orbit 星账 · 本地优先的图谱化记账软件（Electron 桌面端 + 浏览器直连 + MCP 同进程）",
+      "maintainer": "Fogjw <1778357215@qq.com>",
+      "syncDesktopName": true,
+      "artifactName": "Orbit-${version}-${arch}.${ext}"
     }
   }
 }

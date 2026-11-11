@@ -9,7 +9,7 @@
 > 偶尔有几颗反向划过的星，那是收入。
 
 **[在线试用](https://fogjw.github.io/orbit-ledger/)**（免安装，打开即用） ·
-**[下载 Windows 桌面端](https://github.com/Fogjw/orbit-ledger/releases/latest)**
+**[下载桌面端（Windows / Linux）](https://github.com/Fogjw/orbit-ledger/releases/latest)**
 
 ![Orbit 星账 · 主视图](docs/screenshots/overview.png)
 
@@ -30,6 +30,8 @@
 
 ### 方式一：桌面端（推荐）
 
+#### Windows
+
 1. 到 [Releases](https://github.com/Fogjw/orbit-ledger/releases/latest) 下载 `Orbit-Setup-<版本>.exe`（约 108 MB）。
 2. 双击安装。向导里有两处可以自己定：
    - **安装位置**（默认在系统盘的用户目录下，想放 D 盘就改这里）；
@@ -37,13 +39,29 @@
      想让它跟程序分开、或者放进自己的同步盘，就在这一栏改。
 3. 装完会自动创建桌面与开始菜单快捷方式，双击即用。
 
-两个容易踩的点，先说在前面：
+Windows 的两个容易踩的点：
 
 - **装过旧版本再装新的**：向导会显示「检测到本机已安装 Orbit 星账，请选择处理方式」，
   默认勾选「1. 在原有位置更新（推荐）」。选它 → 一路下一步 → **程序原地更新，账本位置一个字都不改**。
   只有你主动选「2. 换一个位置安装」，才会问路径。
 - **关掉窗口 ≠ 退出程序**。关窗后它继续待在右下角托盘里（这样浏览器直连和 AI 助手都能照常用）。
   要真正退出：**右键托盘图标 → 退出 Orbit 星账**。想让它重新读取数据位置设置，也必须这样退一次再启动。
+
+#### Linux
+
+到同一个 [Releases](https://github.com/Fogjw/orbit-ledger/releases/latest) 下载：
+
+- **Debian / Ubuntu 用 `.deb`**：`sudo apt install ./Orbit-<版本>-amd64.deb`。
+  安装时会处理 Chromium 沙箱（用户命名空间不可用时设置 SUID；Ubuntu 24+ 还会安装 AppArmor 配置）。
+- **Fedora / RHEL 用 `.rpm`**：`sudo dnf install ./Orbit-<版本>-x86_64.rpm`（或 `sudo rpm -i ...`）。
+  同样由安装包处理沙箱与桌面入口。
+
+Linux 提供 **deb 与 rpm**，不提供 AppImage。
+
+Linux 下账本默认在 `~/.config/Orbit 星账/orbit.db`。
+托盘依赖桌面环境的 StatusNotifier/AppIndicator：若桌面不显示托盘图标，关窗后应用可能仍在后台，
+**再启动一次 Orbit 即可唤回窗口**；窗口菜单「文件 → 退出」可彻底退出。
+如果托盘完全不可用，应用会把关窗降级为退出，不会留下无入口的后台进程。
 
 ### 方式二：网页版（免安装）
 
@@ -127,15 +145,17 @@ http://localhost:5310/mcp
 
 几点注意：
 
-- **桌面端必须先运行**（托盘里待着就行），否则端口没人监听；
+- **桌面端必须先运行**（窗口或托盘里待着就行），否则端口没人监听；
 - 端口默认 `5310`，如果被别的程序占用，应用会自动改用其它端口 —— 这时请以托盘菜单/日志里显示的地址为准；
 - MCP 走的是**本机回环地址**，服务只监听本机，不会把你的账本暴露到局域网或公网。
 
 ## 常见问题
 
 **我的数据到底存在哪？**
-桌面端默认 `%APPDATA%\Orbit 星账\orbit.db`（`%APPDATA%` 一般是 `C:\Users\你的名字\AppData\Roaming`）。
-如果你在安装时改过「账本数据位置」，实际位置记在 `%APPDATA%\Orbit 星账\data-path.txt` 里，用记事本打开就能看到。
+桌面端默认：
+- Windows：`%APPDATA%\Orbit 星账\orbit.db`（`%APPDATA%` 一般是 `C:\Users\你的名字\AppData\Roaming`）。
+  安装时改过「账本数据位置」的，实际位置记在 `%APPDATA%\Orbit 星账\data-path.txt`。
+- Linux：`~/.config/Orbit 星账/orbit.db`（Linux 没有安装器改写路径，默认就在 userData）。
 网页版则是你首次打开时选的那个目录里的 `orbit.db`。
 
 **覆盖更新会不会丢数据？**
@@ -146,9 +166,11 @@ http://localhost:5310/mcp
 不会。账本在数据目录里，卸载只清程序目录。
 另外如果检测到程序目录里**也**躺着 `orbit.db`（有人习惯放一起），
 卸载会把它们先复制到 `%APPDATA%\Orbit 星账\卸载救出\` 再继续，并弹窗告诉你。
+Linux 上用 deb/rpm 卸载只删程序，`~/.config/Orbit 星账` 不动。
 
 **能装在别的盘、数据放别的地方吗？**
-可以，安装向导里两处都能改（见上）。数据目录允许放在任意位置，包括同步盘。
+Windows 安装向导里两处都能改（见上）。数据目录允许放在任意位置，包括同步盘。
+Linux 的 deb/rpm 固定装到 `/opt`；数据目录同样可手动迁移。
 
 **换了电脑怎么迁移？**
 把 `orbit.db`（连同同目录的 `-wal` / `-shm`，如果在）一起拷过去，放到新机器的数据目录即可；
@@ -161,6 +183,10 @@ http://localhost:5310/mcp
 
 源码结构与开发流程如下（产品文档见 [docs/architecture.md](docs/architecture.md)：分层、数据模型、业务规则与 REST / MCP 契约；
 界面层的口径约定见 [docs/frontend-rendering.md](docs/frontend-rendering.md)：金额显示、时间轴与「今天」、渲染缓存刷新链）。
+
+分支模型：`main` 是生产代码，只接受 `develop` 的 `--no-ff` 合并，推送即触发 CD 发布；
+`develop` 是开发默认分支，短分支（`feat/*`、`fix/*` 等）从它拉出，CI 通过后以 `--no-ff` 合回并保留。
+日常开发、测试与发版细则见 [AGENTS.md](AGENTS.md)；按任务拆分的项目技能在 `.agents/skills/`。
 
 | 目录 | 说明 |
 |---|---|
@@ -177,21 +203,29 @@ cd server && npm test                        # node:test 全量回归
 
 # 桌面端
 npm install && npm start                     # 起窗口（内嵌同一个服务）
-npm run dist                                 # 打安装包 → release/Orbit-Setup-<版本>.exe
-npm run pack                                 # 只产目录、不产安装包
+npm run dist                                 # 当前平台安装包（Windows exe / Linux deb+rpm）
+npm run dist:win                             # Windows NSIS → release/Orbit-Setup-<版本>.exe
+npm run dist:linux                           # Linux deb + rpm → release/Orbit-<版本>-*
+npm run pack                                 # 当前平台目录，不产安装包
 
 # 纯前端版
 npm run build:web                            # 产出静态站点到 webapp/dist/
 npm run verify:web                           # 端到端：起静态服务 + Electron 跑一遍真实 UI 路径
-npm run verify:upgrade                       # 端到端：装两次，验证覆盖更新不重装两份、不丢账本
+npm run verify:linux                         # Linux 内嵌服务冒烟（无窗口；CI 会跑）
+npm run verify:upgrade                       # 端到端：装两次，验证覆盖更新不重装两份、不丢账本（仅 Windows）
 ```
 
 受限网络下打包需要镜像：
 `ELECTRON_MIRROR=https://npmmirror.com/mirrors/electron/`、
 `ELECTRON_BUILDER_BINARIES_MIRROR=https://npmmirror.com/mirrors/electron-builder-binaries/`。
+Linux 打 rpm 需要系统 `rpmbuild`、`7zip` 和 `fpm`：
+`sudo apt-get install rpm p7zip-full ruby ruby-dev build-essential && sudo gem install fpm -v 1.17.0`。
+打包复用本地 `node_modules/electron/dist`，不下载 Electron zip。
 
-持续集成与发布：`.github/workflows/ci.yml`（push/PR 跑回归）、`release.yml`（推 `v*` 标签打包并发 Release）、
-`pages.yml`（构建纯前端版并部署 GitHub Pages）。发版时版本号写在仓库根 `package.json`，
-workflow 会校验 tag 与它一致。
+持续集成与发布：`.github/workflows/ci.yml`（任意分支 push、PR 到 `develop` / `main` 都会跑，
+短分支必须等到「CI 通过」，其中包含 Linux deb/rpm 构建）、
+`release.yml`（push 到 `main` 即 CD：校验版本 → 打包 Windows exe 与 Linux deb/rpm → 创建 tag 与 Release）、
+`pages.yml`（push 到 `main` 构建纯前端版并部署 GitHub Pages）。
+发版前在 `develop` 的短分支里升仓库根 `package.json` 的版本并合入；`main` 上不再手工改版本或推 tag。
 
 截图由 `npm run shots` 生成（Electron 自己渲染并截屏，尺寸与等待时机都可复现）。
