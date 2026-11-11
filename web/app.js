@@ -234,7 +234,7 @@ function glowSprite(color){
 let stars=[],shoots=[],nextShoot=4;
 function initBg(){
   stars=[];
-  const n=Math.round(W*H/3800);
+  const n=Math.round(W*H/5200);
   for(let i=0;i<n;i++){
     const layer=Math.random();
     stars.push({x:Math.random()*W,y:Math.random()*H,
@@ -245,48 +245,29 @@ function initBg(){
 }
 function drawBg(t,dt,mx,my){
   bg.clearRect(0,0,W,H);
-  bg.fillStyle='#030510';bg.fillRect(0,0,W,H);
+  bg.fillStyle='#070a09';bg.fillRect(0,0,W,H);
+  // 极淡的浑仪底环：只是仪器的底盘，不承载数据
+  bg.save();
+  const cx=gcx(),cy=gcy(),R=Math.min(gx1()-gx0(),gy1()-gy0())*.55;
+  bg.strokeStyle='rgba(176,141,87,.065)';bg.lineWidth=1;
+  bg.beginPath();bg.arc(cx,cy,R,0,7);bg.stroke();
+  bg.strokeStyle='rgba(176,141,87,.035)';
+  bg.beginPath();bg.arc(cx,cy,R*.72,0,7);bg.stroke();
+  bg.restore();
   for(const s of stars){
     const ox=(mx-.5)*14*s.px,oy=(my-.5)*10*s.px;
     const tw=.7+.3*Math.sin(t*s.tw+s.ph);
     bg.globalAlpha=s.a*tw;
-    if(s.near){const sz=s.r*8;bg.drawImage(glowSprite('#9fc0ff'),s.x+ox-sz/2,s.y+oy-sz/2,sz,sz)}
-    bg.fillStyle=s.near?'#e8f0ff':'#b9c6e4';
+    bg.fillStyle=s.near?'#e3e9df':'#b9b4a4';
     bg.beginPath();bg.arc(s.x+ox,s.y+oy,s.r,0,7);bg.fill();
+    if(s.near){
+      bg.strokeStyle='rgba(227,233,223,.28)';bg.lineWidth=.7;
+      bg.beginPath();bg.moveTo(s.x+ox-s.r*3,s.y+oy);bg.lineTo(s.x+ox+s.r*3,s.y+oy);
+      bg.moveTo(s.x+ox,s.y+oy-s.r*3);bg.lineTo(s.x+ox,s.y+oy+s.r*3);bg.stroke();
+    }
   }
   bg.globalAlpha=1;
-  nextShoot-=dt;
-  if(nextShoot<0){nextShoot=6+Math.random()*9;
-    shoots.push({x:W*.3+Math.random()*W*.6,y:-20,vx:-(420+Math.random()*380),vy:260+Math.random()*200,life:1})}
-  shoots=shoots.filter(p=>p.life>0);
-  for(const p of shoots){
-    p.x+=p.vx*dt;p.y+=p.vy*dt;p.life-=dt*.9;
-    const L=158*p.life, hyp=Math.hypot(p.vx,p.vy)||1;
-    const ux=-p.vx/hyp, uy=-p.vy/hyp;   // 尾方向（与运动方向相反）
-    // 多段渐隐拖尾：逐段变细变淡，比单段线性渐变更有「流星」的颗粒感
-    bg.save();bg.lineCap='round';
-    const SEG=7;
-    for(let k=0;k<SEG;k++){
-      const t0=k/SEG, t1=(k+1)/SEG;
-      const a0=(1-t0)*(1-t0)*.85*p.life;
-      if(a0<=.01)continue;
-      bg.strokeStyle=`rgba(${200+Math.round(55*(1-t0))},${220+Math.round(35*(1-t0))},255,${a0})`;
-      bg.lineWidth=1.9*(1-t0*.72);
-      bg.beginPath();
-      bg.moveTo(p.x+ux*L*t0,p.y+uy*L*t0);
-      bg.lineTo(p.x+ux*L*t1,p.y+uy*L*t1);
-      bg.stroke();
-    }
-    // 头部亮点（光晕而非硬圆）
-    bg.globalCompositeOperation='lighter';
-    const hg=bg.createRadialGradient(p.x,p.y,0,p.x,p.y,7);
-    hg.addColorStop(0,`rgba(255,255,255,${.95*p.life})`);
-    hg.addColorStop(1,'rgba(160,210,255,0)');
-    bg.fillStyle=hg;bg.beginPath();bg.arc(p.x,p.y,7,0,7);bg.fill();
-    bg.restore();
-  }
 }
-
 /* ---------- 图谱：星座节点 + 真漂浮 ---------- */
 /* L1 锚点：金额驱动自动摆位（北斗弧线），任意品类数量都好看 */
 let nodes=[],links=[],poly=[],enterT=9;
@@ -570,65 +551,42 @@ function burst(x,y,color,n=26){
     两者都是「星」，只是长的形状不同 —— 比绿圈加箭头更贴合「星账」的意象，
     也更容易一眼分辨「这颗是进账」。 */
 function drawIncomeStar(x,y,R,color,tw){
-  g.save();g.globalCompositeOperation='lighter';
-  const hs=R*4.8;
-  g.globalAlpha=.5*tw;g.drawImage(glowSprite(color),x-hs/2,y-hs/2,hs,hs);
-  const k=R*.26;                                   // 内凹控制点：越小越尖
-  const gr=g.createRadialGradient(x,y,0,x,y,R);
-  gr.addColorStop(0,'rgba(255,255,255,1)');
-  gr.addColorStop(.42,'rgba(255,255,255,.92)');
-  gr.addColorStop(.6,color);
-  gr.addColorStop(1,rgba(color,0));
-  g.globalAlpha=.96*tw;g.fillStyle=gr;
-  g.beginPath();
-  g.moveTo(x,y-R);                                 // 上尖
-  g.quadraticCurveTo(x+k,y-k,x+R,y);               // 右上（内凹）
-  g.quadraticCurveTo(x+k,y+k,x,y+R);               // 右下（内凹）
-  g.quadraticCurveTo(x-k,y+k,x-R,y);               // 左下（内凹）
-  g.quadraticCurveTo(x-k,y-k,x,y-R);               // 左上（内凹）
-  g.closePath();g.fill();
+  g.save();g.globalAlpha=tw;g.translate(x,y);g.rotate(Math.PI/4);
+  const r=Math.max(3.5,R*.82);
+  g.fillStyle=rgba(color,.10);g.strokeStyle=color;g.lineWidth=1.1;
+  g.beginPath();g.rect(-r,-r,r*2,r*2);g.fill();g.stroke();
+  g.rotate(-Math.PI/4);
+  g.fillStyle=color;g.beginPath();g.arc(0,0,Math.max(1.2,R*.18),0,7);g.fill();
   g.restore();
 }
 function drawStar(x,y,R,color,tw,spiky){
-  g.save();g.globalCompositeOperation='lighter';
-  // 大星带呼吸（光晕半径 + 强度微脉动）；小星不呼吸 —— 整屏同频闪会晕
-  // 相位随坐标偏移，避免所有大星同频
-  const breathe=R>13?(1+.055*Math.sin(tNow*1.6+x*.01+y*.013)):1;
-  const hs=R*(R>15?4.6:6.2)*breathe;
-  g.globalAlpha=.6*tw*breathe;g.drawImage(glowSprite(color),x-hs/2,y-hs/2,hs,hs);
-  g.globalAlpha=.95;
-  const gr=g.createRadialGradient(x,y,0,x,y,R);
-  gr.addColorStop(0,'rgba(255,255,255,1)');
-  gr.addColorStop(.32,'rgba(255,255,255,.95)');
-  gr.addColorStop(.55,color);
-  gr.addColorStop(1,rgba(color,0)); // 透明收边，无轮廓
-  g.fillStyle=gr;g.beginPath();g.arc(x,y,R,0,7);g.fill();
+  g.save();g.globalAlpha=tw;
+  g.fillStyle=rgba(color,.16);g.beginPath();g.arc(x,y,R,0,7);g.fill();
+  g.strokeStyle=color;g.lineWidth=1.15;g.beginPath();g.arc(x,y,R,0,7);g.stroke();
+  if(R>10){g.strokeStyle=rgba(color,.38);g.lineWidth=1;g.beginPath();g.arc(x,y,R+4,0,7);g.stroke()}
+  g.fillStyle=color;g.beginPath();g.arc(x,y,Math.max(1.3,R*.34),0,7);g.fill();
   if(spiky){
-    // 4 主芒 + 4 次芒：长度随星体分层；芒身色散（根部偏白、末端接节点色）
-    const L1=R*2.7, L2=R*1.55;
-    g.lineCap='round';
-    for(let k=0;k<8;k++){
-      const long=(k%2===0);
-      const an=k*Math.PI/4+.4, L=long?L1:L2;
-      const x2=x+Math.cos(an)*L, y2=y+Math.sin(an)*L;
-      const lg=g.createLinearGradient(x,y,x2,y2);
-      lg.addColorStop(0,`rgba(255,255,255,${(long?.40:.24)*tw*breathe})`);
-      lg.addColorStop(.5,`rgba(255,255,255,${(long?.15:.09)*tw})`);
-      lg.addColorStop(1,rgba(color,0));
-      g.strokeStyle=lg;g.lineWidth=long?1.35:.8;
-      g.beginPath();g.moveTo(x+Math.cos(an)*R*.3,y+Math.sin(an)*R*.3);g.lineTo(x2,y2);g.stroke();
+    const L=R*2.1;
+    g.strokeStyle=rgba(color,.5);g.lineWidth=.7;
+    for(let k=0;k<4;k++){
+      const an=k*Math.PI/2;
+      g.beginPath();
+      g.moveTo(x+Math.cos(an)*R*1.15,y+Math.sin(an)*R*1.15);
+      g.lineTo(x+Math.cos(an)*L,y+Math.sin(an)*L);
+      g.stroke();
     }
   }
   g.restore();
 }
 function label(text,sub,x,y,a,hot){
   g.save();g.globalAlpha=a;g.textAlign='center';g.textBaseline='alphabetic';
-  g.shadowColor='rgba(0,0,5,.9)';g.shadowBlur=7;
-  g.font='600 12px Inter,"PingFang SC","Microsoft YaHei",sans-serif';
-  g.fillStyle=hot?'#fff':'rgba(232,238,252,.92)';
-  g.fillText(text,x,y);
-  g.font='10.5px Inter,sans-serif';g.fillStyle='rgba(150,165,195,.85)';
-  g.fillText(sub,x,y+15);
+  g.font='500 12px "Noto Serif CJK SC","Source Han Serif SC","Songti SC",serif';
+  g.fillStyle='rgba(7,10,9,.90)';g.fillText(text,x+1,y+1);
+  g.fillStyle=hot?'#e3e9df':'rgba(232,226,210,.92)';g.fillText(text,x,y);
+  if(sub){
+    g.font='400 9.5px "SFMono-Regular","Cascadia Mono",monospace';
+    g.fillStyle='rgba(146,151,140,.95)';g.fillText(sub,x,y+14);
+  }
   g.restore();
 }
 function drawGraph(t){
@@ -639,29 +597,21 @@ function drawGraph(t){
   // 画布视角：图谱元素都在世界坐标里绘制，统一应用平移 + 缩放
   g.save();g.translate(CAM.x,CAM.y);g.scale(CAM.z,CAM.z);
 
-  // 星座连线 / 二部图边
+  // 星座连线 / 二部图边：黄铜刻线，共享关系用虚线
   for(const l of links){
     const s=byId(l.s),t2=byId(l.t);if(!s||!t2)continue;
     const on=!!hotLinks&&hotLinks.has(linkKey(l));
-    // 线宽与透明度都随 w：归属线固定 1.0；共享线 1.0~3.0（被共享越多越显眼）
-    const base=l.w||1;
-    let a=0.16+Math.max(0,base-1)*0.09;
-    if(hotNodes)a=on?.78:.05;
+    let a=0.50;
+    if(hotNodes)a=on?.88:.07;
     a*=clamp(enterT,0,1);
     if(a<=.01)continue;
-    const c1=s.kind==='exp'?'#cdd8f2':s.ref.color;
-    const c2=t2.kind==='exp'?'#cdd8f2':t2.ref.color;
-    const gr=g.createLinearGradient(s.x,s.y,t2.x,t2.y);
-    gr.addColorStop(0,rgba(c1.startsWith('#')?c1:'#9fb4d8',a));
-    gr.addColorStop(1,rgba(c2.startsWith('#')?c2:'#9fb4d8',a));
-    g.strokeStyle=gr;g.lineWidth=on?2.6:(0.9+Math.max(0,base-1)*0.75);
-    // 共享线（被同一笔账单同时挂上的两个细分）用虚线
-    if(l.shared)g.setLineDash([3,5]);
+    g.save();g.globalAlpha=a;
+    g.strokeStyle=on?'rgba(227,233,223,.75)':'rgba(176,141,87,.55)';
+    g.lineWidth=on?1.6:1;
+    if(l.shared)g.setLineDash([2,5]);
     g.beginPath();g.moveTo(s.x,s.y);g.lineTo(t2.x,t2.y);g.stroke();
     g.setLineDash([]);
-    const px=lerp(s.x,t2.x,l.ph),py=lerp(s.y,t2.y,l.ph);
-    g.save();g.globalCompositeOperation='lighter';g.globalAlpha=Math.min(1,a*2.6);
-    g.fillStyle='#fff';g.beginPath();g.arc(px,py,on?1.9:1.2,0,7);g.fill();g.restore();
+    g.restore();
   }
   // 花销 / 细分小星
   for(const n of nodes){
@@ -708,9 +658,9 @@ function drawGraph(t){
       g.save();g.globalAlpha=a*.5;g.strokeStyle='#8b93a8';g.setLineDash([4,4]);g.lineWidth=1;
       g.beginPath();g.arc(n.x,n.y,R+5,0,7);g.stroke();g.restore();
     }
-    if(n.center){ // 专属视图中央主星呼吸环
-      g.save();g.globalAlpha=(.4+.25*Math.sin(t*2))*a;g.strokeStyle=n.ref.color;g.lineWidth=1.4;
-      g.beginPath();g.arc(n.x,n.y,R+8+2*Math.sin(t*2),0,7);g.stroke();g.restore();
+    if(n.center){ // 专属视图中央主星：静态双环
+      g.save();g.globalAlpha=.55*a;g.strokeStyle=n.ref.color;g.lineWidth=1.2;
+      g.beginPath();g.arc(n.x,n.y,R+8,0,7);g.stroke();g.restore();
     }
     if(isH){
       g.save();g.globalAlpha=.9;g.strokeStyle='#fff';g.lineWidth=1.4;
@@ -729,7 +679,7 @@ function drawGraph(t){
   g.restore();   // 结束画布平移：爆裂粒子走屏幕坐标，不随相机移动
 
   bursts=bursts.filter(p=>p.life>0);
-  g.save();g.globalCompositeOperation='lighter';
+  g.save();
   for(const p of bursts){
     p.x+=p.vx;p.y+=p.vy;p.vy+=.02;p.life-=.016;
     g.globalAlpha=Math.max(0,p.life);g.fillStyle=p.c;
@@ -1150,7 +1100,7 @@ async function selectTime(kind,id){
     TL.pan=c0-anchorCenter(viewOf(W).maxGap);
     buildGraph();
   }
-  burst(W/2,H-190,'#9be9ff',kind==='day'?10:kind==='year'?18:14);
+  burst(W/2,H-190,'#b08d57',kind==='day'?10:kind==='year'?18:14);
 }
 /** 直接落到某一档（初始化 / 点节点 / 回到今天等场合），不带吸附动画 */
 function setZoom(z,quiet){
@@ -2401,7 +2351,7 @@ $('#modalSave').onclick=async ()=>{
     // 与编辑分支同理：在下钻视图里新记一笔，也要重拉 detailExpenses 才会出现新节点
     if(S.view==='detail'&&detailTag)await reloadDetailExpenses();
     buildGraph();syncChrome();
-    burst(W/2,H-190,'#9be9ff',30);
+    burst(W/2,H-190,'#b08d57',30);
     toast('已记一笔 · '+fmtYuan(yuan));
   }catch(e){
     toast('记账失败：'+(e.message||e));
