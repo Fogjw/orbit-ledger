@@ -95,6 +95,8 @@ jobs:
     name: Windows 安装包
     needs: [prepare, regression]
     runs-on: windows-latest
+    env:
+      ELECTRON_MIRROR: https://npmmirror.com/mirrors/electron/
     steps:
       - uses: actions/checkout@v4
 
@@ -114,6 +116,10 @@ jobs:
       - name: 安装服务依赖
         working-directory: server
         run: npm ci
+
+      # electronDist 指向本地 Electron；Windows runner 的 npm ci 不保证执行 postinstall
+      - name: 准备 Electron 运行库
+        run: node node_modules/electron/install.js
 
       - name: 打包（NSIS 安装包）
         run: npm run dist:win
