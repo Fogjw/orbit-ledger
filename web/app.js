@@ -214,9 +214,88 @@ function resize(){
 }
 addEventListener('resize',resize);
 /* 图谱区（左给洞察面板让位） */
-const TOP=76,ORBIT_H=190;
-const gx0=()=>300, gx1=()=>W-60, gy0=()=>TOP+26, gy1=()=>H-ORBIT_H-44;
+const TOP=76;
+/* 三栏尺寸：默认值必须与 CSS 变量一致；持久化在 localStorage，刷新后保持 */
+const UI_KEY='orbit.ui.layout.v1';
+const UI={panelW:268,railW:52,timelineH:150,panelCollapsed:false};
+try{
+  const saved=JSON.parse(localStorage.getItem(UI_KEY)||'null');
+  if(saved){
+    UI.panelW=clamp(Number(saved.panelW)||UI.panelW,200,380);
+    UI.railW=clamp(Number(saved.railW)||UI.railW,44,80);
+    UI.timelineH=clamp(Number(saved.timelineH)||UI.timelineH,110,240);
+    UI.panelCollapsed=!!saved.panelCollapsed;
+  }
+}catch{}
+const panelEl=$('#insightPanel'),panelCollapse=$('#panelCollapse'),
+      panelResize=$('#panelResize'),railResize=$('#railResize'),timelineResize=$('#timelineResize');
+const panelVisualW=()=>UI.panelCollapsed?34:UI.panelW;
+function applyLayout(){
+  const root=document.documentElement;
+  root.style.setProperty('--panel-w',panelVisualW()+'px');
+  root.style.setProperty('--rail-w',UI.railW+'px');
+  root.style.setProperty('--timeline-h',UI.timelineH+'px');
+  if(panelEl)panelEl.classList.toggle('is-collapsed',UI.panelCollapsed);
+  if(panelCollapse){
+    panelCollapse.textContent=UI.panelCollapsed?'›':'‹';
+    panelCollapse.title=UI.panelCollapsed?'展开左栏':'收起左栏';
+    panelCollapse.setAttribute('aria-label',panelCollapse.title);
+    panelCollapse.setAttribute('aria-expanded',String(!UI.panelCollapsed));
+  }
+}
+function saveLayout(){
+  try{localStorage.setItem(UI_KEY,JSON.stringify(UI))}catch{}
+}
+const gx0=()=>panelVisualW()+32, gx1=()=>W-UI.railW-8, gy0=()=>TOP+26, gy1=()=>H-UI.timelineH-84;
 const gcx=()=>(gx0()+gx1())/2, gcy=()=>(gy0()+gy1())/2;
+
+/* 栏宽/高度拖拽：拖动期间只改 CSS，松手后再重排图谱与 Canvas 缓冲 */
+function bindResize(el,onStart,onMove){
+  if(!el)return;
+  let dragging=false;
+  const end=e=>{
+    if(!dragging)return;
+    dragging=false;
+    document.body.classList.remove('resizing');
+    try{el.releasePointerCapture(e.pointerId)}catch{}
+    saveLayout();
+    resize();
+  };
+  el.addEventListener('pointerdown',e=>{
+    e.preventDefault();
+    dragging=true;
+    onStart();
+    document.body.classList.add('resizing');
+    try{el.setPointerCapture(e.pointerId)}catch{}
+  });
+  el.addEventListener('pointermove',e=>{
+    if(!dragging)return;
+    onMove(e.clientX,e.clientY);
+  });
+  el.addEventListener('pointerup',end);
+  el.addEventListener('pointercancel',end);
+}
+let dragPanelW=UI.panelW,dragRailW=UI.railW,dragTimelineH=UI.timelineH;
+let dragStartX=0,dragStartY=0;
+bindResize(panelResize,()=>{dragPanelW=UI.panelW;dragStartX=0},(clientX)=>{
+  if(!dragStartX)dragStartX=clientX;
+  UI.panelW=clamp(dragPanelW+(clientX-dragStartX),200,380);
+  applyLayout();
+});
+bindResize(railResize,()=>{dragRailW=UI.railW;dragStartX=0},(clientX)=>{
+  if(!dragStartX)dragStartX=clientX;
+  UI.railW=clamp(dragRailW-(clientX-dragStartX),44,80);
+  applyLayout();
+});
+bindResize(timelineResize,()=>{dragTimelineH=UI.timelineH;dragStartY=0},(clientX,clientY)=>{
+  if(!dragStartY)dragStartY=clientY;
+  UI.timelineH=clamp(dragTimelineH-(clientY-dragStartY),110,240);
+  applyLayout();
+});
+if(panelCollapse)panelCollapse.addEventListener('click',()=>{
+  UI.panelCollapsed=!UI.panelCollapsed;
+  applyLayout();saveLayout();resize();
+});
 
 /* ---------- 光晕精灵 ---------- */
 const glowCache={};
@@ -2381,6 +2460,7 @@ function frame(now){
 
 /* 启动（真实数据） */
 async function boot(){
+  applyLayout();
   resize();
   try{
     await Data.init();

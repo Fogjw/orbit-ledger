@@ -47,6 +47,8 @@
 
   <!-- 左侧洞察面板 -->
   <aside class="panel" id="insightPanel">
+    <button class="panel-collapse" id="panelCollapse" type="button" title="收起左栏" aria-label="收起左栏" aria-expanded="true">‹</button>
+    <div class="panel-resize" id="panelResize" title="拖动调整左栏宽度"></div>
     <div class="p-title"><span id="pTitle">本月星图</span> <span class="live-dot"></span></div>
     <div class="p-total">
       <div class="p-balance"><span class="p-key">结余</span><span class="p-num" id="pNum">¥0</span></div>
@@ -62,6 +64,7 @@
 
   <!-- 右侧粒度轨 -->
   <div class="rail-wrap" id="railWrap" title="星轨变焦：上=日 下=全部（可拖动，滚轮亦可）">
+    <div class="rail-resize" id="railResize" title="拖动调整右轨宽度"></div>
     <div class="rail-scale" id="railScale">
       <span class="rail-level" style="top:2%">日</span>
       <span class="rail-level" style="top:33.33%">月</span>
@@ -75,6 +78,7 @@
 
   <!-- 底部星轨 -->
   <footer class="timeline">
+    <div class="timeline-resize" id="timelineResize" title="拖动调整星轨高度"></div>
     <div class="tl-head">
       <span class="tl-title">星轨 · 时间</span>
       <span class="tl-tip" id="tlTip">点击星星切换月份</span>
