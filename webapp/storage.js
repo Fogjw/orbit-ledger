@@ -51,12 +51,25 @@ export async function pickDirectory() {
   return dir;
 }
 
-/** 取回上次选的目录；权限若已失效返回 null（调用方再决定要不要引导用户重选） */
+/** 只取回上次选的目录句柄，不判断权限；用于权限失效时做「重新授权」而不是丢掉它 */
+export async function rememberedDirectory() {
+  return await idbGet(IDB_KEY_DIR).catch(() => null);
+}
+
+/** 只查询权限，不触发授权（授权必须由用户手势触发） */
+export async function hasDirectoryPermission(dir) {
+  if (!dir || typeof dir.queryPermission !== 'function') return false;
+  try {
+    return await dir.queryPermission({ mode: 'readwrite' }) === 'granted';
+  } catch {
+    return false;
+  }
+}
+
+/** 取回上次选的目录；权限若已失效返回 null（兼容旧调用） */
 export async function restoreDirectory() {
-  const dir = await idbGet(IDB_KEY_DIR).catch(() => null);
-  if (!dir) return null;
-  const perm = await dir.queryPermission({ mode: 'readwrite' });
-  return perm === 'granted' ? dir : null;
+  const dir = await rememberedDirectory();
+  return dir && await hasDirectoryPermission(dir) ? dir : null;
 }
 
 /** 申请目录权限（必须由用户手势触发） */

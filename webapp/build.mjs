@@ -34,6 +34,8 @@ async function main() {
   for (const f of ['app.js', 'data.js', 'timeline-nav.js', 'styles.css', 'logo.svg', 'favicon.svg']) {
     await cp(join(root, 'web', f), join(out, f));
   }
+  // gate 的样式独立于桌面 UI；只在 webapp 首次进入时出现
+  await cp(join(here, 'gate.css'), join(out, 'gate.css'));
 
   // 3) sql.js 的 wasm 运行时：boot.js 会去 ./sqlite-wasm/ 找它
   const wasm = join(root, 'node_modules/sql.js/dist/sql-wasm.wasm');
@@ -46,7 +48,7 @@ async function main() {
 
   // 静态站点没有服务端，安全策略只能靠自己声明。
   //  'wasm-unsafe-eval' 是跑 WebAssembly 必需的（不是 'unsafe-eval'）；
-  //  style-src 必须放开 'unsafe-inline' —— 界面与引导层里都有内联样式。
+  //  style-src 必须放开 'unsafe-inline' —— 界面脚本/浮层里仍有内联样式。
   const CSP = "default-src 'self'; script-src 'self' 'wasm-unsafe-eval'; "
     + "style-src 'self' 'unsafe-inline'; img-src 'self' data:; connect-src 'self'; "
     + "object-src 'none'; base-uri 'none'; form-action 'none'";
@@ -57,6 +59,7 @@ async function main() {
     .replace(/<script src="timeline-nav\.js"><\/script>\s*/g, '')
     .replace(/<script src="app\.js"><\/script>\s*/g, '')
     .replace('<head>', `<head>\n<meta http-equiv="Content-Security-Policy" content="${CSP}">`)
+    .replace('</head>', '  <link rel="stylesheet" href="./gate.css">\n</head>')
     .replace('</body>', '  <script type="module" src="./bundle.js"></script>\n</body>');
   await writeFile(join(out, 'index.html'), html, 'utf8');
 
