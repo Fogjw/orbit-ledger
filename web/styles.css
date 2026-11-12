@@ -9,6 +9,9 @@
   --accent2:#6f8f82;
   --good:#7fb0a4;
   --warn:#d0aa70;
+  --panel-w:268px;
+  --rail-w:52px;
+  --timeline-h:150px;
   --font:"Noto Sans CJK SC","PingFang SC","Hiragino Sans GB","Microsoft YaHei",system-ui,sans-serif;
 }
 *{margin:0;padding:0;box-sizing:border-box}
@@ -83,12 +86,31 @@ canvas{display:block}
 
 /* 左侧面板：孔制读数，不是卡片 */
 .panel{
-  position:fixed;left:0;top:64px;bottom:150px;z-index:9;width:268px;
-  padding:18px 20px 12px;display:flex;flex-direction:column;overflow:hidden;
+  position:fixed;left:0;top:64px;bottom:var(--timeline-h);z-index:9;width:var(--panel-w);
+  padding:18px 20px 12px;display:flex;flex-direction:column;
+  overflow-y:auto;overflow-x:hidden;scrollbar-width:thin;scrollbar-color:#3a3a32 #0d1110;
   background:#0d1110;
   border-right:1px solid rgba(176,141,87,.42);border-radius:0;
   animation:panelIn .45s ease-out;
 }
+.panel::-webkit-scrollbar{width:4px}
+.panel::-webkit-scrollbar-track{background:#0d1110}
+.panel::-webkit-scrollbar-thumb{background:#3a3a32;border-radius:0}
+.panel-collapse{
+  position:absolute;top:10px;right:8px;z-index:12;width:22px;height:22px;
+  border:1px solid rgba(176,141,87,.42);border-radius:0;background:#0d1110;
+  color:#92978c;font:400 17px/1 "SFMono-Regular",monospace;cursor:pointer;
+  display:grid;place-items:center;padding:0;transition:color .15s,border-color .15s,background .15s;
+}
+.panel-collapse:hover{color:#e3e9df;border-color:#b08d57;background:rgba(176,141,87,.10)}
+.panel-resize{position:absolute;right:0;top:0;bottom:0;width:8px;z-index:12;cursor:ew-resize;touch-action:none}
+.panel-resize::after{content:"";position:absolute;left:3px;top:0;bottom:0;width:1px;background:rgba(176,141,87,.12)}
+.panel-resize:hover::after{background:rgba(176,141,87,.55)}
+.panel .p-title{padding-right:28px}
+.panel.is-collapsed{width:34px;padding:0;overflow:hidden;align-items:center}
+.panel.is-collapsed > *:not(.panel-collapse){display:none!important}
+.panel.is-collapsed .panel-collapse{top:12px;left:6px;right:auto}
+.panel.is-collapsed .panel-resize{display:none}
 @keyframes panelIn{from{opacity:0;transform:translateX(-5px)}to{opacity:1;transform:none}}
 @keyframes slideL{from{opacity:0;transform:translateX(-16px)}to{opacity:1;transform:none}}
 .p-title{font-size:9.5px;letter-spacing:.2em;color:#92978c;display:flex;align-items:center;gap:8px}
@@ -122,10 +144,13 @@ canvas{display:block}
 
 /* 右侧粒度轨：垂直校准尺，不是发光滑杆 */
 .rail-wrap{
-  position:fixed;right:0;top:64px;bottom:150px;z-index:9;width:52px;
+  position:fixed;right:0;top:64px;bottom:var(--timeline-h);z-index:9;width:var(--rail-w);
   display:flex;flex-direction:column;padding:14px 0 12px;
   border-left:1px solid rgba(176,141,87,.30);background:#0d1110;border-radius:0;transform:none;
 }
+.rail-resize{position:absolute;left:-4px;top:0;bottom:0;width:8px;z-index:12;cursor:ew-resize;touch-action:none}
+.rail-resize::after{content:"";position:absolute;left:3px;top:0;bottom:0;width:1px;background:rgba(176,141,87,.12)}
+.rail-resize:hover::after{background:rgba(176,141,87,.55)}
 .rail-scale{position:relative;flex:1;width:100%;min-height:0}
 .rail-level{
   position:absolute;left:3px;transform:translateY(-50%);pointer-events:none;
@@ -148,14 +173,17 @@ canvas{display:block}
 .rail-handle:active{cursor:grabbing;background:#d0aa70}
 
 /* 底部星轨：全宽刻度长轨 */
-.timeline{position:fixed;left:0;right:0;bottom:0;z-index:9;width:auto;height:150px;padding:13px 28px 0;border-radius:0;background:#0d1110;border-top:1px solid rgba(176,141,87,.42);animation:tlIn .4s ease-out}
+.timeline{position:fixed;left:0;right:0;bottom:0;z-index:9;width:auto;height:var(--timeline-h);padding:13px 28px 0;border-radius:0;background:#0d1110;border-top:1px solid rgba(176,141,87,.42);animation:tlIn .4s ease-out}
+.timeline-resize{position:absolute;left:0;right:0;top:0;height:8px;z-index:12;cursor:ns-resize;touch-action:none}
+.timeline-resize::after{content:"";position:absolute;left:0;right:0;top:3px;height:1px;background:rgba(176,141,87,.12)}
+.timeline-resize:hover::after{background:rgba(176,141,87,.55)}
 @keyframes tlIn{from{opacity:0;transform:translateY(5px)}to{opacity:1;transform:none}}
 .tl-head{display:flex;justify-content:space-between;align-items:center}
 .tl-title{font-size:9.5px;letter-spacing:.2em;color:#92978c}
 .tl-tip{font-size:9.5px;color:#7d8278;letter-spacing:.04em}
-#orbit{width:100%;height:112px;cursor:pointer}
+#orbit{width:100%;height:calc(var(--timeline-h) - 38px);cursor:pointer}
 
-.hint{position:fixed;left:292px;top:78px;z-index:8;font-size:9.5px;letter-spacing:.1em;color:rgba(146,151,140,.7);pointer-events:none;white-space:nowrap}
+.hint{position:fixed;left:calc(var(--panel-w) + 24px);top:78px;z-index:8;font-size:9.5px;letter-spacing:.1em;color:rgba(146,151,140,.7);pointer-events:none;white-space:nowrap}
 
 /* tooltip / toast —— 提示层，压在所有浮层之上。
    toast 是对「刚刚发生的事」的反馈（保存、建 tag、切档位…），被任何 mask 盖住都等于没提示，
@@ -166,7 +194,7 @@ canvas{display:block}
 /* pointer-events:none 是必须的：toast 压在所有浮层之上（z-index 210），
    若它自己可命中，提示显示的那两秒里就会把下面浮层的按钮/输入框全挡住 ——
    实测症状是「记一笔时不时点不动、金额和日期都改不了」。 */
-.toast{position:fixed;left:50%;bottom:170px;transform:translateX(-50%);z-index:210;pointer-events:none;background:#0d1110;border:1px solid rgba(176,141,87,.42);padding:10px 18px;border-radius:0;font:400 12px/1.4 var(--font);box-shadow:0 12px 30px rgba(0,0,0,.55);animation:toastIn .3s}
+.toast{position:fixed;left:50%;bottom:calc(var(--timeline-h) + 20px);transform:translateX(-50%);z-index:210;pointer-events:none;background:#0d1110;border:1px solid rgba(176,141,87,.42);padding:10px 18px;border-radius:0;font:400 12px/1.4 var(--font);box-shadow:0 12px 30px rgba(0,0,0,.55);animation:toastIn .3s}
 @keyframes toastIn{from{opacity:0;transform:translate(-50%,8px)}}
 
 /* 记账浮层 */
@@ -322,7 +350,7 @@ canvas{display:block}
 textarea.m-remark{min-height:66px;max-height:30vh;resize:vertical;line-height:1.6;font-family:var(--font)}
 /* 画布缩放条：小型校准尺，不是发光胶囊 */
 .zoom-bar{
-  position:fixed;left:292px;bottom:166px;z-index:9;display:flex;align-items:stretch;
+  position:fixed;left:calc(var(--panel-w) + 24px);bottom:calc(var(--timeline-h) + 16px);z-index:9;display:flex;align-items:stretch;
   height:28px;border:1px solid rgba(176,141,87,.42);border-radius:0;background:#0d1110;
   padding:0;animation:zoomIn .3s ease-out;
 }

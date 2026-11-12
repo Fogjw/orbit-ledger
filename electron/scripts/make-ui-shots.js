@@ -69,6 +69,13 @@ async function main() {
   const initial = await shot('01-overview');
   if (!initial.ready) throw new Error(`界面未加载：${base}`);
 
+  // 左栏收起：确认按钮可见、图谱让位；随后展开，避免影响后续截图
+  await js(`document.querySelector('#panelCollapse')?.click()`);
+  await wait(900);
+  await shot('09-panel-collapsed');
+  await js(`document.querySelector('#panelCollapse')?.click()`);
+  await wait(900);
+
   // 记一笔：浮层有 350ms 入场动画；多等一帧，避免截到 opacity 还是 0 的中间帧
   await click('#btnAdd');
   await wait(1400);
@@ -172,6 +179,74 @@ async function main() {
   if (!entered) console.log('[ui-shot] 没有点中主 tag，跳过 06-detail（检查数据或坐标）');
   await click('#btnBack');
   await wait(600);
+
+  // 拖宽左栏：用 CDP 真实鼠标拖动右缘 handle，截图确认栏宽和星图重排
+  const pr = JSON.parse(await js(`(() => {
+    const el = document.querySelector('#panelResize');
+    if (!el) return JSON.stringify(null);
+    const r = el.getBoundingClientRect();
+    return JSON.stringify({ x: Math.round(r.right - 2), y: Math.round(r.top + 100) });
+  })()`));
+  if (pr) {
+    win.webContents.debugger.attach('1.3');
+    try {
+      const send = (type, x, y, buttons) => win.webContents.debugger.sendCommand('Input.dispatchMouseEvent', {
+        type, x, y, button: 'left', buttons, clickCount: 1, pointerType: 'mouse',
+      });
+      await send('mousePressed', pr.x, pr.y, 1);
+      await send('mouseMoved', pr.x + 54, pr.y, 1);
+      await send('mouseReleased', pr.x + 54, pr.y, 0);
+    } finally {
+      win.webContents.debugger.detach();
+    }
+    await wait(900);
+    await shot('10-panel-wide');
+
+    // 再向左收窄到接近下限，确认内容不被裁掉
+    const pr2 = JSON.parse(await js(`(() => {
+      const el = document.querySelector('#panelResize');
+      const r = el.getBoundingClientRect();
+      return JSON.stringify({ x: Math.round(r.right - 2), y: Math.round(r.top + 100) });
+    })()`));
+    win.webContents.debugger.attach('1.3');
+    try {
+      const send = (type, x, y, buttons) => win.webContents.debugger.sendCommand('Input.dispatchMouseEvent', {
+        type, x, y, button: 'left', buttons, clickCount: 1, pointerType: 'mouse',
+      });
+      await send('mousePressed', pr2.x, pr2.y, 1);
+      await send('mouseMoved', pr2.x - 120, pr2.y, 1);
+      await send('mouseReleased', pr2.x - 120, pr2.y, 0);
+    } finally {
+      win.webContents.debugger.detach();
+    }
+    await wait(900);
+    await shot('11-panel-narrow');
+  }
+
+  // 拉高星轨：确认 Canvas 缓冲区跟着高度走，节点不会变椭圆
+  const tr = JSON.parse(await js(`(() => {
+    const el = document.querySelector('#timelineResize');
+    if (!el) return JSON.stringify(null);
+    const r = el.getBoundingClientRect();
+    return JSON.stringify({ x: Math.round(r.left + r.width / 2), y: Math.round(r.top + 2) });
+  })()`));
+  if (tr) {
+    win.webContents.debugger.attach('1.3');
+    try {
+      const send = (type, x, y, buttons) => win.webContents.debugger.sendCommand('Input.dispatchMouseEvent', {
+        type, x, y, button: 'left', buttons, clickCount: 1, pointerType: 'mouse',
+      });
+      await send('mousePressed', tr.x, tr.y, 1);
+      await send('mouseMoved', tr.x, tr.y - 200, 1);
+      await wait(350);
+      await shot('13-timeline-dragging');
+      await send('mouseReleased', tr.x, tr.y - 200, 0);
+    } finally {
+      win.webContents.debugger.detach();
+    }
+    await wait(900);
+    await shot('12-timeline-tall');
+  }
 
   writeFileSync(join(outDir, '00-state.json'), JSON.stringify({
     base, size: [W, H], capturedAt: new Date().toISOString(), shots,
