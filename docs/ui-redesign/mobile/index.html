@@ -1,0 +1,160 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="theme-color" content="#070a09">
+<title>Orbit 星账 · 移动端 M0</title>
+<link rel="stylesheet" href="styles.css">
+</head>
+<body>
+<div class="device" id="device">
+  <header class="mtop">
+    <span class="seal" aria-hidden="true">星</span>
+    <div class="mtop-copy">
+      <b>Orbit 星账</b>
+      <span>2026年11月 · 生活费</span>
+    </div>
+    <button class="mtop-btn" id="statsBtn" type="button">洞察</button>
+  </header>
+
+  <main class="mstage">
+    <section class="mgraph" aria-label="星图">
+      <div class="graph-tools"><span>拖拽平移</span><span>双指缩放</span></div>
+
+      <svg class="star-map" viewBox="0 0 390 600" role="img" aria-label="本月星图：居住、餐饮、日用、娱乐、交通、学习与收入">
+        <g class="orbit-rings" fill="none">
+          <circle cx="195" cy="300" r="190"/>
+          <circle cx="195" cy="300" r="135"/>
+        </g>
+        <g class="edges" fill="none">
+          <path d="M90 360 L165 395 L210 270 L270 190 L330 220"/>
+          <path d="M210 270 L350 330"/>
+          <path d="M215 470 L285 475"/>
+        </g>
+        <g class="node" transform="translate(90 360)">
+          <circle r="26" class="ring"/><circle r="8" class="core" style="--c:#ff6b9a"/>
+          <text y="47" class="name">居住</text><text y="63" class="amt">¥1,847</text>
+        </g>
+        <g class="node" transform="translate(165 395)">
+          <circle r="22" class="ring"/><circle r="7" class="core" style="--c:#ff9b54"/>
+          <text y="43" class="name">餐饮</text><text y="59" class="amt">¥1,170</text>
+        </g>
+        <g class="node" transform="translate(210 270)">
+          <circle r="17" class="ring"/><circle r="6" class="core" style="--c:#55d6a4"/>
+          <text y="37" class="name">日用</text><text y="53" class="amt">¥341</text>
+        </g>
+        <g class="node" transform="translate(270 190)">
+          <circle r="14" class="ring"/><circle r="5" class="core" style="--c:#b48cff"/>
+          <text y="34" class="name">娱乐</text><text y="50" class="amt">¥319</text>
+        </g>
+        <g class="node" transform="translate(330 220)">
+          <circle r="12" class="ring"/><circle r="4" class="core" style="--c:#5ad7ff"/>
+          <text y="32" class="name">交通</text><text y="48" class="amt">¥41</text>
+        </g>
+        <g class="node" transform="translate(350 330)">
+          <circle r="10" class="ring"/><circle r="3.5" class="core" style="--c:#ffd166"/>
+          <text y="29" class="name">学习</text><text y="45" class="amt">¥0</text>
+        </g>
+        <g class="node income" transform="translate(215 470)">
+          <rect x="-12" y="-12" width="24" height="24" transform="rotate(45)" class="ring"/>
+          <circle r="3" class="core" style="--c:#7fb0a4"/>
+          <text y="35" class="name">收入·生活费</text><text y="51" class="amt">¥2,916</text>
+        </g>
+        <g class="node income" transform="translate(285 475)">
+          <rect x="-10" y="-10" width="20" height="20" transform="rotate(45)" class="ring"/>
+          <circle r="2.5" class="core" style="--c:#7fb0a4"/>
+          <text y="33" class="name">收入·转账</text><text y="49" class="amt">¥656</text>
+        </g>
+      </svg>
+
+      <button class="summary" id="summaryBtn" type="button">
+        <span class="summary-main"><small>结余</small><strong>-¥146</strong></span>
+        <span class="summary-sub">支出 ¥3,718 <i></i> 收入 ¥3,572</span>
+        <span class="summary-more">读数</span>
+      </button>
+    </section>
+
+    <section class="mtimeline" aria-label="星轨时间轴">
+      <div class="mtl-head"><span>星轨 · 时序</span><span>拖动 / 点选月份</span></div>
+      <div class="mtl-track">
+        <span class="mtl-year">2026</span>
+        <button class="mtl-node" style="left:8%" aria-label="11月"><i></i><b>11月</b></button>
+        <button class="mtl-node" style="left:22%" aria-label="1月"><i></i><b>1月</b></button>
+        <button class="mtl-node" style="left:36%" aria-label="3月"><i></i><b>3月</b></button>
+        <button class="mtl-node" style="left:50%" aria-label="5月"><i></i><b>5月</b></button>
+        <button class="mtl-node" style="left:64%" aria-label="7月"><i></i><b>7月</b></button>
+        <button class="mtl-node" style="left:78%" aria-label="9月"><i></i><b>9月</b></button>
+        <button class="mtl-node today" style="left:91%" aria-label="今天 11月"><i></i><b>今天 11月</b></button>
+      </div>
+    </section>
+  </main>
+
+  <nav class="mbottom" aria-label="主导航">
+    <button class="on" type="button">星图</button>
+    <button type="button" id="statsNav">洞察</button>
+    <button class="add" type="button" id="addNav">＋ 记一笔</button>
+  </nav>
+
+  <div class="scrim" id="scrim" hidden></div>
+
+  <section class="sheet" id="statsSheet" aria-label="本月读数" aria-hidden="true">
+    <div class="sheet-head">
+      <span class="sheet-title">本月读数</span>
+      <button class="sheet-close" data-close type="button" aria-label="关闭">×</button>
+    </div>
+    <div class="sheet-body">
+      <div class="readout-balance"><span>结余</span><strong>-¥146</strong></div>
+      <div class="readout-grid">
+        <div><small>支出</small><b>¥3,718</b></div>
+        <div><small>收入</small><b>¥3,572</b></div>
+        <div><small>环比</small><b>▼ 74.9%</b></div>
+        <div><small>记录</small><b>677 天</b></div>
+      </div>
+      <div class="sec-label">TOP 分类</div>
+      <div class="top-list">
+        <div><i style="--c:#ff6b9a"></i><span>居住</span><em>¥1,847</em></div>
+        <div><i style="--c:#ff9b54"></i><span>餐饮</span><em>¥1,170</em></div>
+        <div><i style="--c:#55d6a4"></i><span>日用</span><em>¥341</em></div>
+        <div><i style="--c:#b48cff"></i><span>娱乐</span><em>¥319</em></div>
+        <div><i style="--c:#5ad7ff"></i><span>交通</span><em>¥41</em></div>
+      </div>
+      <div class="sec-label">交叉洞察</div>
+      <p class="insight">本月最大支出星系：居住。餐饮多与朋友同行。</p>
+      <p class="sheet-note">完整桌面字段（期间、日均、TOP5、洞察）在移动端收进这里，不删信息。</p>
+    </div>
+  </section>
+
+  <section class="sheet entry" id="entrySheet" aria-label="记一笔" aria-hidden="true">
+    <div class="sheet-head">
+      <span class="sheet-title">记一笔</span>
+      <div class="entry-tabs"><button class="on" type="button">支出</button><button type="button">收入</button></div>
+      <button class="sheet-close" data-close type="button" aria-label="关闭">×</button>
+    </div>
+    <div class="sheet-body entry-body">
+      <div class="amount"><span>¥</span><input value="88" inputmode="decimal" aria-label="金额"></div>
+      <div class="sec-label">品类 <button class="tiny" type="button">＋ 新建</button></div>
+      <div class="chips">
+        <button type="button">餐饮</button><button type="button">交通</button><button type="button">娱乐</button>
+        <button type="button">居住</button><button type="button">日用</button><button type="button">学习</button>
+      </div>
+      <div class="sec-label">情境 <button class="tiny" type="button">＋ 新建</button></div>
+      <div class="chips">
+        <button type="button">和朋友</button><button type="button">加班</button><button type="button">出差</button>
+        <button type="button">旅行</button><button type="button">独处</button><button type="button">未分类</button>
+      </div>
+      <div class="entry-row">
+        <label>日期<input type="date" value="2026-11-12"></label>
+        <label>账本<select><option>生活费</option></select></label>
+      </div>
+      <textarea aria-label="备注" placeholder="备注…（可写多行）"></textarea>
+    </div>
+    <div class="sheet-foot">
+      <button class="ghost" data-close type="button">取消</button>
+      <button class="primary" type="button">保存 · 点亮一颗星</button>
+    </div>
+  </section>
+</div>
+<script src="app.js"></script>
+</body>
+</html>
