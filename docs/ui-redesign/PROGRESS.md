@@ -4,8 +4,8 @@
 
 - 基线 commit：`b2f2ae0`（Linux 支持合入后的 develop）
 - 当前分支：`feat/webapp-gate`
-- 当前阶段：G1 · 网页版首次存储选择页（实现完成，待用户确认）
-- 下一步：确认后合入；M0 移动端原型另行合并，随后 M1。
+- 当前阶段：G1 · 网页版首次存储选择页（完成，合入 develop）
+- 下一步：合并 M0 原型，再进入 M1 移动端生产实现。
 - 约束：账单图谱逻辑冻结；信息量不减少；一界面一分支一合入；合入后保留短分支。
 
 ## 阶段
@@ -25,7 +25,7 @@
 | 2.9 | 花销明细 + 账单详情/编辑 + 命名/取色 | `ui/details` | 完成，合入 develop | 已确认 |
 | 2.10 | 全局收尾、旧玻璃/渐变清理、README 截图 | `ui/polish` | 完成，合入 develop | 已确认 |
 | 2.11 | 左/右/底栏可拖拽；左栏可收起 | `ui/resizable` | 完成，合入 develop | 已确认 |
-| G1 | 网页版首次存储选择页 | `feat/webapp-gate` | 实现完成，待确认 | 待确认 |
+| G1 | 网页版首次存储选择页 | `feat/webapp-gate` | 完成，合入 develop | 已确认 |
 
 ## 阶段 0 交付
 
@@ -291,7 +291,7 @@
 - 拖动期间只改 CSS 变量，松手后调用 `resize()` 重排图谱/Canvas；避免拖拽过程反复重建账图。
 - 布局写入 `localStorage`（`orbit.ui.layout.v1`）：panelW / railW / timelineH / panelCollapsed。
 
-## G1 · 网页版首次存储选择页（待确认）
+## G1 · 网页版首次存储选择页（完成）
 
 - [x] 独立 `webapp/gate.js` / `gate.css`：石墨底、黄铜线、直角、无玻璃/无蓝紫渐变。
 - [x] 桌面双卡：存成真实文件（推荐）/ 存在浏览器里；移动端纵向堆叠。
@@ -301,8 +301,8 @@
 - [x] dialog 语义、焦点管理、Tab 焦点陷阱、`role=alert` 错误、48px 触控目标。
 - [x] `npm run build:web` 产出 `dist/gate.css`，并在 `dist/index.html` 注入 link。
 - [x] `npm test` 新增 `webapp/test/storage.test.js`（权限查询安全降级）；`npm run verify:web` 通过并新增 gate 断言。
-- [ ] 用户确认
-- [ ] 合入 `develop`
+- [x] 用户确认
+- [x] 合入 `develop`
 
 ### G1 设计点
 
@@ -327,7 +327,8 @@
 | 2026-11-08 | 阶段 2.8 菜单/标签 | `ui/menus` | 2e431a3 | 已确认 | 仪器菜单与登记板 |
 | 2026-11-08 | 阶段 2.9 明细/详情/取色 | `ui/details` | 6460367 | 已确认 | 三块登记板 |
 | 2026-11-08 | 阶段 2.10 全局收尾 | `ui/polish` | 4706cdf | 已确认 | 清理旧玻璃/光斑；README 截图更新 |
-| 2026-11-12 | 阶段 2.11 可调栏 | `ui/resizable` | 本次合并 | 已确认 | 三栏拖拽/左栏收起；星轨节点不变形 |
+| 2026-11-12 | 阶段 2.11 可调栏 | `ui/resizable` | e41beac | 已确认 | 三栏拖拽/左栏收起；星轨节点不变形 |
+| 2026-11-13 | G1 首次存储页 | `feat/webapp-gate` | 本次合并 | 已确认 | B 视觉；移动端单选项；目录重授权 |
 
 ## 备注
 
