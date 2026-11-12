@@ -1,0 +1,79 @@
+/* 首次使用：账本存放位置。只服务 webapp gate，不依赖 web/ 的桌面布局。 */
+.orbit-gate{
+  position:fixed;inset:0;z-index:999;display:grid;place-items:center;
+  padding:24px;background:#070a09;color:#e8e2d2;
+  font-family:"Noto Sans CJK SC","PingFang SC","Microsoft YaHei",sans-serif;
+}
+.gate-plate{
+  width:min(620px,100%);max-height:calc(100dvh - 48px);overflow-y:auto;
+  padding:28px 30px 22px;border:1px solid rgba(176,141,87,.46);
+  border-radius:0;background:#0d1110;box-shadow:0 28px 70px rgba(0,0,0,.55);
+  scrollbar-width:thin;scrollbar-color:#4a463c #0d1110;
+}
+.gate-plate::-webkit-scrollbar{width:5px}
+.gate-plate::-webkit-scrollbar-thumb{background:#4a463c}
+.gate-head{display:flex;align-items:center;gap:12px}
+.gate-seal{
+  width:34px;height:34px;flex:none;display:grid;place-items:center;
+  border:1px solid #b08d57;color:#b08d57;
+  font:500 18px/1 "Noto Serif CJK SC","Songti SC",serif;
+}
+.gate-kicker{margin:0 0 3px;font-size:9px;line-height:1.2;letter-spacing:.18em;color:#92978c}
+.gate-head h1{margin:0;font:500 22px/1.2 "Noto Serif CJK SC","Source Han Serif SC","Songti SC",serif;letter-spacing:.08em;color:#e3e9df}
+.gate-desc{margin:14px 0 18px;font-size:12px;line-height:1.75;color:#92978c}
+.gate-options{display:grid;grid-template-columns:1fr 1fr;gap:12px}
+.gate-options.single{grid-template-columns:1fr}
+.gate-card{
+  min-height:188px;display:flex;flex-direction:column;align-items:flex-start;gap:7px;
+  padding:18px 16px 14px;border:1px solid rgba(223,211,184,.16);border-radius:0;
+  background:transparent;color:#e8e2d2;text-align:left;cursor:pointer;
+  transition:border-color .15s,background .15s;
+}
+.gate-card:hover{border-color:rgba(176,141,87,.7);background:rgba(176,141,87,.055)}
+.gate-card:focus-visible,.gate-link:focus-visible{outline:1px solid #b08d57;outline-offset:3px}
+.gate-card-file{border-color:rgba(176,141,87,.46);background:rgba(176,141,87,.035)}
+.gate-card-kicker{font-size:9px;line-height:1.2;letter-spacing:.12em;color:#92978c}
+.gate-card-kicker em{
+  display:inline-block;margin-left:5px;padding:2px 4px;border:1px solid rgba(176,141,87,.45);
+  color:#b08d57;font-style:normal;font-size:8px;letter-spacing:.08em;
+}
+.gate-card strong{font:500 17px/1.3 "Noto Serif CJK SC","Songti SC",serif;letter-spacing:.04em}
+.gate-card .gate-desc{margin:0;font-size:11px;line-height:1.65;color:#92978c;flex:1}
+.gate-card .gate-desc code{font:400 10px/1 "SFMono-Regular","Cascadia Mono",monospace;color:#c9b38b}
+.gate-action{
+  width:100%;display:flex;align-items:center;justify-content:space-between;
+  margin-top:5px;padding-top:10px;border-top:1px solid rgba(223,211,184,.12);
+  color:#b08d57;font-size:10px;letter-spacing:.08em;
+}
+.gate-action i{font-style:normal;font-size:14px}
+.gate-note{margin:0;padding:12px 0 0;border-top:1px solid rgba(223,211,184,.10);font-size:10.5px;line-height:1.6;color:#7d8278}
+.gate-link{
+  align-self:flex-start;margin-top:2px;padding:4px 0;border:0;background:transparent;
+  color:#92978c;font-size:10.5px;letter-spacing:.04em;text-decoration:underline;
+  text-decoration-color:rgba(176,141,87,.45);text-underline-offset:4px;
+}
+.gate-link:hover{color:#e3e9df}
+.gate-reason{
+  margin:16px 0 0;padding:9px 10px;border-left:2px solid #b06a5c;
+  background:rgba(176,106,92,.08);color:#d9a294;font-size:11px;line-height:1.6;
+}
+.gate-reason[hidden]{display:none}
+.gate-foot{margin:16px 0 0;padding-top:11px;border-top:1px solid rgba(223,211,184,.12);font-size:9.5px;line-height:1.6;color:#7d8278}
+.orbit-gate.is-busy .gate-plate{opacity:.65}
+.orbit-gate.is-busy button{pointer-events:none}
+.gate-card:disabled,.gate-link:disabled{cursor:default;opacity:.55}
+
+@media (max-width:640px){
+  .orbit-gate{padding:max(12px,env(safe-area-inset-top)) 12px max(12px,env(safe-area-inset-bottom))}
+  .gate-plate{max-height:calc(100dvh - 24px);padding:20px 18px 16px}
+  .gate-head h1{font-size:20px}
+  .gate-options{grid-template-columns:1fr;gap:9px}
+  .gate-card{min-height:0;padding:14px 13px 12px}
+  .gate-card strong{font-size:16px}
+  .gate-card .gate-desc{font-size:10.8px}
+  .gate-action{padding-top:8px}
+  .gate-desc{font-size:11.5px}
+}
+@media (prefers-reduced-motion:reduce){
+  .gate-card{transition:none}
+}
