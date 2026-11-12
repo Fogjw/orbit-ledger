@@ -174,7 +174,7 @@ canvas{display:block}
 
 /* 底部星轨：全宽刻度长轨 */
 .timeline{position:fixed;left:0;right:0;bottom:0;z-index:9;width:auto;height:var(--timeline-h);padding:13px 28px 0;border-radius:0;background:#0d1110;border-top:1px solid rgba(176,141,87,.42);animation:tlIn .4s ease-out}
-.timeline-resize{position:absolute;left:0;right:0;top:-4px;height:8px;z-index:12;cursor:ns-resize;touch-action:none}
+.timeline-resize{position:absolute;left:0;right:0;top:0;height:8px;z-index:12;cursor:ns-resize;touch-action:none}
 .timeline-resize::after{content:"";position:absolute;left:0;right:0;top:3px;height:1px;background:rgba(176,141,87,.12)}
 .timeline-resize:hover::after{background:rgba(176,141,87,.55)}
 @keyframes tlIn{from{opacity:0;transform:translateY(5px)}to{opacity:1;transform:none}}

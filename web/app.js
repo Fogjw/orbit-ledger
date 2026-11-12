@@ -203,6 +203,13 @@ const bgC=$('#bg'),gC=$('#graph'),oC=$('#orbit');
 const bg=bgC.getContext('2d'),g=gC.getContext('2d'),oc=oC.getContext('2d');
 let W=0,H=0,DPR=1;
 function fit(c){const r=c.getBoundingClientRect();c.width=Math.max(2,Math.round(r.width*DPR));c.height=Math.max(2,Math.round(r.height*DPR))}
+function fitOrbit(){
+  // 底部星轨改变高度时，先同步 Canvas 缓冲区再绘制；否则 CSS 高度变了、
+  // 缓冲区还是旧尺寸，圆形节点会被浏览器纵向拉伸成椭圆。
+  DPR=Math.min(2,window.devicePixelRatio||1);
+  fit(oC);
+  oc.setTransform(DPR,0,0,DPR,0,0);
+}
 function resize(){
   DPR=Math.min(2,window.devicePixelRatio||1);
   W=innerWidth;H=innerHeight;
@@ -252,7 +259,7 @@ const gcx=()=>(gx0()+gx1())/2, gcy=()=>(gy0()+gy1())/2;
 /* 栏宽/高度拖拽：拖动期间只改 CSS，松手后再重排图谱与 Canvas 缓冲 */
 function bindResize(el,onStart,onMove){
   if(!el)return;
-  let dragging=false;
+  let dragging=false,startX=0,startY=0;
   const end=e=>{
     if(!dragging)return;
     dragging=false;
@@ -264,33 +271,31 @@ function bindResize(el,onStart,onMove){
   el.addEventListener('pointerdown',e=>{
     e.preventDefault();
     dragging=true;
+    startX=e.clientX;startY=e.clientY;
     onStart();
     document.body.classList.add('resizing');
     try{el.setPointerCapture(e.pointerId)}catch{}
   });
   el.addEventListener('pointermove',e=>{
     if(!dragging)return;
-    onMove(e.clientX,e.clientY);
+    onMove(e.clientX-startX,e.clientY-startY);
   });
   el.addEventListener('pointerup',end);
   el.addEventListener('pointercancel',end);
 }
 let dragPanelW=UI.panelW,dragRailW=UI.railW,dragTimelineH=UI.timelineH;
-let dragStartX=0,dragStartY=0;
-bindResize(panelResize,()=>{dragPanelW=UI.panelW;dragStartX=0},(clientX)=>{
-  if(!dragStartX)dragStartX=clientX;
-  UI.panelW=clamp(dragPanelW+(clientX-dragStartX),200,380);
+bindResize(panelResize,()=>{dragPanelW=UI.panelW},(dx)=>{
+  UI.panelW=clamp(dragPanelW+dx,200,380);
   applyLayout();
 });
-bindResize(railResize,()=>{dragRailW=UI.railW;dragStartX=0},(clientX)=>{
-  if(!dragStartX)dragStartX=clientX;
-  UI.railW=clamp(dragRailW-(clientX-dragStartX),44,80);
+bindResize(railResize,()=>{dragRailW=UI.railW},(dx)=>{
+  UI.railW=clamp(dragRailW-dx,44,80);
   applyLayout();
 });
-bindResize(timelineResize,()=>{dragTimelineH=UI.timelineH;dragStartY=0},(clientX,clientY)=>{
-  if(!dragStartY)dragStartY=clientY;
-  UI.timelineH=clamp(dragTimelineH-(clientY-dragStartY),110,240);
+bindResize(timelineResize,()=>{dragTimelineH=UI.timelineH},(dx,dy)=>{
+  UI.timelineH=clamp(dragTimelineH-dy,110,240);
   applyLayout();
+  fitOrbit();
 });
 if(panelCollapse)panelCollapse.addEventListener('click',()=>{
   UI.panelCollapsed=!UI.panelCollapsed;

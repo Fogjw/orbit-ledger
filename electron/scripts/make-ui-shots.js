@@ -223,6 +223,31 @@ async function main() {
     await shot('11-panel-narrow');
   }
 
+  // 拉高星轨：确认 Canvas 缓冲区跟着高度走，节点不会变椭圆
+  const tr = JSON.parse(await js(`(() => {
+    const el = document.querySelector('#timelineResize');
+    if (!el) return JSON.stringify(null);
+    const r = el.getBoundingClientRect();
+    return JSON.stringify({ x: Math.round(r.left + r.width / 2), y: Math.round(r.top + 2) });
+  })()`));
+  if (tr) {
+    win.webContents.debugger.attach('1.3');
+    try {
+      const send = (type, x, y, buttons) => win.webContents.debugger.sendCommand('Input.dispatchMouseEvent', {
+        type, x, y, button: 'left', buttons, clickCount: 1, pointerType: 'mouse',
+      });
+      await send('mousePressed', tr.x, tr.y, 1);
+      await send('mouseMoved', tr.x, tr.y - 200, 1);
+      await wait(350);
+      await shot('13-timeline-dragging');
+      await send('mouseReleased', tr.x, tr.y - 200, 0);
+    } finally {
+      win.webContents.debugger.detach();
+    }
+    await wait(900);
+    await shot('12-timeline-tall');
+  }
+
   writeFileSync(join(outDir, '00-state.json'), JSON.stringify({
     base, size: [W, H], capturedAt: new Date().toISOString(), shots,
   }, null, 2));

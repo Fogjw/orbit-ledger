@@ -275,10 +275,11 @@
 - [x] 右轨左缘可拖拽：范围 44–80px；刻度/游标随宽度保持。
 - [x] 星轨上缘可拖拽：范围 110–240px；Canvas 高度、面板/右轨底边、缩放条同步。
 - [x] 图谱边界改为读取布局值，栏宽/高度变化后在松手时重排；默认值与旧版一致。
+- [x] 拖高星轨时每次 pointermove 同步 Canvas 缓冲区，节点不会被纵向拉伸；极限高度也保持正圆。
 - [x] 所有手柄有 1px 黄铜提示线、hover 加亮；触摸用 pointer capture。
 - [x] 小屏（<1100px）仍隐藏左栏/右轨，不破坏现有响应式。
 - [x] `npm test` / `npm run build:web` / `npm run verify:web` 通过。
-- [x] 截图：`docs/ui-redesign/review/resize-2.11.png`、`collapsed-2.11.png`、`wide-2.11.png`、`narrow-2.11.png`。
+- [x] 截图：`docs/ui-redesign/review/resize-2.11.png`、`collapsed-2.11.png`、`wide-2.11.png`、`narrow-2.11.png`、`timeline-tall-2.11.png`。
 - [ ] 用户确认
 - [ ] 合入 `develop`
 
