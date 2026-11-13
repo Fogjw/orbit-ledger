@@ -1,0 +1,92 @@
+name: Android APK + WebView E2E
+
+on:
+  workflow_dispatch:
+  pull_request:
+    paths:
+      - 'mobile/**'
+      - 'webapp/**'
+      - 'web/**'
+      - '.github/workflows/android.yml'
+  push:
+    branches: [develop]
+    paths:
+      - 'mobile/**'
+      - 'webapp/**'
+      - 'web/**'
+      - '.github/workflows/android.yml'
+
+permissions:
+  contents: read
+
+jobs:
+  build-apk:
+    name: 构建 debug APK
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+      - name: 安装根依赖并构建 webapp
+        run: |
+          npm ci
+          npm run build:web
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '21'
+      - uses: android-actions/setup-android@v3
+      - name: 安装 Android SDK 组件
+        run: sdkmanager "platforms;android-36" "build-tools;36.0.0" "platform-tools"
+      - name: 安装移动端依赖并同步 Capacitor
+        run: |
+          npm ci --prefix mobile
+          cd mobile
+          npx cap sync android
+      - name: Gradle 构建 debug APK
+        run: |
+          cd mobile/android
+          chmod +x gradlew
+          ./gradlew assembleDebug --no-daemon
+      - uses: actions/upload-artifact@v4
+        with:
+          name: orbit-debug-apk
+          path: mobile/android/app/build/outputs/apk/debug/app-debug.apk
+          if-no-files-found: error
+
+  emulator-e2e:
+    name: Android 模拟器 WebView E2E
+    needs: build-apk
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+      - uses: actions/download-artifact@v4
+        with:
+          name: orbit-debug-apk
+          path: apk
+      - name: 开启 KVM
+        run: |
+          echo 'KERNEL=="kvm", GROUP="kvm", MODE="0666", OPTIONS+="static_node=kvm"' | sudo tee /etc/udev/rules.d/99-kvm4all.rules
+          sudo udevadm control --reload-rules
+          sudo udevadm trigger --name-match=kvm
+      - name: 启动模拟器并跑 WebView smoke
+        uses: reactivecircus/android-emulator-runner@v2
+        with:
+          api-level: 35
+          target: google_apis
+          arch: x86_64
+          profile: pixel_6
+          disable-animations: true
+          emulator-options: -no-window -gpu swiftshader_indirect -no-snapshot -noaudio -no-boot-anim
+          script: |
+            APK="$PWD/apk/app-debug.apk" node mobile/test/android-smoke.mjs
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: android-smoke-screens
+          path: mobile/test/artifacts
+          if-no-files-found: warn

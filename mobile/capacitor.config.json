@@ -1,0 +1,8 @@
+{
+  "appId": "com.fogjw.orbit.ledger",
+  "appName": "Orbit 星账",
+  "webDir": "../webapp/dist",
+  "android": {
+    "allowMixedContent": false
+  }
+}
