@@ -4,7 +4,8 @@
 // 脚本一旦开始执行就定型了，所以本地 API 必须在它之前就位 —— 这也是这里用动态插 script
 // 而不是直接在 HTML 里写 <script src> 的原因。
 import { createLocalApi } from './api-local.js';
-import { createStorage, isFileAccessSupported, pickDirectory, restoreDirectory, ensurePermission } from './storage.js';
+import { createStorage, isFileAccessSupported, pickDirectory, ensurePermission, rememberedDirectory, hasDirectoryPermission } from './storage.js';
+import { showGate } from './gate.js';
 
 const UI_SCRIPTS = ['data.js', 'timeline-nav.js', 'app.js'];   // 顺序不能反：app.js 依赖前两个
 const WASM_DIR = new URL('./sqlite-wasm/', import.meta.url).href;
@@ -27,37 +28,6 @@ function loadScript(src) {
   });
 }
 
-/** 引导层：File System Access 的授权必须由用户手势触发，所以首次进入要先点一下 */
-function showGate({ reason, onPick, onFallback }) {
-  const mask = document.createElement('div');
-  mask.id = 'orbitGate';
-  mask.style.cssText = 'position:fixed;inset:0;z-index:999;display:grid;place-items:center;'
-    + 'background:rgba(3,5,16,.92);backdrop-filter:blur(6px);font-family:system-ui,"Microsoft YaHei",sans-serif;color:#e8eefc';
-  mask.innerHTML = `
-    <div style="max-width:520px;padding:28px 30px;border-radius:20px;border:1px solid rgba(130,165,225,.22);
-                background:rgba(12,17,32,.9);box-shadow:0 20px 60px rgba(0,0,0,.5);line-height:1.75">
-      <h1 style="margin:0 0 6px;font-size:20px">Orbit 星账 <span style="color:#5ad7ff">· 纯前端版</span></h1>
-      <p style="margin:0 0 16px;color:#8b96b5;font-size:13px">
-        数据存在<strong style="color:#c4cde6">这台设备</strong>上，不上传、不联网同步。请选择账本数据的存放位置。
-      </p>
-      <p id="orbitGateReason" style="margin:0 0 18px;color:#ffd166;font-size:12.5px">${reason || ''}</p>
-      <div style="display:flex;gap:10px;flex-wrap:wrap">
-        <button id="orbitPickDir" style="flex:1;min-width:200px;padding:12px 16px;border-radius:12px;border:0;cursor:pointer;
-                font:600 13px system-ui;color:#fff;background:linear-gradient(135deg,#2f7df0,#7b5cf0)">选择数据目录（推荐）</button>
-        <button id="orbitUseIdb" style="padding:12px 16px;border-radius:12px;cursor:pointer;font:600 13px system-ui;
-                color:#c4cde6;background:rgba(255,255,255,.04);border:1px solid rgba(130,165,225,.28)">用浏览器存储</button>
-      </div>
-      <p style="margin:16px 0 0;color:#5d6784;font-size:11.5px;line-height:1.7">
-        选择目录后，账本会写成该目录里的 <code style="color:#9be9ff">orbit.db</code> —— 真实文件，可备份、可拷到别的设备。<br>
-        浏览器存储则藏在浏览器内部（清站点数据会丢），需要自己定期导出备份。
-      </p>
-    </div>`;
-  document.body.appendChild(mask);
-  mask.querySelector('#orbitPickDir').onclick = onPick;
-  mask.querySelector('#orbitUseIdb').onclick = onFallback;
-  return () => mask.remove();
-}
-
 /** 初始化完成：挂 API、加载界面脚本、兜住未落盘的写入 */
 async function mount({ bytes, storage }) {
   const api = await createLocalApi({
@@ -75,42 +45,103 @@ async function mount({ bytes, storage }) {
 }
 
 async function main() {
-  // 情况一：已经选过目录且权限还在 —— 直接进入
-  const dir = await restoreDirectory().catch(() => null);
-  if (dir) {
-    const storage = createStorage({ mode: 'file', dir });
-    await mount({ bytes: await storage.read(), storage });
+  const canUseFile = isFileAccessSupported();
+  const remembered = await rememberedDirectory().catch(() => null);
+  let gate = null;
+
+  const openGate = (reason = '') => {
+    if (gate) return gate;
+    gate = showGate({
+      canUseFile,
+      remembered: Boolean(remembered),
+      reason,
+      onPick: chooseDirectory,
+      onReauth: reauthorizeDirectory,
+      onFallback: useBrowserStorage,
+      onChooseOther: chooseDirectory,
+    });
+    return gate;
+  };
+
+  async function proceed(storage, currentGate) {
+    currentGate?.setBusy(true);
+    try {
+      const bytes = await storage.read();
+      await mount({ bytes, storage });
+      currentGate?.close();
+    } catch (err) {
+      console.error('[webapp] 存储启动失败', err);
+      if (currentGate) {
+        currentGate.setError(`启动失败：${err.message}`);
+        currentGate.setBusy(false);
+      } else {
+        openGate(`启动失败：${err.message}`);
+      }
+    }
+  }
+
+  async function chooseDirectory() {
+    if (!canUseFile) return;
+    gate?.setBusy(true);
+    try {
+      const handle = await pickDirectory();
+      await proceed(createStorage({ mode: 'file', dir: handle }), gate);
+    } catch (err) {
+      if (err && err.name === 'AbortError') {
+        gate?.setBusy(false);
+        return;
+      }
+      gate?.setError(`选择目录失败：${err.message}`);
+      gate?.setBusy(false);
+    }
+  }
+
+  async function reauthorizeDirectory() {
+    if (!remembered) return;
+    gate?.setBusy(true);
+    try {
+      const granted = await ensurePermission(remembered);
+      if (!granted) {
+        gate?.setError('没有获得目录权限。可以重试，或改用浏览器存储。');
+        gate?.setBusy(false);
+        return;
+      }
+      await proceed(createStorage({ mode: 'file', dir: remembered }), gate);
+    } catch (err) {
+      gate?.setError(`重新授权失败：${err.message}`);
+      gate?.setBusy(false);
+    }
+  }
+
+  async function useBrowserStorage() {
+    gate?.setBusy(true);
+    await proceed(createStorage({ mode: 'idb' }), gate);
+  }
+
+  // 已记住且权限仍有效：不打扰用户，直接复用原目录。
+  if (canUseFile && remembered && await hasDirectoryPermission(remembered)) {
+    await proceed(createStorage({ mode: 'file', dir: remembered }), null);
     return;
   }
 
-  // 情况二：需要用户点一下（首次，或浏览器把持久权限收回了）
-  const canUseFile = isFileAccessSupported();
-  const close = showGate({
-    reason: canUseFile
-      ? (dir ? '浏览器需要你再次确认该目录的读写权限。' : '')
-      : '当前浏览器不支持直接写本地文件（仅 Chrome / Edge 支持），将使用浏览器内部存储。',
-    onPick: async () => {
-      try {
-        const handle = await pickDirectory();
-        close();
-        const storage = createStorage({ mode: 'file', dir: handle });
-        await mount({ bytes: await storage.read(), storage });
-      } catch (err) {
-        if (err && err.name === 'AbortError') return;    // 用户取消了，留在引导页
-        document.querySelector('#orbitGateReason').textContent = `选择目录失败：${err.message}`;
-      }
-    },
-    onFallback: async () => {
-      close();
-      const storage = createStorage({ mode: 'idb' });
-      await mount({ bytes: await storage.read(), storage });
-    },
-  });
+  openGate(
+    canUseFile && remembered ? '上次的数据目录需要重新授权。' : '',
+  );
 }
 
 main().catch((err) => {
   console.error('[webapp] 启动失败', err);
   const reason = document.querySelector('#orbitGateReason');
-  if (reason) reason.textContent = `启动失败：${err.message}`;
-  else showGate({ reason: `启动失败：${err.message}`, onPick: () => location.reload(), onFallback: () => location.reload() });
+  if (reason) {
+    reason.textContent = `启动失败：${err.message}`;
+    reason.hidden = false;
+  } else {
+    showGate({
+      canUseFile: isFileAccessSupported(),
+      remembered: false,
+      reason: `启动失败：${err.message}`,
+      onPick: () => location.reload(),
+      onFallback: () => location.reload(),
+    });
+  }
 });

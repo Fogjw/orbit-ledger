@@ -99,7 +99,23 @@ async function main() {
 
   // 1) 引导层应当先出现
   const gateShown = await has('#orbitGate');
-  console.log(`[verify] 引导层出现: ${gateShown}`);
+  const gateInfo = JSON.parse(await js(`(() => {
+    const g = document.querySelector('#orbitGate');
+    return JSON.stringify({
+      role: g?.getAttribute('role') || '',
+      modal: g?.getAttribute('aria-modal') || '',
+      title: document.querySelector('#orbitGateTitle')?.textContent?.trim() || '',
+      idb: Boolean(document.querySelector('#orbitUseIdb')),
+      pick: Boolean(document.querySelector('#orbitPickDir')),
+      reauth: Boolean(document.querySelector('#orbitReauth')),
+      canFile: typeof window.showDirectoryPicker === 'function',
+    });
+  })()`));
+  const gateOk = gateShown && gateInfo.role === 'dialog' && gateInfo.modal === 'true'
+    && gateInfo.title === '账本存放位置' && gateInfo.idb
+    && (gateInfo.canFile ? gateInfo.pick : !gateInfo.pick);
+  console.log(`[verify] 引导层: dialog=${gateInfo.role}/${gateInfo.modal} · 标题=${gateInfo.title}`
+    + ` · 浏览器选项=${gateInfo.idb} · 文件选项=${gateInfo.pick} · FileAccess=${gateInfo.canFile} → ${gateOk ? '✓' : '✗'}`);
 
   // 2) 走浏览器存储分支（选目录需要用户手势，自动化里点不了系统弹窗）
   if (gateShown) {
@@ -128,7 +144,8 @@ async function main() {
 
   const state = await readState();
   console.log(`[verify] 界面已加载: ${state.loadedUi}`);
-  console.log(`[verify] OrbitAPI: ${state.api} · 存储: ${state.storage}`);
+  const storageOk = String(state.storage || '').includes('浏览器本地存储');
+  console.log(`[verify] OrbitAPI: ${state.api} · 存储: ${state.storage} → ${storageOk ? '✓' : '✗'}`);
   console.log(`[verify] 顶部总额: ${state.total} · 账本按钮: ${state.ledgerBtn}`);
   console.log(`[verify] 星图着色采样: ${state.canvasLit}`);
 
@@ -800,7 +817,7 @@ async function main() {
     console.log('[verify] 页面无报错');
   }
 
-  const ok = gateShown && state.loadedUi && state.canvasLit > 0 && wrote && inputWorks
+  const ok = gateOk && storageOk && state.loadedUi && state.canvasLit > 0 && wrote && inputWorks
     && yearVisible && year.centerLit > 0 && errors.length === 0 && noReset !== false
     && incomeVisible && toastOnTop && toastClickThrough && tagDelOk && pTitleOk && panelOk && ctxShown && stayPut && bounded !== false
     && dayTipOk && endReachable
