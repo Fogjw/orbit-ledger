@@ -2519,10 +2519,29 @@ $('#modalSave').onclick=async ()=>{
     toast('记账失败：'+(e.message||e));
   }
 };
+/** 一次返回：给浏览器 Esc 和 Android 硬件返回键共用。
+    返回 true 表示消费掉了（只关最上层），false 表示已经回到根视图。 */
+function backOnce(){
+  const hide=id=>{
+    const el=document.querySelector(id);
+    if(el&&!el.hidden){el.hidden=true;return true}
+    return false;
+  };
+  // 浮层层级从高到低；先关最上面的那一层。
+  if(hide('#nameMask'))return true;
+  if(hide('#modalMask'))return true;
+  if(hide('#expMask'))return true;
+  if(hide('#tagMask'))return true;
+  if(!viewMask.hidden){closeExpenseView();return true}
+  if(panelEl.classList.contains('mobile-open')){closePanelSheet();return true}
+  if(hide('#ledgerMenu'))return true;
+  if(S.view==='detail'){goBack();return true}
+  return false;
+}
+window.__orbitBack=backOnce;
 addEventListener('keydown',e=>{
   if(e.key!=='Escape')return;
-  if(!viewMask.hidden){closeExpenseView();return}   // 详情开着先关详情
-  if(panelEl.classList.contains('mobile-open')){closePanelSheet();return}
+  if(backOnce())return;
   mask.hidden=true;goBack();
 });
 // 备注是多行文本域，回车换行；保存用 Ctrl/Cmd+Enter

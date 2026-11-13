@@ -143,14 +143,25 @@ try {
   await sleep(1200);
   screenshot('android-main');
 
-  // 读数账笺
+  // Android 硬件返回键：先关最上层账笺，不能直接退出 Activity
   await page.evaluate(`document.querySelector('#mobileReadout').click()`);
   await waitEval(page, `document.querySelector('#insightPanel').classList.contains('mobile-open')`, Boolean, '读数账笺打开');
-  await page.evaluate(`document.querySelector('#panelSheetClose').click()`);
+  adb('shell', 'input', 'keyevent', '4');
+  await waitEval(page, `!document.querySelector('#insightPanel').classList.contains('mobile-open')`, Boolean, '返回键关读数账笺');
+  await waitEval(page, `typeof window.OrbitAPI === 'object'`, Boolean, '返回后 app 仍在');
+  console.log('[android] back: readout closed, app alive');
 
   // 记一笔：默认金额 88 / 默认日期，保存后应关闭并刷新
   await page.evaluate(`document.querySelector('#mobileAdd').click()`);
   await waitEval(page, `!document.querySelector('#modalMask').hidden`, Boolean, '记一笔打开');
+  // Android 返回键应关掉记账账笺，而不是退到桌面
+  adb('shell', 'input', 'keyevent', '4');
+  await waitEval(page, `document.querySelector('#modalMask').hidden`, Boolean, '返回键关记账账笺');
+  await waitEval(page, `typeof window.OrbitAPI === 'object'`, Boolean, '返回后 app 仍在');
+  console.log('[android] back: entry closed, app alive');
+
+  await page.evaluate(`document.querySelector('#mobileAdd').click()`);
+  await waitEval(page, `!document.querySelector('#modalMask').hidden`, Boolean, '记一笔重新打开');
   await page.evaluate(`(() => {
     const a=document.querySelector('#mAmount'); a.value='12.34'; a.dispatchEvent(new Event('input',{bubbles:true}));
     document.querySelector('#modalSave').click();

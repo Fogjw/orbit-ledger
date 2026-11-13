@@ -15,4 +15,21 @@ public class MainActivity extends BridgeActivity {
             WebView.setWebContentsDebuggingEnabled(true);
         }
     }
+
+    @Override
+    public void onBackPressed() {
+        WebView webView = getBridge() != null ? getBridge().getWebView() : null;
+        if (webView == null) {
+            systemBack();
+            return;
+        }
+        // 先让网页关掉最上层浮层/账笺；只有根视图才退出 Activity。
+        webView.evaluateJavascript("(window.__orbitBack && window.__orbitBack()) === true", value -> {
+            if (!"true".equals(value)) runOnUiThread(this::systemBack);
+        });
+    }
+
+    private void systemBack() {
+        super.onBackPressed();
+    }
 }
