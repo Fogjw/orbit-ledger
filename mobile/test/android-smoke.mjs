@@ -42,7 +42,8 @@ async function connectPage() {
     const data = await r.json();
     return Array.isArray(data) && data.find((t) => t.webSocketDebuggerUrl) ? data : null;
   }, 30000, 'WebView CDP 目标');
-  const page = list.find((t) => t.type === 'page') || list[0];
+  console.log('[android] CDP targets:', list.map((t) => `${t.type}:${t.url}`).join(' | '));
+  const page = list.find((t) => t.type === 'page' && /localhost|capacitor/.test(t.url)) || list.find((t) => t.type === 'page') || list[0];
   const ws = new WebSocket(page.webSocketDebuggerUrl);
   await new Promise((resolve, reject) => { ws.onopen = resolve; ws.onerror = reject; });
   let seq = 0;
@@ -118,6 +119,8 @@ try {
   if (mobile.nav !== 'flex' || mobile.panel !== 'none') {
     throw new Error(`Android 移动壳异常：${JSON.stringify(mobile)}`);
   }
+  console.log('[android] page:', await page.evaluate(`JSON.stringify({href: location.href, visibility: document.visibilityState, gate: Boolean(document.querySelector('#orbitGate')), api: typeof window.OrbitAPI})`));
+  await sleep(1200);
   screenshot('android-main');
 
   // 读数账笺
