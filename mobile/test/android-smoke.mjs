@@ -98,7 +98,10 @@ try {
     throw new Error(`Android gate 状态异常：${JSON.stringify(gate)}`);
   }
   await page.evaluate(`document.querySelector('#orbitUseIdb').click()`);
-  await waitEval(page, `Boolean(document.querySelector('#mtValue'))`, Boolean, '本地 API/界面加载', 60000);
+  // #mtValue/#mobile-nav 在静态 HTML 里就存在，不能当作“UI 已启动”。
+  // 必须等 boot 挂上 OrbitAPI 且 gate 真正移除；空账本余额 ¥0 是合法状态。
+  await waitEval(page, `typeof window.OrbitAPI === 'object' && !document.querySelector('#orbitGate')`, Boolean, '本地 API/界面加载', 60000);
+  await waitEval(page, `Boolean(document.querySelector('#mtValue'))`, Boolean, '顶部计数就绪', 10000);
 
   const mobile = await page.evaluate(`({
     nav: getComputedStyle(document.querySelector('.mobile-nav')).display,
@@ -106,7 +109,7 @@ try {
     panel: getComputedStyle(document.querySelector('#insightPanel')).display,
     width: innerWidth,
   })`);
-  if (mobile.nav !== 'flex' || mobile.panel !== 'none' || !/[1-9]/.test(mobile.balance)) {
+  if (mobile.nav !== 'flex' || mobile.panel !== 'none') {
     throw new Error(`Android 移动壳异常：${JSON.stringify(mobile)}`);
   }
   screenshot('android-main');
@@ -142,7 +145,7 @@ try {
   adb('shell', 'am', 'force-stop', PKG);
   launch();
   page = await waitFor(connectPage, 60000, '重启 WebView');
-  await waitEval(page, `Boolean(document.querySelector('#mtValue'))`, Boolean, '重启后界面', 60000);
+  await waitEval(page, `typeof window.OrbitAPI === 'object' && !document.querySelector('#orbitGate')`, Boolean, '重启后界面', 60000);
   const relaunch = await page.evaluate(`({
     gate: Boolean(document.querySelector('#orbitGate')),
     total: document.querySelector('#mtValue')?.textContent?.trim() || '',

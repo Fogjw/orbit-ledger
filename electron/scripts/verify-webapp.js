@@ -9,7 +9,7 @@
 import { app, BrowserWindow } from 'electron';
 import { createServer } from 'node:http';
 import { readFile } from 'node:fs/promises';
-import { mkdirSync, mkdtempSync } from 'node:fs';
+import { mkdirSync, mkdtempSync, writeFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import { dirname, join, extname } from 'node:path';
 
@@ -17,6 +17,8 @@ const here = dirname(fileURLToPath(import.meta.url));
 const distDir = join(here, '../../webapp/dist');
 const SHOT = join(here, '../../webapp/verify-shot.png');
 const SHOT_YEAR = join(here, '../../webapp/verify-year.png');
+const SHOT_MOBILE = join(here, '../../docs/ui-redesign/review/verify-mobile-390.png');
+const SHOT_LANDSCAPE = join(here, '../../docs/ui-redesign/review/verify-mobile-landscape.png');
 
 // 每次跑用全新的 Electron profile：IndexedDB / quota 不能继承上一次，也不能写到
 // 只读的 ~/.config（受限环境里 console 会刷 [storage] 写入失败，测试结论被环境污染）。
@@ -814,6 +816,11 @@ async function main() {
     width: 390, height: 844, deviceScaleFactor: 1, mobile: true,
   });
   await wait(900);
+  // 前面的下钻/标签测试可能留下浮层；移动截图必须是干净主视图
+  await js(`document.querySelectorAll('.modal-mask').forEach((m) => { m.hidden = true; });
+    document.querySelector('#insightPanel')?.classList.remove('mobile-open');
+    if (document.querySelector('#mobileScrim')) document.querySelector('#mobileScrim').hidden = true;`);
+  await wait(300);
   const mobileRaw = await js(`(() => {
     const nav=document.querySelector('.mobile-nav');
     const panel=document.querySelector('#insightPanel');
@@ -863,6 +870,11 @@ async function main() {
     && mobile.panel === 'none' && sheetOpen && sheetClosed && mobileEntry
     && mobile.graphWidth > 300 && mobile.graphHeight > 300 && keyboardOk;
 
+  mkdirSync(dirname(SHOT_MOBILE), { recursive: true });
+  const mobileShot = await mobileDbg.sendCommand('Page.captureScreenshot', { format: 'png', fromSurface: true });
+  writeFileSync(SHOT_MOBILE, Buffer.from(mobileShot.data, 'base64'));
+  console.log(`[verify] 移动视口截图: ${SHOT_MOBILE}`);
+
   // 横屏短视口：宽度足够时回到三栏桌面骨架，不把竖屏底栏塞进 390px 高
   await mobileDbg.sendCommand('Emulation.setDeviceMetricsOverride', {
     width: 844, height: 390, deviceScaleFactor: 1, mobile: true,
@@ -884,6 +896,8 @@ async function main() {
     && landscape.graphWidth > 800 && landscape.graphHeight > 300 && landscape.topbarH <= 70;
   console.log(`[verify] 横屏：panel=${landscape.panel} · nav=${landscape.nav} · 图=${landscape.graphWidth}×${landscape.graphHeight}`
     + ` · 顶栏=${landscape.topbarH}px → ${landscapeOk ? '✓' : '✗'}`);
+  const landscapeShot = await mobileDbg.sendCommand('Page.captureScreenshot', { format: 'png', fromSurface: true });
+  writeFileSync(SHOT_LANDSCAPE, Buffer.from(landscapeShot.data, 'base64'));
   await mobileDbg.sendCommand('Emulation.clearDeviceMetricsOverride').catch(() => {});
   console.log(`[verify] 移动端：nav=${mobile.nav} · 结余=${mobile.balance} · 图=${mobile.graphWidth}×${mobile.graphHeight}`
     + ` · 读数账笺=${sheetOpen ? '开' : '关'}/${sheetClosed ? '关' : '开'} · 记一笔=${mobileEntry ? '开' : '关'} → ${mobileOk ? '✓' : '✗'}`);
