@@ -146,7 +146,8 @@ try {
     document.querySelector('#modalSave').click();
   })()`);
   await waitEval(page, `document.querySelector('#modalMask').hidden`, Boolean, '记一笔保存关闭', 30000);
-  await sleep(800);
+  await sleep(1200);
+  screenshot('android-after-add');
 
   // 横屏：Android 系统旋转，不是 CSS 假横屏
   shell('settings put system accelerometer_rotation 0');
@@ -179,6 +180,8 @@ try {
   if (relaunch.gate || !relaunch.total || !relaunch.balance.includes('12.34')) {
     throw new Error(`进程重启持久化异常：${JSON.stringify(relaunch)}`);
   }
+  console.log('[android] relaunch:', JSON.stringify(relaunch));
+  await sleep(1500);
   screenshot('android-relaunch');
 
   console.log(`[android] PASS gate=${gate.title} · mobile=${mobile.width}px · landscape=${landscape.w}x${landscape.h} · relaunch=${relaunch.total}`);
