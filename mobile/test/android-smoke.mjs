@@ -10,6 +10,8 @@ const PKG = 'com.fogjw.orbit.ledger';
 const PORT = Number(process.env.CDP_PORT || 9222);
 const OUT = join(process.cwd(), 'mobile/test/artifacts');
 mkdirSync(OUT, { recursive: true });
+// Node 在没有活动 handle 时会直接退出未决的 top-level await；给 E2E 一个心跳。
+const keepAlive = setInterval(() => {}, 1000);
 
 function adb(...args) {
   return execFileSync(ADB, args, { encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'] });
@@ -45,6 +47,10 @@ async function connectPage() {
   await new Promise((resolve, reject) => { ws.onopen = resolve; ws.onerror = reject; });
   let seq = 0;
   const pending = new Map();
+  ws.onclose = () => {
+    for (const p of pending.values()) p.reject(new Error('WebView CDP 已断开'));
+    pending.clear();
+  };
   ws.onmessage = (ev) => {
     const msg = JSON.parse(ev.data);
     const p = pending.get(msg.id);
@@ -154,9 +160,11 @@ try {
   screenshot('android-relaunch');
 
   console.log(`[android] PASS gate=${gate.title} · mobile=${mobile.width}px · landscape=${landscape.w}x${landscape.h} · relaunch=${relaunch.total}`);
+  clearInterval(keepAlive);
   page.ws.close();
 } catch (e) {
   console.error('[android] FAIL', e.stack || e.message);
+  clearInterval(keepAlive);
   try { screenshot('android-fail'); } catch {}
   process.exit(1);
 }
