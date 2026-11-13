@@ -23,7 +23,8 @@
     "pack": "electron-builder --dir --publish never",
     "dist": "electron-builder --publish never",
     "dist:win": "electron-builder --win nsis --publish never",
-    "dist:linux": "electron-builder --linux deb rpm --publish never"
+    "dist:linux": "electron-builder --linux deb rpm --publish never",
+    "shots:mobile": "electron electron/scripts/make-mobile-shots.js"
   },
   "devDependencies": {
     "electron": "^44.3.0",
