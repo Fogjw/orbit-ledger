@@ -33,6 +33,7 @@
 | M2a/b | Capacitor APK + Android 模拟器 WebView E2E | `feat/mobile-m2-android` | 完成，合入 develop | 已确认 |
 | M2c | Android 硬件返回键 | `feat/mobile-m2c` | 完成，合入 develop | 已确认 |
 | M2c.1 | Android 品牌图标/启动图 + release 签名位 | `feat/mobile-branding` | 完成，合入 develop | 已确认 |
+| B1 | 桌面/网页图标统一 | `feat/desktop-icon` | 完成，合入 develop | 已确认 |
 
 ## 阶段 0 交付
 
@@ -442,6 +443,15 @@
 - release 签名构建未在无 secrets 环境实际执行；不能把 debug 包当发布包。
 - 真机与厂商 WebView 仍未验。
 
+## B1 · 桌面/网页图标统一（完成）
+
+- [x] `assets/icon.svg` 换成 B 方向图形：石墨圆角底、黄铜轨道、象牙八芒主星、朱砂/石绿伴星。
+- [x] 重新生成 `assets/icon.png`（512）和 Windows `assets/icon.ico`（16–256）。
+- [x] `package.json` Windows 构建改用 `assets/icon.ico`；Linux 继续用 `assets/icon.png`。
+- [x] 顶栏 `web/logo.svg`、浏览器 favicon 同步为同一图形。
+- [x] `npm run build:web` 通过；桌面 UI 代码未改。
+- [x] 合入 `develop`。
+
 ## 合入记录
 
 | 日期 | 界面 | 分支 | commit | 确认 | 备注 |
@@ -466,7 +476,8 @@
 | 2026-11-14 | M1c 键盘/横屏 | `feat/mobile-m1c` | 29c39eb | 已确认 | visualViewport；横屏三栏回退 |
 | 2026-11-14 | M2a/b Android | `feat/mobile-m2-android` | b035e22 | 已确认 | debug APK；API 35 模拟器；持久化 |
 | 2026-11-14 | M2c Android 返回键 | `feat/mobile-m2c` | b60d0fa | 已确认 | 先关浮层再退出 |
-| 2026-11-14 | M2c.1 图标/启动图/签名位 | `feat/mobile-branding` | 本次合并 | 已确认 | B 图标；release secrets 位 |
+| 2026-11-14 | M2c.1 图标/启动图/签名位 | `feat/mobile-branding` | d169009 | 已确认 | B 图标；release secrets 位 |
+| 2026-11-14 | B1 桌面/网页图标 | `feat/desktop-icon` | 本次合并 | 已确认 | Electron PNG/ICO；顶栏/favicon |
 
 ## 备注
 
