@@ -165,11 +165,20 @@ try {
   launch();
   page = await waitFor(connectPage, 60000, '重启 WebView');
   await waitEval(page, `typeof window.OrbitAPI === 'object' && !document.querySelector('#orbitGate')`, Boolean, '重启后界面', 60000);
+  // 空账本也会显示 ¥0；必须等刚才那笔 12.34 真正从 IndexedDB 恢复出来。
+  await waitEval(page, `(() => {
+    const b=document.querySelector('#mBalNum')?.textContent || '';
+    const t=document.querySelector('#mtValue')?.textContent || '';
+    return b.includes('12.34') || t.includes('12.34');
+  })()`, Boolean, '重启后账目恢复', 30000);
   const relaunch = await page.evaluate(`({
     gate: Boolean(document.querySelector('#orbitGate')),
     total: document.querySelector('#mtValue')?.textContent?.trim() || '',
+    balance: document.querySelector('#mBalNum')?.textContent?.trim() || '',
   })`);
-  if (relaunch.gate || !relaunch.total) throw new Error(`进程重启持久化异常：${JSON.stringify(relaunch)}`);
+  if (relaunch.gate || !relaunch.total || !relaunch.balance.includes('12.34')) {
+    throw new Error(`进程重启持久化异常：${JSON.stringify(relaunch)}`);
+  }
   screenshot('android-relaunch');
 
   console.log(`[android] PASS gate=${gate.title} · mobile=${mobile.width}px · landscape=${landscape.w}x${landscape.h} · relaunch=${relaunch.total}`);
