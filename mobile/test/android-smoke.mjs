@@ -84,6 +84,9 @@ function screenshot(name) {
   console.log(`[android] screenshot ${name}.png`);
 }
 function launch() {
+  // 无 KVM 的 runner 仍可能让 Pixel Launcher 弹 ANR；它不是被测应用，先清掉。
+  try { adb('shell', 'am', 'force-stop', 'com.google.android.apps.nexuslauncher'); } catch {}
+  try { adb('shell', 'am', 'force-stop', 'com.android.launcher3'); } catch {}
   adb('shell', 'am', 'force-stop', PKG);
   adb('shell', 'am', 'start', '-n', `${PKG}/.MainActivity`);
 }
