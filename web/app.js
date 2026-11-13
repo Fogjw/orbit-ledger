@@ -337,6 +337,22 @@ const onMobileChange=()=>{closePanelSheet();resize();};
 if(typeof mobileMedia.addEventListener==='function')mobileMedia.addEventListener('change',onMobileChange);
 else if(typeof mobileMedia.addListener==='function')mobileMedia.addListener(onMobileChange);
 
+/* 软键盘：visualViewport 是唯一知道“键盘占掉多少”的视口；CSS dvh 在部分 Android WebView
+   仍按布局视口算，会把保存按钮推到键盘后面。只同步 CSS 变量，不改图谱布局。 */
+function syncVisualViewport(){
+  const vv=window.visualViewport;
+  if(!vv)return;
+  const root=document.documentElement;
+  root.style.setProperty('--vvh',vv.height+'px');
+  root.style.setProperty('--vv-top',vv.offsetTop+'px');
+}
+if(window.visualViewport){
+  addEventListener('resize',syncVisualViewport);
+  window.visualViewport.addEventListener('resize',syncVisualViewport);
+  window.visualViewport.addEventListener('scroll',syncVisualViewport);
+  syncVisualViewport();
+}
+
 /* ---------- 光晕精灵 ---------- */
 const glowCache={};
 function glowSprite(color){

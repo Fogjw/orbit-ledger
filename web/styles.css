@@ -609,8 +609,18 @@ textarea.m-remark{min-height:66px;max-height:30vh;resize:vertical;line-height:1.
   .mobile-scrim[hidden]{display:none}
   .zoom-bar{display:none}
   .panel .p-title{padding-right:48px}
-  .modal-mask{padding:12px}
-  .modal{max-height:calc(100dvh - 24px);overflow-y:auto;padding:16px 14px}
+  .modal-mask{padding:12px;height:var(--vvh,100dvh);top:var(--vv-top,0);bottom:auto}
+  .modal{max-height:calc(var(--vvh,100dvh) - 24px);overflow-y:auto;padding:16px 14px}
+  #modalMask .modal{top:var(--vv-top,0);bottom:auto;height:var(--vvh,100dvh);max-height:var(--vvh,100dvh)}
   .dd-menu{max-width:calc(100vw - 24px)}
 }
 @keyframes sheetUp{from{opacity:0;transform:translateY(14px)}to{opacity:1;transform:none}}
+/* 横屏短视口：宽度通常足够，回到三栏桌面骨架；不把竖屏的 58px 底栏和 126px 星轨硬塞进 390px 高。 */
+@media (orientation:landscape) and (max-height:520px) and (min-width:761px){
+  .panel{display:flex}
+  .rail-wrap{display:flex}
+  .timeline{height:110px}
+  .topbar{height:56px;padding:0 14px;padding-top:env(safe-area-inset-top);flex-wrap:nowrap}
+  .topbar .month-total{display:flex}
+  .month-total{display:flex}
+}

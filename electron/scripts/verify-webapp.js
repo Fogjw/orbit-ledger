@@ -836,11 +836,54 @@ async function main() {
   await click('#mobileAdd');
   await wait(700);
   const mobileEntry = await js(`!document.querySelector('#modalMask')?.hidden`);
+  // 模拟软键盘：visualViewport 缩到 500，记一笔账笺必须跟着缩，保存区不能被顶到键盘后
+  await mobileDbg.sendCommand('Emulation.setDeviceMetricsOverride', {
+    width: 390, height: 500, deviceScaleFactor: 1, mobile: true,
+  });
+  await wait(500);
+  const keyboard = JSON.parse(await js(`(() => {
+    const m=document.querySelector('#modalMask .modal');
+    const vv=window.visualViewport;
+    return JSON.stringify({
+      vv: vv ? Math.round(vv.height) : null,
+      height: m ? Math.round(m.getBoundingClientRect().height) : null,
+      bottom: m ? Math.round(m.getBoundingClientRect().bottom) : null,
+    });
+  })()`));
+  const keyboardOk = keyboard.vv !== null && keyboard.vv <= 510
+    && keyboard.height !== null && keyboard.height <= 510 && keyboard.bottom <= 510;
+  console.log(`[verify] 软键盘视口：vv=${keyboard.vv} · 账笺=${keyboard.height}px / bottom=${keyboard.bottom}px → ${keyboardOk ? '✓' : '✗'}`);
+  await mobileDbg.sendCommand('Emulation.setDeviceMetricsOverride', {
+    width: 390, height: 844, deviceScaleFactor: 1, mobile: true,
+  });
+  await wait(300);
   await click('#modalClose');
   await wait(300);
   const mobileOk = mobile.nav === 'flex' && /[1-9]/.test(mobile.balance)
     && mobile.panel === 'none' && sheetOpen && sheetClosed && mobileEntry
-    && mobile.graphWidth > 300 && mobile.graphHeight > 300;
+    && mobile.graphWidth > 300 && mobile.graphHeight > 300 && keyboardOk;
+
+  // 横屏短视口：宽度足够时回到三栏桌面骨架，不把竖屏底栏塞进 390px 高
+  await mobileDbg.sendCommand('Emulation.setDeviceMetricsOverride', {
+    width: 844, height: 390, deviceScaleFactor: 1, mobile: true,
+  });
+  await wait(900);
+  const landscape = JSON.parse(await js(`(() => {
+    const panel=document.querySelector('#insightPanel');
+    const nav=document.querySelector('.mobile-nav');
+    const g=document.querySelector('#graph').getBoundingClientRect();
+    return JSON.stringify({
+      panel: panel ? getComputedStyle(panel).display : 'missing',
+      nav: nav ? getComputedStyle(nav).display : 'missing',
+      graphWidth: Math.round(g.width),
+      graphHeight: Math.round(g.height),
+      topbarH: Math.round(document.querySelector('.topbar')?.getBoundingClientRect().height || 0),
+    });
+  })()`));
+  const landscapeOk = landscape.panel === 'flex' && landscape.nav === 'none'
+    && landscape.graphWidth > 800 && landscape.graphHeight > 300 && landscape.topbarH <= 70;
+  console.log(`[verify] 横屏：panel=${landscape.panel} · nav=${landscape.nav} · 图=${landscape.graphWidth}×${landscape.graphHeight}`
+    + ` · 顶栏=${landscape.topbarH}px → ${landscapeOk ? '✓' : '✗'}`);
   await mobileDbg.sendCommand('Emulation.clearDeviceMetricsOverride').catch(() => {});
   console.log(`[verify] 移动端：nav=${mobile.nav} · 结余=${mobile.balance} · 图=${mobile.graphWidth}×${mobile.graphHeight}`
     + ` · 读数账笺=${sheetOpen ? '开' : '关'}/${sheetClosed ? '关' : '开'} · 记一笔=${mobileEntry ? '开' : '关'} → ${mobileOk ? '✓' : '✗'}`);
@@ -856,7 +899,7 @@ async function main() {
     console.log('[verify] 页面无报错');
   }
 
-  const ok = gateOk && storageOk && mobileOk && state.loadedUi && state.canvasLit > 0 && wrote && inputWorks
+  const ok = gateOk && storageOk && mobileOk && landscapeOk && state.loadedUi && state.canvasLit > 0 && wrote && inputWorks
     && yearVisible && year.centerLit > 0 && errors.length === 0 && noReset !== false
     && incomeVisible && toastOnTop && toastClickThrough && tagDelOk && pTitleOk && panelOk && ctxShown && stayPut && bounded !== false
     && dayTipOk && endReachable
