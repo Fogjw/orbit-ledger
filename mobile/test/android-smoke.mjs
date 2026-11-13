@@ -28,6 +28,13 @@ async function waitFor(fn, ms, label) {
 }
 function webviewSocket() {
   const out = shell('cat /proc/net/unix');
+  // force-stop 后旧 WebView 的 socket 可能还留在 /proc/net/unix；
+  // 必须按当前 app pid 找，否则会 forward 到已经死掉的旧页面。
+  const pid = shell(`pidof ${PKG}`).trim().split(/\s+/)[0];
+  if (pid) {
+    const exact = `webview_devtools_remote_${pid}`;
+    if (out.includes(exact)) return exact;
+  }
   const names = [...out.matchAll(/@?(webview_devtools_remote_\d+)/g)].map((m) => m[1]);
   const uniq = [...new Set(names)];
   if (!uniq.length) throw new Error('没有找到 WebView devtools socket；确认 debug 包/WebView 调试已开启');
