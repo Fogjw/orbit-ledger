@@ -77,7 +77,11 @@ async function connectPage() {
     if (r.exceptionDetails) throw new Error(r.exceptionDetails.text || 'JS 异常');
     return r.result?.value;
   };
-  return { ws, evaluate };
+  const capture = async () => {
+    const r = await send('Page.captureScreenshot', { format: 'png', fromSurface: true });
+    return Buffer.from(r.data, 'base64');
+  };
+  return { ws, evaluate, capture };
 }
 async function waitEval(page, expr, pred, label, ms = 30000) {
   return waitFor(async () => {
@@ -89,6 +93,11 @@ function screenshot(name) {
   const buf = execFileSync(ADB, ['exec-out', 'screencap', '-p'], { encoding: 'buffer' });
   writeFileSync(join(OUT, `${name}.png`), buf);
   console.log(`[android] screenshot ${name}.png`);
+}
+async function cdpScreenshot(page, name) {
+  const buf = await page.capture();
+  writeFileSync(join(OUT, `${name}.png`), buf);
+  console.log(`[android] webview screenshot ${name}.png`);
 }
 function launch() {
   // 无 KVM 的 runner 仍可能让 Pixel Launcher 弹 ANR；它不是被测应用，先清掉。
@@ -182,6 +191,7 @@ try {
   }
   console.log('[android] relaunch:', JSON.stringify(relaunch));
   await sleep(1500);
+  await cdpScreenshot(page, 'android-relaunch-webview');
   screenshot('android-relaunch');
 
   console.log(`[android] PASS gate=${gate.title} · mobile=${mobile.width}px · landscape=${landscape.w}x${landscape.h} · relaunch=${relaunch.total}`);
