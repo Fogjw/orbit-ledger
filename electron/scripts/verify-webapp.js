@@ -806,6 +806,45 @@ async function main() {
   await click('#modalClose');
   await wait(400);
 
+  // 移动端切片：底部导航、顶部结余、读数账笺、记一笔入口
+  // Linux 窗口会被 WM 钳到屏幕尺寸，直接改窗口宽度不可靠；用 CDP 设备仿真改 CSS 视口。
+  const mobileDbg = win.webContents.debugger;
+  mobileDbg.attach('1.3');
+  await mobileDbg.sendCommand('Emulation.setDeviceMetricsOverride', {
+    width: 390, height: 844, deviceScaleFactor: 1, mobile: true,
+  });
+  await wait(900);
+  const mobileRaw = await js(`(() => {
+    const nav=document.querySelector('.mobile-nav');
+    const panel=document.querySelector('#insightPanel');
+    const g=document.querySelector('#graph').getBoundingClientRect();
+    return JSON.stringify({
+      nav: nav ? getComputedStyle(nav).display : 'missing',
+      balance: document.querySelector('#mBalNum')?.textContent?.trim() || '',
+      panel: panel ? getComputedStyle(panel).display : 'missing',
+      graphWidth: Math.round(g.width),
+      graphHeight: Math.round(g.height),
+    });
+  })()`);
+  const mobile = JSON.parse(mobileRaw);
+  await click('#mobileReadout');
+  await wait(500);
+  const sheetOpen = await js(`Boolean(document.querySelector('#insightPanel')?.classList.contains('mobile-open'))`);
+  await click('#panelSheetClose');
+  await wait(300);
+  const sheetClosed = await js(`!document.querySelector('#insightPanel')?.classList.contains('mobile-open')`);
+  await click('#mobileAdd');
+  await wait(700);
+  const mobileEntry = await js(`!document.querySelector('#modalMask')?.hidden`);
+  await click('#modalClose');
+  await wait(300);
+  const mobileOk = mobile.nav === 'flex' && /[1-9]/.test(mobile.balance)
+    && mobile.panel === 'none' && sheetOpen && sheetClosed && mobileEntry
+    && mobile.graphWidth > 300 && mobile.graphHeight > 300;
+  await mobileDbg.sendCommand('Emulation.clearDeviceMetricsOverride').catch(() => {});
+  console.log(`[verify] 移动端：nav=${mobile.nav} · 结余=${mobile.balance} · 图=${mobile.graphWidth}×${mobile.graphHeight}`
+    + ` · 读数账笺=${sheetOpen ? '开' : '关'}/${sheetClosed ? '关' : '开'} · 记一笔=${mobileEntry ? '开' : '关'} → ${mobileOk ? '✓' : '✗'}`);
+
   if (warnings.length) {
     console.log(`[verify] 页面告警 ${warnings.length} 条（不影响结论）：`);
     for (const w of warnings.slice(0, 5)) console.log('  ~ ' + String(w).split('\n')[0].slice(0, 120));
@@ -817,7 +856,7 @@ async function main() {
     console.log('[verify] 页面无报错');
   }
 
-  const ok = gateOk && storageOk && state.loadedUi && state.canvasLit > 0 && wrote && inputWorks
+  const ok = gateOk && storageOk && mobileOk && state.loadedUi && state.canvasLit > 0 && wrote && inputWorks
     && yearVisible && year.centerLit > 0 && errors.length === 0 && noReset !== false
     && incomeVisible && toastOnTop && toastClickThrough && tagDelOk && pTitleOk && panelOk && ctxShown && stayPut && bounded !== false
     && dayTipOk && endReachable

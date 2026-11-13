@@ -20,7 +20,7 @@ canvas{display:block}
 
 /* 背景层：石墨底 + Canvas 星图；不再叠紫蓝光斑/径向暗角 */
 #bg{position:fixed;inset:0;z-index:0}
-#graph{position:fixed;inset:0;z-index:1}
+#graph{position:fixed;inset:0;z-index:1;touch-action:none}
 
 /* 顶栏（方向 B · 浑仪铜鉴）：贯穿全宽的仪器横梁，不是悬浮毛玻璃胶囊 */
 .topbar{
@@ -103,6 +103,7 @@ canvas{display:block}
   display:grid;place-items:center;padding:0;transition:color .15s,border-color .15s,background .15s;
 }
 .panel-collapse:hover{color:#e3e9df;border-color:#b08d57;background:rgba(176,141,87,.10)}
+.panel-sheet-close,.mobile-nav,.mobile-scrim,.mobile-balance{display:none}
 .panel-resize{position:absolute;right:0;top:0;bottom:0;width:8px;z-index:12;cursor:ew-resize;touch-action:none}
 .panel-resize::after{content:"";position:absolute;left:3px;top:0;bottom:0;width:1px;background:rgba(176,141,87,.12)}
 .panel-resize:hover::after{background:rgba(176,141,87,.55)}
@@ -557,6 +558,55 @@ textarea.m-remark{min-height:66px;max-height:30vh;resize:vertical;line-height:1.
 
 @media (max-width:1100px){.panel{display:none}}
 @media (max-width:760px){
-  .topbar{height:auto;min-height:56px;padding:8px 16px;gap:8px;flex-wrap:wrap;justify-content:flex-start}
-  .timeline{bottom:30px}.rail-wrap{display:none}
+  /* 移动端：桌面左右栏退场；读数变成底部账笺，星图占主舞台 */
+  .topbar{height:auto;min-height:56px;padding:8px 12px;gap:6px;flex-wrap:wrap;justify-content:flex-start}
+  .topbar .brand{padding-right:10px}
+  .topbar .btn,.topbar .seg{min-height:38px}
+  .mobile-balance{display:block;flex:0 0 100%;order:99;border-top:1px solid rgba(223,211,184,.10);background:transparent}
+  .mobile-balance button{width:100%;min-height:42px;display:flex;align-items:center;gap:10px;padding:5px 12px;border:0;background:transparent;text-align:left}
+  .mb-main{display:flex;align-items:baseline;gap:7px;flex:none}
+  .mb-main small{font-size:8px;letter-spacing:.14em;color:#7d8278}
+  .mb-main b{font:400 18px/1 var(--mono);color:#d98676;letter-spacing:-.03em}
+  .mb-sub{flex:1;font:400 9px/1.4 var(--mono);color:#92978c;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+  .mb-more{font-size:9px;color:#b08d57;letter-spacing:.08em;white-space:nowrap}
+  .timeline{bottom:58px;height:126px;padding:8px 14px 0}
+  #orbit{height:calc(126px - 38px)}
+  .rail-wrap,.hint{display:none}
+  .panel{display:none}
+  .panel.mobile-open{
+    display:flex;position:fixed;left:0;right:0;top:auto;bottom:0;z-index:40;
+    width:100%;height:min(78dvh,620px);max-height:calc(100dvh - 24px);
+    padding:18px 18px calc(16px + env(safe-area-inset-bottom));
+    border-right:0;border-top:1px solid rgba(176,141,87,.5);background:#0d1110;
+    overflow-y:auto;animation:sheetUp .22s ease-out;
+  }
+  .panel.mobile-open .panel-collapse,.panel.mobile-open .panel-resize{display:none}
+  .panel-sheet-close{
+    display:grid;place-items:center;position:absolute;top:10px;right:10px;z-index:42;
+    width:40px;height:40px;border:1px solid rgba(223,211,184,.2);border-radius:0;
+    background:transparent;color:#92978c;font:400 20px/1 var(--mono);padding:0;
+  }
+  .panel-sheet-close:active{color:#e3e9df;border-color:#b08d57}
+  .mobile-nav{
+    display:flex;align-items:center;gap:6px;position:fixed;left:0;right:0;bottom:0;z-index:12;
+    height:58px;padding:0 10px env(safe-area-inset-bottom);border-top:1px solid rgba(223,211,184,.12);
+    background:#0d1110;
+  }
+  .mobile-nav button{
+    min-height:44px;border:1px solid transparent;background:transparent;color:#92978c;
+    font-size:11px;letter-spacing:.08em;padding:0 14px;border-radius:0;
+  }
+  .mobile-nav button.on{color:#e8e2d2;border-color:rgba(176,141,87,.38);background:rgba(176,141,87,.10)}
+  .mobile-nav .add{
+    margin-left:auto;border-color:#b08d57;background:#b08d57;color:#0b0e0c;
+    font-weight:600;letter-spacing:.04em;padding:0 16px;min-width:112px;
+  }
+  .mobile-nav .add:active{background:#d0aa70}
+  .mobile-scrim{
+    display:block;position:fixed;inset:0;z-index:35;background:rgba(2,4,3,.62);
+  }
+  .mobile-scrim[hidden]{display:none}
+  .zoom-bar{display:none}
+  .panel .p-title{padding-right:48px}
 }
+@keyframes sheetUp{from{opacity:0;transform:translateY(14px)}to{opacity:1;transform:none}}

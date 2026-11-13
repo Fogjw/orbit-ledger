@@ -235,7 +235,16 @@ try{
   }
 }catch{}
 const panelEl=$('#insightPanel'),panelCollapse=$('#panelCollapse'),
-      panelResize=$('#panelResize'),railResize=$('#railResize'),timelineResize=$('#timelineResize');
+      panelResize=$('#panelResize'),railResize=$('#railResize'),timelineResize=$('#timelineResize'),
+      panelSheetClose=$('#panelSheetClose'),mobileReadout=$('#mobileReadout'),mobileAdd=$('#mobileAdd'),mobileScrim=$('#mobileScrim'),
+      mobileBalanceBtn=$('#mobileBalanceBtn'),mBalNum=$('#mBalNum'),mBalSub=$('#mBalSub');
+const mobileMedia=matchMedia('(max-width:760px)');
+const isMobile=()=>mobileMedia.matches;
+const topbarBottom=()=>{
+  const mb=isMobile()?document.querySelector('.mobile-balance'):null;
+  const el=mb||document.querySelector('.topbar');
+  return el?.getBoundingClientRect().bottom||64;
+};
 const panelVisualW=()=>UI.panelCollapsed?34:UI.panelW;
 function applyLayout(){
   const root=document.documentElement;
@@ -253,7 +262,10 @@ function applyLayout(){
 function saveLayout(){
   try{localStorage.setItem(UI_KEY,JSON.stringify(UI))}catch{}
 }
-const gx0=()=>panelVisualW()+32, gx1=()=>W-UI.railW-8, gy0=()=>TOP+26, gy1=()=>H-UI.timelineH-84;
+const gx0=()=>isMobile()?24:panelVisualW()+32;
+const gx1=()=>isMobile()?W-24:W-UI.railW-8;
+const gy0=()=>isMobile()?topbarBottom()+18:TOP+26;
+const gy1=()=>isMobile()?H-126-58-24:H-UI.timelineH-84;
 const gcx=()=>(gx0()+gx1())/2, gcy=()=>(gy0()+gy1())/2;
 
 /* 栏宽/高度拖拽：拖动期间只改 CSS，松手后再重排图谱与 Canvas 缓冲 */
@@ -301,6 +313,28 @@ if(panelCollapse)panelCollapse.addEventListener('click',()=>{
   UI.panelCollapsed=!UI.panelCollapsed;
   applyLayout();saveLayout();resize();
 });
+
+/* 移动端读数账笺：复用桌面左栏 DOM，不复制一份数据 */
+function openPanelSheet(){
+  if(!isMobile()||!panelEl)return;
+  panelEl.classList.remove('is-collapsed');
+  panelEl.classList.add('mobile-open');
+  if(mobileScrim)mobileScrim.hidden=false;
+  panelSheetClose?.focus();
+}
+function closePanelSheet(){
+  if(!panelEl)return;
+  panelEl.classList.remove('mobile-open');
+  if(mobileScrim)mobileScrim.hidden=true;
+}
+if(mobileReadout)mobileReadout.addEventListener('click',openPanelSheet);
+if(mobileBalanceBtn)mobileBalanceBtn.addEventListener('click',openPanelSheet);
+if(mobileAdd)mobileAdd.addEventListener('click',()=>document.querySelector('#btnAdd')?.click());
+if(panelSheetClose)panelSheetClose.addEventListener('click',closePanelSheet);
+if(mobileScrim)mobileScrim.addEventListener('click',closePanelSheet);
+const onMobileChange=()=>{closePanelSheet();resize();};
+if(typeof mobileMedia.addEventListener==='function')mobileMedia.addEventListener('change',onMobileChange);
+else if(typeof mobileMedia.addListener==='function')mobileMedia.addListener(onMobileChange);
 
 /* ---------- 光晕精灵 ---------- */
 const glowCache={};
@@ -725,7 +759,8 @@ function drawGraph(t){
         // 账单节点只显示金额，不带名字/日期 —— 具体内容点开详情看
         label(fmtYuan(n.amount),'',n.x,n.y+n.R*sc+16,a*(hot?1:.6),hovG===n.id);
       }else{
-        label(n.ref.name,fmtYuan(n.amount),n.x,n.y+n.R*sc+16,a*(hot?1:.6),hovG===n.id);
+        const lbName=isMobile()&&n.kind==='inc'?n.ref.name.replace(/^收入[·.]?/,''):n.ref.name;
+        label(lbName,fmtYuan(n.amount),n.x,n.y+n.R*sc+16,a*(hot?1:.6),hovG===n.id);
       }
     }
   }
@@ -931,7 +966,7 @@ function anchorCenter(maxGap){
     if(d)return axisDay(dayNum(`${d.y}-${pad2(d.m)}-15`),g);
   }else if(lv==='month'){
     const m=MONTHS[TL.sel.idx];
-    if(m)return axisDay(dayNum(`${m.y}-07-01`),g);
+    if(m)return axisDay(dayNum(`${m.y}-${pad2(m.m)}-15`),g);
   }
   return axisDay((full.from+full.to)/2,g);
 }
@@ -1207,6 +1242,8 @@ function wheelZoom(dy){
 /* ---------- 交互 ---------- */
 const tip=$('#tooltip');
 let mouse={x:.5,y:.5},dragN=null,panDrag=null,downPos=null,downT=0;
+const graphPointers=new Map();
+let pinch=null;
 /** 点到线段的距离（共享线 hover 命中判定用） */
 function distToSeg(px,py,x1,y1,x2,y2){
   const dx=x2-x1,dy=y2-y1,L2=dx*dx+dy*dy;
@@ -1318,7 +1355,14 @@ function worldPos(e){
   return {x:(e.clientX-r.left-CAM.x)/CAM.z, y:(e.clientY-r.top-CAM.y)/CAM.z};
 }
 gC.addEventListener('pointermove',e=>{
+  if(graphPointers.has(e.pointerId))graphPointers.set(e.pointerId,{x:e.clientX,y:e.clientY});
   mouse={x:e.clientX/W,y:e.clientY/H};moveTip(e);
+  if(pinch&&graphPointers.size>=2){
+    const [a,b]=[...graphPointers.values()];
+    const d=Math.hypot(a.x-b.x,a.y-b.y);
+    if(pinch.dist>0)setScale(pinch.z*d/pinch.dist);
+    return;
+  }
   if(dragN){const p=worldPos(e);
     dragN.x=p.x;dragN.y=p.y;dragN.vx=dragN.vy=0;dragN.pin=true;
     dragN.ax=dragN.x;dragN.ay=dragN.y;return}
@@ -1339,6 +1383,13 @@ gC.addEventListener('pointermove',e=>{
   }
 });
 gC.addEventListener('pointerdown',e=>{
+  graphPointers.set(e.pointerId,{x:e.clientX,y:e.clientY});
+  if(graphPointers.size===2){
+    const [a,b]=[...graphPointers.values()];
+    pinch={dist:Math.max(1,Math.hypot(a.x-b.x,a.y-b.y)),z:CAM.z};
+    dragN=null;panDrag=null;downPos=null;gC.style.cursor='grabbing';
+    return;
+  }
   const p=worldPos(e);
   downPos={x:e.clientX,y:e.clientY};downT=performance.now();
   for(const n of nodes){if(Math.hypot(n.x-p.x,n.y-p.y)<=n.R+9){dragN=n;break}}
@@ -1348,6 +1399,13 @@ gC.addEventListener('pointerdown',e=>{
   }
 });
 gC.addEventListener('pointerup',e=>{
+  graphPointers.delete(e.pointerId);
+  if(pinch){
+    if(graphPointers.size<2)pinch=null;
+    if(dragN){dragN.pin=false;dragN.ax=dragN.x;dragN.ay=dragN.y}
+    dragN=null;panDrag=null;downPos=null;gC.style.cursor='default';
+    return;
+  }
   if(dragN){dragN.pin=false;dragN.ax=dragN.x;dragN.ay=dragN.y}
   const moved=downPos?Math.hypot(e.clientX-downPos.x,e.clientY-downPos.y):99;
   const quick=performance.now()-downT<600;
@@ -1384,7 +1442,8 @@ gC.addEventListener('pointerup',e=>{
     }
   }
 });
-gC.addEventListener('pointerleave',()=>{setHover(null);dragN=null;panDrag=null;gC.style.cursor='default'});
+gC.addEventListener('pointerleave',()=>{setHover(null);dragN=null;panDrag=null;graphPointers.clear();pinch=null;gC.style.cursor='default'});
+gC.addEventListener('pointercancel',e=>{graphPointers.delete(e.pointerId);if(graphPointers.size<2)pinch=null;dragN=null;panDrag=null;gC.style.cursor='default'});
 // 滚轮缩放星轨粒度（需求基线 §5.4「四路联动」之一：滚轮 / 竖滑块 / 星轨点击 / 回到今天）
 gC.addEventListener('wheel',e=>{e.preventDefault();wheelZoom(e.deltaY)},{passive:false});
 
@@ -1808,7 +1867,9 @@ function syncChrome(){
   animateNum($('#pNum'),bal,fmtYuan);
   animateNum($('#pExp'),tot,fmtYuan);
   animateNum($('#pInc'),inc,fmtYuan);
-  $('#pNum').style.color=bal<0?'#c96a5a':'#e3e9df';   // 入不敷出是坏消息，用红字说清楚
+  $('#pNum').style.color=bal<0?'#c96a5a':'#e3e9df';
+  if(mBalNum){mBalNum.textContent=fmtYuan(bal);mBalNum.style.color=bal<0?'#c96a5a':'#e3e9df';}
+  if(mBalSub)mBalSub.textContent=`支出 ${fmtYuan(tot)} · 收入 ${fmtYuan(inc)}`;
   // 日均按当前窗口天数算（日档 1 天、年档 365 天、「全部」按整段时间轴、其余按 30 天）
   const span=lv==='day'?1:(lv==='all'?Math.max(1,Math.round(timelineFull().to-timelineFull().from)):(lv==='year'?365:30));
   $('#pCount').textContent=`${nUnit==='天'?nExp+' 天有记录':nExp+' 笔'} · 日均支出 ${fmtYuan(tot/span)}`;
@@ -2444,6 +2505,7 @@ $('#modalSave').onclick=async ()=>{
 addEventListener('keydown',e=>{
   if(e.key!=='Escape')return;
   if(!viewMask.hidden){closeExpenseView();return}   // 详情开着先关详情
+  if(panelEl.classList.contains('mobile-open')){closePanelSheet();return}
   mask.hidden=true;goBack();
 });
 // 备注是多行文本域，回车换行；保存用 Ctrl/Cmd+Enter
@@ -2486,6 +2548,8 @@ async function boot(){
   TL.z=1;TL.pan=0;   // 默认月档（需求基线 §5.4：启动默认月视图）
   renderLedgerDD();
   buildGraph();syncChrome();syncRail&&syncRail();
+  // 顶栏数据加载后可能从一行变两行，移动端图谱上边界要跟着重新量一次
+  if(isMobile())setTimeout(resize,0);
   requestAnimationFrame(frame);
   history.replaceState(viewState(),'');   // 视图历史基线：站内首次后退＝回主视图，而不是退出站点
   toast('欢迎来到 Orbit 星账 · 真实数据已加载');

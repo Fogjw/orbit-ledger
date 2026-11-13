@@ -43,11 +43,20 @@
     </div>
 
     <button class="btn primary" id="btnAdd">＋ 记一笔</button>
+    <!-- 移动端顶部结余条：桌面的左栏读数在这里露出摘要 -->
+    <section class="mobile-balance" id="mobileBalance" aria-label="本月结余">
+      <button id="mobileBalanceBtn" type="button">
+        <span class="mb-main"><small>结余</small><b id="mBalNum">¥0</b></span>
+        <span class="mb-sub" id="mBalSub">支出 ¥0 · 收入 ¥0</span>
+        <span class="mb-more">读数 ›</span>
+      </button>
+    </section>
   </header>
 
   <!-- 左侧洞察面板 -->
   <aside class="panel" id="insightPanel">
     <button class="panel-collapse" id="panelCollapse" type="button" title="收起左栏" aria-label="收起左栏" aria-expanded="true">‹</button>
+    <button class="panel-sheet-close" id="panelSheetClose" type="button" aria-label="关闭读数">×</button>
     <div class="panel-resize" id="panelResize" title="拖动调整左栏宽度"></div>
     <div class="p-title"><span id="pTitle">本月星图</span> <span class="live-dot"></span></div>
     <div class="p-total">
@@ -75,6 +84,14 @@
       </div>
     </div>
   </div>
+
+  <!-- 移动端：底部导航与读数遮罩 -->
+  <nav class="mobile-nav" aria-label="移动端主导航">
+    <button class="on" type="button">星图</button>
+    <button id="mobileReadout" type="button">读数</button>
+    <button class="add" id="mobileAdd" type="button">＋ 记一笔</button>
+  </nav>
+  <div class="mobile-scrim" id="mobileScrim" hidden></div>
 
   <!-- 底部星轨 -->
   <footer class="timeline">
