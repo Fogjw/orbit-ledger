@@ -179,6 +179,10 @@ canvas{display:block}
 .timeline-resize::after{content:"";position:absolute;left:0;right:0;top:3px;height:1px;background:rgba(176,141,87,.12)}
 .timeline-resize:hover::after{background:rgba(176,141,87,.55)}
 @keyframes tlIn{from{opacity:0;transform:translateY(5px)}to{opacity:1;transform:none}}
+.tl-levels{display:none}
+.tl-levels button{min-height:30px;padding:0 8px;border:1px solid transparent;background:transparent;color:#92978c;font-size:10px;letter-spacing:.06em;border-radius:0}
+.tl-levels button.on{border-color:rgba(176,141,87,.45);background:rgba(176,141,87,.12);color:#e8e2d2}
+.tl-levels button:active{color:#e3e9df}
 .tl-head{display:flex;justify-content:space-between;align-items:center}
 .tl-title{font-size:9.5px;letter-spacing:.2em;color:#92978c}
 .tl-tip{font-size:9.5px;color:#7d8278;letter-spacing:.04em}
@@ -571,6 +575,9 @@ textarea.m-remark{min-height:66px;max-height:30vh;resize:vertical;line-height:1.
   .mb-sub{flex:1;font:400 9px/1.4 var(--mono);color:#92978c;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
   .mb-more{font-size:9px;color:#b08d57;letter-spacing:.08em;white-space:nowrap}
   .timeline{bottom:calc(58px + env(safe-area-inset-bottom));height:126px;padding:8px 14px 0}
+  .tl-tip{display:none}
+  .tl-levels{display:flex;gap:3px;margin-left:auto}
+  .tl-levels button{min-height:30px;padding:0 7px}
   #orbit{height:calc(126px - 38px)}
   .rail-wrap,.hint{display:none}
   .panel{display:none}

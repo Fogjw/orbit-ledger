@@ -143,6 +143,21 @@ try {
   await sleep(1200);
   screenshot('android-main');
 
+  // 移动端星轨四档：日/月/年/全部必须可达（右轨在移动端隐藏）
+  await page.evaluate(`document.querySelector('#tlLevels [data-z="0"]').click()`);
+  await sleep(700);
+  const levelDay = await page.evaluate(`window.OrbitDebug.snapshot().level`);
+  await page.evaluate(`document.querySelector('#tlLevels [data-z="2"]').click()`);
+  await sleep(700);
+  const levelYear = await page.evaluate(`window.OrbitDebug.snapshot().level`);
+  await page.evaluate(`document.querySelector('#tlLevels [data-z="1"]').click()`);
+  await sleep(700);
+  const levelMonth = await page.evaluate(`window.OrbitDebug.snapshot().level`);
+  if (levelDay !== 'day' || levelYear !== 'year' || levelMonth !== 'month') {
+    throw new Error(`Android 星轨粒度异常：day=${levelDay} year=${levelYear} month=${levelMonth}`);
+  }
+  console.log('[android] timeline levels:', levelDay, levelYear, levelMonth);
+
   // Android 硬件返回键：先关最上层账笺，不能直接退出 Activity
   await page.evaluate(`document.querySelector('#mobileReadout').click()`);
   await waitEval(page, `document.querySelector('#insightPanel').classList.contains('mobile-open')`, Boolean, '读数账笺打开');
