@@ -158,16 +158,21 @@ try {
   await sleep(1200);
   screenshot('android-after-add');
 
-  // 横屏：Android 系统旋转，不是 CSS 假横屏
+  // 横屏：Android 系统旋转，不是 CSS 假横屏。settings 偶发不生效，用 window 命令兜底。
   shell('settings put system accelerometer_rotation 0');
-  shell('settings put system user_rotation 1');
-  await sleep(1200);
-  const landscape = await page.evaluate(`({ w: innerWidth, h: innerHeight, panel: getComputedStyle(document.querySelector('#insightPanel')).display, nav: getComputedStyle(document.querySelector('.mobile-nav')).display })`);
+  try { shell('cmd window user-rotation lock 1'); } catch { shell('settings put system user_rotation 1'); }
+  await sleep(1500);
+  let landscape = await page.evaluate(`({ w: innerWidth, h: innerHeight, panel: getComputedStyle(document.querySelector('#insightPanel')).display, nav: getComputedStyle(document.querySelector('.mobile-nav')).display })`);
+  if (!(landscape.w > landscape.h)) {
+    shell('cmd window user-rotation lock 1');
+    await sleep(1500);
+    landscape = await page.evaluate(`({ w: innerWidth, h: innerHeight, panel: getComputedStyle(document.querySelector('#insightPanel')).display, nav: getComputedStyle(document.querySelector('.mobile-nav')).display })`);
+  }
   if (!(landscape.w > landscape.h) || landscape.panel !== 'flex' || landscape.nav !== 'none') {
     throw new Error(`Android 横屏异常：${JSON.stringify(landscape)}`);
   }
   screenshot('android-landscape');
-  shell('settings put system user_rotation 0');
+  try { shell('cmd window user-rotation free'); } catch { shell('settings put system user_rotation 0'); }
   await sleep(1000);
 
   // 进程被杀后：账本仍在，且不该再次出现首次 gate
