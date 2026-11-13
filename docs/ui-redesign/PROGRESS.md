@@ -31,6 +31,7 @@
 | M1b | 顶栏紧凑化 / 安全区 / 浮层收口 | `feat/mobile-m1b` | 完成，合入 develop | 已确认 |
 | M1c | 软键盘视口 / 横屏回退 | `feat/mobile-m1c` | 完成，合入 develop | 已确认 |
 | M2a/b | Capacitor APK + Android 模拟器 WebView E2E | `feat/mobile-m2-android` | 完成，合入 develop | 已确认 |
+| M2c | Android 硬件返回键 | `feat/mobile-m2c` | 完成，合入 develop | 已确认 |
 
 ## 阶段 0 交付
 
@@ -408,6 +409,20 @@
 - 未在真机验刘海、输入法、厂商 WebView；模拟器不能替代真机。
 - 本地无 JDK/Android SDK/KVM；当前以 CI 的 APK + emulator run 为准。
 
+## M2c · Android 硬件返回键（完成）
+
+- [x] `MainActivity.onBackPressed()` 先调用网页 `window.__orbitBack()`：有浮层时只关最上层，根视图才退出。
+- [x] 返回顺序：命名/记一笔/明细/标签/详情/移动读数账笺/账本菜单/下钻，最后才退出。
+- [x] Android smoke 增加两条断言：返回键关读数账笺、关记一笔账笺，进程仍在。
+- [x] `build:web` / `npm test` / `verify:web` / Android Emulator E2E 通过。
+- [x] 合入 `develop`。
+
+### M2c 仍待
+
+- release keystore 与签名 APK/AAB（不向用户索取 keystore 内容；用 CI secrets）。
+- 真机刘海/输入法/厂商 WebView/性能抽测。
+- APK 品牌图标/启动图。
+
 ## 合入记录
 
 | 日期 | 界面 | 分支 | commit | 确认 | 备注 |
@@ -430,7 +445,8 @@
 | 2026-11-13 | M1a 移动端生产骨架 | `feat/mobile-m1` | fc8a931 | 已确认 | 760 断点；结余/底部导航/读数账笺/pinch |
 | 2026-11-14 | M1b 顶栏/安全区/浮层 | `feat/mobile-m1b` | 6f0c800 | 已确认 | 两行顶栏；账期；安全区；浮层滚动 |
 | 2026-11-14 | M1c 键盘/横屏 | `feat/mobile-m1c` | 29c39eb | 已确认 | visualViewport；横屏三栏回退 |
-| 2026-11-14 | M2a/b Android | `feat/mobile-m2-android` | 本次合并 | 已确认 | debug APK；API 35 模拟器；持久化 |
+| 2026-11-14 | M2a/b Android | `feat/mobile-m2-android` | b035e22 | 已确认 | debug APK；API 35 模拟器；持久化 |
+| 2026-11-14 | M2c Android 返回键 | `feat/mobile-m2c` | 本次合并 | 已确认 | 先关浮层再退出 |
 
 ## 备注
 
