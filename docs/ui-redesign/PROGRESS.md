@@ -32,6 +32,7 @@
 | M1c | 软键盘视口 / 横屏回退 | `feat/mobile-m1c` | 完成，合入 develop | 已确认 |
 | M2a/b | Capacitor APK + Android 模拟器 WebView E2E | `feat/mobile-m2-android` | 完成，合入 develop | 已确认 |
 | M2c | Android 硬件返回键 | `feat/mobile-m2c` | 完成，合入 develop | 已确认 |
+| M2c.1 | Android 品牌图标/启动图 + release 签名位 | `feat/mobile-branding` | 完成，合入 develop | 已确认 |
 
 ## 阶段 0 交付
 
@@ -423,6 +424,24 @@
 - 真机刘海/输入法/厂商 WebView/性能抽测。
 - APK 品牌图标/启动图。
 
+## M2c.1 · Android 品牌图标与 release 签名位（完成）
+
+- [x] B 方向图标：石墨底、黄铜轨道、象牙主星、朱砂/石绿伴星；替换 legacy/round/adaptive foreground。
+- [x] 深色启动图替换 Capacitor 默认 splash。
+- [x] 生成脚本 `mobile/tools/make-branding.py`，图标/启动图可复现。
+- [x] `build.gradle` release 签名只读 `ORBIT_KEYSTORE_*` 环境变量；无 secrets 时保持 unsigned，不伪造。
+- [x] `android-release.yml` 用 GitHub secrets 生成签名 AAB；未配置 secrets 时明确失败。
+- [x] debug APK + Android Emulator E2E 仍通过（run 43494195215）。
+- [x] `CI` 通过（run 43494181766）。
+- [x] 文档：`mobile/RELEASE.md`、`docs/ui-redesign/M2.md`。
+- [ ] 真实 keystore secrets（需要你配置 GitHub Actions secrets）
+- [ ] 真机刘海/输入法/性能抽测
+
+### M2c.1 边界
+
+- release 签名构建未在无 secrets 环境实际执行；不能把 debug 包当发布包。
+- 真机与厂商 WebView 仍未验。
+
 ## 合入记录
 
 | 日期 | 界面 | 分支 | commit | 确认 | 备注 |
@@ -446,7 +465,8 @@
 | 2026-11-14 | M1b 顶栏/安全区/浮层 | `feat/mobile-m1b` | 6f0c800 | 已确认 | 两行顶栏；账期；安全区；浮层滚动 |
 | 2026-11-14 | M1c 键盘/横屏 | `feat/mobile-m1c` | 29c39eb | 已确认 | visualViewport；横屏三栏回退 |
 | 2026-11-14 | M2a/b Android | `feat/mobile-m2-android` | b035e22 | 已确认 | debug APK；API 35 模拟器；持久化 |
-| 2026-11-14 | M2c Android 返回键 | `feat/mobile-m2c` | 本次合并 | 已确认 | 先关浮层再退出 |
+| 2026-11-14 | M2c Android 返回键 | `feat/mobile-m2c` | b60d0fa | 已确认 | 先关浮层再退出 |
+| 2026-11-14 | M2c.1 图标/启动图/签名位 | `feat/mobile-branding` | 本次合并 | 已确认 | B 图标；release secrets 位 |
 
 ## 备注
 
