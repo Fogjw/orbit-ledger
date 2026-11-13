@@ -559,7 +559,8 @@ textarea.m-remark{min-height:66px;max-height:30vh;resize:vertical;line-height:1.
 @media (max-width:1100px){.panel{display:none}}
 @media (max-width:760px){
   /* 移动端：桌面左右栏退场；读数变成底部账笺，星图占主舞台 */
-  .topbar{height:auto;min-height:56px;padding:8px 12px;gap:6px;flex-wrap:wrap;justify-content:flex-start}
+  .topbar{height:auto;min-height:56px;padding:8px 12px;padding-top:calc(8px + env(safe-area-inset-top));gap:6px;flex-wrap:wrap;justify-content:flex-start}
+  .month-total{display:none}
   .topbar .brand{padding-right:10px}
   .topbar .btn,.topbar .seg{min-height:38px}
   .mobile-balance{display:block;flex:0 0 100%;order:99;border-top:1px solid rgba(223,211,184,.10);background:transparent}
@@ -569,7 +570,7 @@ textarea.m-remark{min-height:66px;max-height:30vh;resize:vertical;line-height:1.
   .mb-main b{font:400 18px/1 var(--mono);color:#d98676;letter-spacing:-.03em}
   .mb-sub{flex:1;font:400 9px/1.4 var(--mono);color:#92978c;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
   .mb-more{font-size:9px;color:#b08d57;letter-spacing:.08em;white-space:nowrap}
-  .timeline{bottom:58px;height:126px;padding:8px 14px 0}
+  .timeline{bottom:calc(58px + env(safe-area-inset-bottom));height:126px;padding:8px 14px 0}
   #orbit{height:calc(126px - 38px)}
   .rail-wrap,.hint{display:none}
   .panel{display:none}
@@ -589,7 +590,7 @@ textarea.m-remark{min-height:66px;max-height:30vh;resize:vertical;line-height:1.
   .panel-sheet-close:active{color:#e3e9df;border-color:#b08d57}
   .mobile-nav{
     display:flex;align-items:center;gap:6px;position:fixed;left:0;right:0;bottom:0;z-index:12;
-    height:58px;padding:0 10px env(safe-area-inset-bottom);border-top:1px solid rgba(223,211,184,.12);
+    height:calc(58px + env(safe-area-inset-bottom));padding:0 10px env(safe-area-inset-bottom);border-top:1px solid rgba(223,211,184,.12);
     background:#0d1110;
   }
   .mobile-nav button{
@@ -608,5 +609,8 @@ textarea.m-remark{min-height:66px;max-height:30vh;resize:vertical;line-height:1.
   .mobile-scrim[hidden]{display:none}
   .zoom-bar{display:none}
   .panel .p-title{padding-right:48px}
+  .modal-mask{padding:12px}
+  .modal{max-height:calc(100dvh - 24px);overflow-y:auto;padding:16px 14px}
+  .dd-menu{max-width:calc(100vw - 24px)}
 }
 @keyframes sheetUp{from{opacity:0;transform:translateY(14px)}to{opacity:1;transform:none}}

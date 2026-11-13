@@ -265,7 +265,8 @@ function saveLayout(){
 const gx0=()=>isMobile()?24:panelVisualW()+32;
 const gx1=()=>isMobile()?W-24:W-UI.railW-8;
 const gy0=()=>isMobile()?topbarBottom()+18:TOP+26;
-const gy1=()=>isMobile()?H-126-58-24:H-UI.timelineH-84;
+const mobileNavH=()=>document.querySelector('.mobile-nav')?.getBoundingClientRect().height||58;
+const gy1=()=>isMobile()?H-126-mobileNavH()-24:H-UI.timelineH-84;
 const gcx=()=>(gx0()+gx1())/2, gcy=()=>(gy0()+gy1())/2;
 
 /* 栏宽/高度拖拽：拖动期间只改 CSS，松手后再重排图谱与 Canvas 缓冲 */
@@ -1869,7 +1870,7 @@ function syncChrome(){
   animateNum($('#pInc'),inc,fmtYuan);
   $('#pNum').style.color=bal<0?'#c96a5a':'#e3e9df';
   if(mBalNum){mBalNum.textContent=fmtYuan(bal);mBalNum.style.color=bal<0?'#c96a5a':'#e3e9df';}
-  if(mBalSub)mBalSub.textContent=`支出 ${fmtYuan(tot)} · 收入 ${fmtYuan(inc)}`;
+  if(mBalSub)mBalSub.textContent=`${selLabel()} · 支出 ${fmtYuan(tot)} · 收入 ${fmtYuan(inc)}`;
   // 日均按当前窗口天数算（日档 1 天、年档 365 天、「全部」按整段时间轴、其余按 30 天）
   const span=lv==='day'?1:(lv==='all'?Math.max(1,Math.round(timelineFull().to-timelineFull().from)):(lv==='year'?365:30));
   $('#pCount').textContent=`${nUnit==='天'?nExp+' 天有记录':nExp+' 笔'} · 日均支出 ${fmtYuan(tot/span)}`;
