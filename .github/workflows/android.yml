@@ -9,7 +9,7 @@ on:
       - 'web/**'
       - '.github/workflows/android.yml'
   push:
-    branches: [develop, feat/mobile-m2-android]
+    branches: [develop]
     paths:
       - 'mobile/**'
       - 'webapp/**'

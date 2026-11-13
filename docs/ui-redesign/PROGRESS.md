@@ -3,9 +3,9 @@
 > 长期设计资产，不是临时计划。每个界面合入 `develop` 后更新本表；跨会话以本表为准。
 
 - 基线 commit：`b2f2ae0`（Linux 支持合入后的 develop）
-- 当前分支：`feat/mobile-m1c`
-- 当前阶段：M1c · 软键盘视口与横屏回退（完成，合入 develop）
-- 下一步：M2 Android 壳层与 CI 模拟器链路。
+- 当前分支：`feat/mobile-m2-android`
+- 当前阶段：M2a/M2b · debug APK + Android 模拟器 WebView E2E（已跑通，待用户确认）
+- 下一步：确认后合入；M2c 做签名/返回键/真机。
 - 约束：账单图谱逻辑冻结；信息量不减少；一界面一分支一合入；合入后保留短分支。
 
 ## 阶段
@@ -30,6 +30,7 @@
 | M1a | 移动端生产骨架：主视图 / 读数 / 记一笔 | `feat/mobile-m1` | 完成，合入 develop | 已确认 |
 | M1b | 顶栏紧凑化 / 安全区 / 浮层收口 | `feat/mobile-m1b` | 完成，合入 develop | 已确认 |
 | M1c | 软键盘视口 / 横屏回退 | `feat/mobile-m1c` | 完成，合入 develop | 已确认 |
+| M2a/b | Capacitor APK + Android 模拟器 WebView E2E | `feat/mobile-m2-android` | 已跑通，待确认 | 待确认 |
 
 ## 阶段 0 交付
 
@@ -387,6 +388,25 @@
 - Android 硬件返回键仍未接；这属于 M2 Capacitor 的 `App.backButton`，不能在纯浏览器里假装完成。
 - 软键盘用 CDP 改可视视口模拟，真实 Gboard/第三方输入法的 offset 还需真机。
 - 横屏只回退到桌面骨架，不另做横屏移动编排；844×390 可读，极窄横屏（<761px）仍走竖屏移动布局。
+
+## M2a/M2b · Android APK 与模拟器链路（待确认）
+
+- [x] Capacitor 8.6.2 Android 工程；debug APK 在 GitHub Actions 构建成功。
+- [x] Android Emulator（API 35 / Pixel 6）安装 APK，通过 WebView CDP 驱动真实 DOM。
+- [x] 首次 gate（Android 只显示浏览器存储）；进入移动壳；读数账笺；记一笔 ¥12.34。
+- [x] 系统旋转横屏；force-stop 后重开，12.34 恢复且不再回 gate。
+- [x] 修复浏览器存储模式未持久化的问题（`orbit.storage.mode`）。
+- [x] 截图 artifact：android-main / android-after-add / android-landscape / android-relaunch。
+- [x] 文档：`docs/ui-redesign/M2.md`。
+- [ ] 用户确认
+- [ ] 合入 `develop`
+
+### M2 已知边界
+
+- 仅 debug APK；没有 release keystore/签名，不发版。
+- 未接 Android 硬件返回键/手势返回。
+- 未在真机验刘海、输入法、厂商 WebView；模拟器不能替代真机。
+- 本地无 JDK/Android SDK/KVM；当前以 CI 的 APK + emulator run 为准。
 
 ## 合入记录
 

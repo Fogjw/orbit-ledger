@@ -902,6 +902,17 @@ async function main() {
   console.log(`[verify] 移动端：nav=${mobile.nav} · 结余=${mobile.balance} · 图=${mobile.graphWidth}×${mobile.graphHeight}`
     + ` · 读数账笺=${sheetOpen ? '开' : '关'}/${sheetClosed ? '关' : '开'} · 记一笔=${mobileEntry ? '开' : '关'} → ${mobileOk ? '✓' : '✗'}`);
 
+  // 浏览器存储选择必须跨刷新记住；否则每次打开都回到 gate，用户会以为数据丢了。
+  win.webContents.reload();
+  await wait(3500);
+  const reload = JSON.parse(await js(`JSON.stringify({
+    gate: Boolean(document.querySelector('#orbitGate')),
+    api: typeof window.OrbitAPI,
+    storage: window.OrbitStorage ? window.OrbitStorage.describe() : null,
+  })`));
+  const reloadOk = !reload.gate && reload.api === 'object' && String(reload.storage || '').includes('浏览器本地存储');
+  console.log(`[verify] 刷新后：gate=${reload.gate} · API=${reload.api} · 存储=${reload.storage} → ${reloadOk ? '✓' : '✗'}`);
+
   if (warnings.length) {
     console.log(`[verify] 页面告警 ${warnings.length} 条（不影响结论）：`);
     for (const w of warnings.slice(0, 5)) console.log('  ~ ' + String(w).split('\n')[0].slice(0, 120));
@@ -913,7 +924,7 @@ async function main() {
     console.log('[verify] 页面无报错');
   }
 
-  const ok = gateOk && storageOk && mobileOk && landscapeOk && state.loadedUi && state.canvasLit > 0 && wrote && inputWorks
+  const ok = gateOk && storageOk && mobileOk && landscapeOk && reloadOk && state.loadedUi && state.canvasLit > 0 && wrote && inputWorks
     && yearVisible && year.centerLit > 0 && errors.length === 0 && noReset !== false
     && incomeVisible && toastOnTop && toastClickThrough && tagDelOk && pTitleOk && panelOk && ctxShown && stayPut && bounded !== false
     && dayTipOk && endReachable
