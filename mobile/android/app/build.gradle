@@ -1,5 +1,12 @@
 apply plugin: 'com.android.application'
 
+// release 签名只从 CI secrets/环境变量读取；本地无 secrets 时保持 unsigned，不伪造签名。
+def orbitKeystore = System.getenv('ORBIT_KEYSTORE_FILE')
+def orbitStorePassword = System.getenv('ORBIT_KEYSTORE_PASSWORD')
+def orbitKeyAlias = System.getenv('ORBIT_KEY_ALIAS')
+def orbitKeyPassword = System.getenv('ORBIT_KEY_PASSWORD')
+def orbitHasSigning = orbitKeystore && orbitStorePassword && orbitKeyAlias && orbitKeyPassword
+
 android {
     namespace = "com.fogjw.orbit.ledger"
     compileSdk = rootProject.ext.compileSdkVersion
@@ -16,8 +23,19 @@ android {
             ignoreAssetsPattern = '!.svn:!.git:!.ds_store:!*.scc:.*:!CVS:!thumbs.db:!picasa.ini:!*~'
         }
     }
+    signingConfigs {
+        if (orbitHasSigning) {
+            release {
+                storeFile file(orbitKeystore)
+                storePassword orbitStorePassword
+                keyAlias orbitKeyAlias
+                keyPassword orbitKeyPassword
+            }
+        }
+    }
     buildTypes {
         release {
+            if (orbitHasSigning) signingConfig signingConfigs.release
             minifyEnabled false
             proguardFiles getDefaultProguardFile('proguard-android.txt'), 'proguard-rules.pro'
         }
