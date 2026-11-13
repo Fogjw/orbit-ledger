@@ -29,16 +29,17 @@ async function waitFor(fn, ms, label) {
 function webviewSocket() {
   const out = shell('cat /proc/net/unix');
   // force-stop 后旧 WebView 的 socket 可能还留在 /proc/net/unix；
-  // 必须按当前 app pid 找，否则会 forward 到已经死掉的旧页面。
-  const pid = shell(`pidof ${PKG}`).trim().split(/\s+/)[0];
-  if (pid) {
+  // 必须按当前 app pid 找，且找不到时继续等，绝不能回退到旧 socket。
+  const pids = shell(`pidof ${PKG}`).trim().split(/\s+/).filter(Boolean);
+  if (!pids.length) throw new Error('app pid 尚未就绪');
+  for (const pid of pids) {
     const exact = `webview_devtools_remote_${pid}`;
-    if (out.includes(exact)) return exact;
+    if (out.includes(exact)) {
+      console.log(`[android] socket ${exact}`);
+      return exact;
+    }
   }
-  const names = [...out.matchAll(/@?(webview_devtools_remote_\d+)/g)].map((m) => m[1]);
-  const uniq = [...new Set(names)];
-  if (!uniq.length) throw new Error('没有找到 WebView devtools socket；确认 debug 包/WebView 调试已开启');
-  return uniq[uniq.length - 1];
+  throw new Error(`app pid=${pids.join(',')} 还没有 WebView devtools socket`);
 }
 async function connectPage() {
   try { adb('forward', '--remove', `tcp:${PORT}`); } catch {}
