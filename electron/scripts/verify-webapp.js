@@ -834,6 +834,19 @@ async function main() {
     });
   })()`);
   const mobile = JSON.parse(mobileRaw);
+  // 移动端右轨隐藏后，星轨四档必须仍可达
+  await click('#tlLevels [data-z="0"]');
+  await wait(900);
+  const levelDay = await js(`window.OrbitDebug.snapshot().level`);
+  await click('#tlLevels [data-z="2"]');
+  await wait(900);
+  const levelYear = await js(`window.OrbitDebug.snapshot().level`);
+  await click('#tlLevels [data-z="1"]');
+  await wait(900);
+  const levelMonth = await js(`window.OrbitDebug.snapshot().level`);
+  const levelOk = levelDay === 'day' && levelYear === 'year' && levelMonth === 'month';
+  console.log(`[verify] 移动星轨粒度：日=${levelDay} · 年=${levelYear} · 月=${levelMonth} → ${levelOk ? '✓' : '✗'}`);
+
   await click('#mobileReadout');
   await wait(500);
   const sheetOpen = await js(`Boolean(document.querySelector('#insightPanel')?.classList.contains('mobile-open'))`);
@@ -868,7 +881,7 @@ async function main() {
   await wait(300);
   const mobileOk = mobile.nav === 'flex' && /[1-9]/.test(mobile.balance)
     && mobile.panel === 'none' && sheetOpen && sheetClosed && mobileEntry
-    && mobile.graphWidth > 300 && mobile.graphHeight > 300 && keyboardOk;
+    && mobile.graphWidth > 300 && mobile.graphHeight > 300 && keyboardOk && levelOk;
 
   mkdirSync(dirname(SHOT_MOBILE), { recursive: true });
   const mobileShot = await mobileDbg.sendCommand('Page.captureScreenshot', { format: 'png', fromSurface: true });

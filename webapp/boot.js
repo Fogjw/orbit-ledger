@@ -19,6 +19,17 @@ function rememberStorageMode(mode) {
   try { localStorage.setItem(STORAGE_MODE_KEY, mode); } catch {}
 }
 
+/** Android WebView/APK 没有可用的目录选择器；即使用户代理里带了 showDirectoryPicker，
+    也不能展示一个点了没反应的“真实文件”入口。 */
+function isNativeAndroidShell() {
+  const cap = window.Capacitor;
+  return Boolean(
+    cap?.isNativePlatform?.()
+    || cap?.getPlatform?.() === 'android'
+    || /\bwv\b/.test(navigator.userAgent),
+  );
+}
+
 /** 自己把 wasm 取回来交给 sql.js，不让它猜路径（原因见 sqlite-browser.js 的注释） */
 async function loadWasm() {
   const res = await fetch(WASM_URL);
@@ -53,7 +64,7 @@ async function mount({ bytes, storage }) {
 }
 
 async function main() {
-  const canUseFile = isFileAccessSupported();
+  const canUseFile = isFileAccessSupported() && !isNativeAndroidShell();
   const remembered = await rememberedDirectory().catch(() => null);
   let gate = null;
 
@@ -90,9 +101,11 @@ async function main() {
 
   async function chooseDirectory() {
     if (!canUseFile) return;
-    gate?.setBusy(true);
     try {
+      // 必须先调 showDirectoryPicker（用户手势），不要先禁用按钮/改 DOM；
+      // 某些浏览器会因此丢失 transient activation，表现就是“点了没反应”。
       const handle = await pickDirectory();
+      gate?.setBusy(true);
       rememberStorageMode('file');
       await proceed(createStorage({ mode: 'file', dir: handle }), gate);
     } catch (err) {
@@ -107,9 +120,10 @@ async function main() {
 
   async function reauthorizeDirectory() {
     if (!remembered) return;
-    gate?.setBusy(true);
     try {
+      // 同样必须先 requestPermission，保留用户手势。
       const granted = await ensurePermission(remembered);
+      gate?.setBusy(true);
       if (!granted) {
         gate?.setError('没有获得目录权限。可以重试，或改用浏览器存储。');
         gate?.setBusy(false);

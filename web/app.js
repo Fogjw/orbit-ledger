@@ -2097,10 +2097,13 @@ $('#btnToday').onclick=async ()=>{
 /* ---------- 右侧刻度轨：拖动连续跟手，松手吸附到最近档 ---------- */
 const rail=$('#rail'),handle=$('#railHandle');
 function syncRail(){
-  if(!handle||!rail)return;
-  const r=rail.getBoundingClientRect();
-  const h=r.height||1;
-  handle.style.top=clamp(6+TL.z/3*(h-12),4,h-4)+'px';   // 跟手：变焦量连续，手柄就连续（四档归一化）
+  if(handle&&rail){
+    const r=rail.getBoundingClientRect();
+    const h=r.height||1;
+    handle.style.top=clamp(6+TL.z/3*(h-12),4,h-4)+'px';   // 跟手：变焦量连续，手柄就连续（四档归一化）
+  }
+  const active=Math.round(TL.z);
+  for(const b of document.querySelectorAll('#tlLevels [data-z]')) b.classList.toggle('on', Number(b.dataset.z)===active);
 }
 let railDrag=false;
 function railSet(e){
@@ -2124,6 +2127,10 @@ if(rail){
 // 刻度轨与星轨上也能滚轮缩放（与图谱区一致）
 for(const el of [$('#railWrap'),$('#orbit')]){
   if(el)el.addEventListener('wheel',e=>{e.preventDefault();wheelZoom(e.deltaY)},{passive:false});
+}
+// 移动端没有右轨：在星轨头部给四档快捷入口，不能把年/日粒度藏没。
+for(const b of document.querySelectorAll('#tlLevels [data-z]')){
+  b.addEventListener('click',()=>setZoom(Number(b.dataset.z)));
 }
 
 /* 记账浮层（真实提交：POST → 重拉 → 图谱刷新） */

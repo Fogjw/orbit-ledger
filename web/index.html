@@ -98,6 +98,12 @@
     <div class="timeline-resize" id="timelineResize" title="拖动调整星轨高度"></div>
     <div class="tl-head">
       <span class="tl-title">星轨 · 时间</span>
+      <div class="tl-levels" id="tlLevels" role="group" aria-label="星轨粒度">
+        <button type="button" data-z="0">日</button>
+        <button type="button" data-z="1" class="on">月</button>
+        <button type="button" data-z="2">年</button>
+        <button type="button" data-z="3">全部</button>
+      </div>
       <span class="tl-tip" id="tlTip">点击星星切换月份</span>
     </div>
     <canvas id="orbit"></canvas>

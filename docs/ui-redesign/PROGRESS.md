@@ -34,6 +34,7 @@
 | M2c | Android 硬件返回键 | `feat/mobile-m2c` | 完成，合入 develop | 已确认 |
 | M2c.1 | Android 品牌图标/启动图 + release 签名位 | `feat/mobile-branding` | 完成，合入 develop | 已确认 |
 | B1 | 桌面/网页图标统一 | `feat/desktop-icon` | 完成，合入 develop | 已确认 |
+| F1 | Android 文件入口 + 移动星轨粒度 | `fix/android-file-timeline` | 完成，合入 develop | 已确认 |
 
 ## 阶段 0 交付
 
@@ -452,6 +453,16 @@
 - [x] `npm run build:web` 通过；桌面 UI 代码未改。
 - [x] 合入 `develop`。
 
+## F1 · Android 文件入口与星轨粒度修复（完成）
+
+- [x] Android WebView/APK 强制隐藏“真实文件”入口；不再显示点了没反应的目录选择。
+- [x] `showDirectoryPicker`/`requestPermission` 先于 busy/DOM 修改调用，避免丢失用户手势；桌面 Chrome 的文件选择流程更稳。
+- [x] 移动端星轨头部新增「日 / 月 / 年 / 全部」四档；右轨隐藏后不再固定在月节点。
+- [x] `syncRail` 同步移动端档位按钮 active 状态。
+- [x] Web E2E 新增日→年→月切换断言；Android smoke 新增同样断言。
+- [x] `CI` / Android Emulator E2E 通过。
+- [x] 合入 `develop`。
+
 ## 合入记录
 
 | 日期 | 界面 | 分支 | commit | 确认 | 备注 |
@@ -477,7 +488,8 @@
 | 2026-11-14 | M2a/b Android | `feat/mobile-m2-android` | b035e22 | 已确认 | debug APK；API 35 模拟器；持久化 |
 | 2026-11-14 | M2c Android 返回键 | `feat/mobile-m2c` | b60d0fa | 已确认 | 先关浮层再退出 |
 | 2026-11-14 | M2c.1 图标/启动图/签名位 | `feat/mobile-branding` | d169009 | 已确认 | B 图标；release secrets 位 |
-| 2026-11-14 | B1 桌面/网页图标 | `feat/desktop-icon` | 本次合并 | 已确认 | Electron PNG/ICO；顶栏/favicon |
+| 2026-11-14 | B1 桌面/网页图标 | `feat/desktop-icon` | 0316fcd | 已确认 | Electron PNG/ICO；顶栏/favicon |
+| 2026-11-14 | F1 文件入口/粒度 | `fix/android-file-timeline` | 本次合并 | 已确认 | Android 隐藏文件卡；移动日/月/年/全部 |
 
 ## 备注
 
