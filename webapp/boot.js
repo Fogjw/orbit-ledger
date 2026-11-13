@@ -10,6 +10,14 @@ import { showGate } from './gate.js';
 const UI_SCRIPTS = ['data.js', 'timeline-nav.js', 'app.js'];   // 顺序不能反：app.js 依赖前两个
 const WASM_DIR = new URL('./sqlite-wasm/', import.meta.url).href;
 const WASM_URL = new URL('./sqlite-wasm/sql-wasm.wasm', import.meta.url).href;
+const STORAGE_MODE_KEY = 'orbit.storage.mode';
+
+function savedStorageMode() {
+  try { return localStorage.getItem(STORAGE_MODE_KEY); } catch { return null; }
+}
+function rememberStorageMode(mode) {
+  try { localStorage.setItem(STORAGE_MODE_KEY, mode); } catch {}
+}
 
 /** 自己把 wasm 取回来交给 sql.js，不让它猜路径（原因见 sqlite-browser.js 的注释） */
 async function loadWasm() {
@@ -85,6 +93,7 @@ async function main() {
     gate?.setBusy(true);
     try {
       const handle = await pickDirectory();
+      rememberStorageMode('file');
       await proceed(createStorage({ mode: 'file', dir: handle }), gate);
     } catch (err) {
       if (err && err.name === 'AbortError') {
@@ -106,6 +115,7 @@ async function main() {
         gate?.setBusy(false);
         return;
       }
+      rememberStorageMode('file');
       await proceed(createStorage({ mode: 'file', dir: remembered }), gate);
     } catch (err) {
       gate?.setError(`重新授权失败：${err.message}`);
@@ -115,11 +125,20 @@ async function main() {
 
   async function useBrowserStorage() {
     gate?.setBusy(true);
+    rememberStorageMode('idb');
     await proceed(createStorage({ mode: 'idb' }), gate);
+  }
+
+  // 浏览器存储一旦选定，下次必须直接进入；否则 Android/网页每次启动都回到 gate，
+  // 用户会以为数据丢了。文件模式仍以「目录句柄 + 权限」为准。
+  if (savedStorageMode() === 'idb') {
+    await proceed(createStorage({ mode: 'idb' }), null);
+    return;
   }
 
   // 已记住且权限仍有效：不打扰用户，直接复用原目录。
   if (canUseFile && remembered && await hasDirectoryPermission(remembered)) {
+    rememberStorageMode('file');
     await proceed(createStorage({ mode: 'file', dir: remembered }), null);
     return;
   }
