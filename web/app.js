@@ -203,6 +203,13 @@ const bgC=$('#bg'),gC=$('#graph'),oC=$('#orbit');
 const bg=bgC.getContext('2d'),g=gC.getContext('2d'),oc=oC.getContext('2d');
 let W=0,H=0,DPR=1;
 function fit(c){const r=c.getBoundingClientRect();c.width=Math.max(2,Math.round(r.width*DPR));c.height=Math.max(2,Math.round(r.height*DPR))}
+function fitOrbit(){
+  // 底部星轨改变高度时，先同步 Canvas 缓冲区再绘制；否则 CSS 高度变了、
+  // 缓冲区还是旧尺寸，圆形节点会被浏览器纵向拉伸成椭圆。
+  DPR=Math.min(2,window.devicePixelRatio||1);
+  fit(oC);
+  oc.setTransform(DPR,0,0,DPR,0,0);
+}
 function resize(){
   DPR=Math.min(2,window.devicePixelRatio||1);
   W=innerWidth;H=innerHeight;
@@ -214,9 +221,137 @@ function resize(){
 }
 addEventListener('resize',resize);
 /* 图谱区（左给洞察面板让位） */
-const TOP=76,ORBIT_H=190;
-const gx0=()=>300, gx1=()=>W-60, gy0=()=>TOP+26, gy1=()=>H-ORBIT_H-44;
+const TOP=76;
+/* 三栏尺寸：默认值必须与 CSS 变量一致；持久化在 localStorage，刷新后保持 */
+const UI_KEY='orbit.ui.layout.v1';
+const UI={panelW:268,railW:52,timelineH:150,panelCollapsed:false};
+try{
+  const saved=JSON.parse(localStorage.getItem(UI_KEY)||'null');
+  if(saved){
+    UI.panelW=clamp(Number(saved.panelW)||UI.panelW,200,380);
+    UI.railW=clamp(Number(saved.railW)||UI.railW,44,80);
+    UI.timelineH=clamp(Number(saved.timelineH)||UI.timelineH,110,240);
+    UI.panelCollapsed=!!saved.panelCollapsed;
+  }
+}catch{}
+const panelEl=$('#insightPanel'),panelCollapse=$('#panelCollapse'),
+      panelResize=$('#panelResize'),railResize=$('#railResize'),timelineResize=$('#timelineResize'),
+      panelSheetClose=$('#panelSheetClose'),mobileReadout=$('#mobileReadout'),mobileAdd=$('#mobileAdd'),mobileScrim=$('#mobileScrim'),
+      mobileBalanceBtn=$('#mobileBalanceBtn'),mBalNum=$('#mBalNum'),mBalSub=$('#mBalSub');
+const mobileMedia=matchMedia('(max-width:760px)');
+const isMobile=()=>mobileMedia.matches;
+const topbarBottom=()=>{
+  const mb=isMobile()?document.querySelector('.mobile-balance'):null;
+  const el=mb||document.querySelector('.topbar');
+  return el?.getBoundingClientRect().bottom||64;
+};
+const panelVisualW=()=>UI.panelCollapsed?34:UI.panelW;
+function applyLayout(){
+  const root=document.documentElement;
+  root.style.setProperty('--panel-w',panelVisualW()+'px');
+  root.style.setProperty('--rail-w',UI.railW+'px');
+  root.style.setProperty('--timeline-h',UI.timelineH+'px');
+  if(panelEl)panelEl.classList.toggle('is-collapsed',UI.panelCollapsed);
+  if(panelCollapse){
+    panelCollapse.textContent=UI.panelCollapsed?'›':'‹';
+    panelCollapse.title=UI.panelCollapsed?'展开左栏':'收起左栏';
+    panelCollapse.setAttribute('aria-label',panelCollapse.title);
+    panelCollapse.setAttribute('aria-expanded',String(!UI.panelCollapsed));
+  }
+}
+function saveLayout(){
+  try{localStorage.setItem(UI_KEY,JSON.stringify(UI))}catch{}
+}
+const gx0=()=>isMobile()?24:panelVisualW()+32;
+const gx1=()=>isMobile()?W-24:W-UI.railW-8;
+const gy0=()=>isMobile()?topbarBottom()+18:TOP+26;
+const mobileNavH=()=>document.querySelector('.mobile-nav')?.getBoundingClientRect().height||58;
+const gy1=()=>isMobile()?H-126-mobileNavH()-24:H-UI.timelineH-84;
 const gcx=()=>(gx0()+gx1())/2, gcy=()=>(gy0()+gy1())/2;
+
+/* 栏宽/高度拖拽：拖动期间只改 CSS，松手后再重排图谱与 Canvas 缓冲 */
+function bindResize(el,onStart,onMove){
+  if(!el)return;
+  let dragging=false,startX=0,startY=0;
+  const end=e=>{
+    if(!dragging)return;
+    dragging=false;
+    document.body.classList.remove('resizing');
+    try{el.releasePointerCapture(e.pointerId)}catch{}
+    saveLayout();
+    resize();
+  };
+  el.addEventListener('pointerdown',e=>{
+    e.preventDefault();
+    dragging=true;
+    startX=e.clientX;startY=e.clientY;
+    onStart();
+    document.body.classList.add('resizing');
+    try{el.setPointerCapture(e.pointerId)}catch{}
+  });
+  el.addEventListener('pointermove',e=>{
+    if(!dragging)return;
+    onMove(e.clientX-startX,e.clientY-startY);
+  });
+  el.addEventListener('pointerup',end);
+  el.addEventListener('pointercancel',end);
+}
+let dragPanelW=UI.panelW,dragRailW=UI.railW,dragTimelineH=UI.timelineH;
+bindResize(panelResize,()=>{dragPanelW=UI.panelW},(dx)=>{
+  UI.panelW=clamp(dragPanelW+dx,200,380);
+  applyLayout();
+});
+bindResize(railResize,()=>{dragRailW=UI.railW},(dx)=>{
+  UI.railW=clamp(dragRailW-dx,44,80);
+  applyLayout();
+});
+bindResize(timelineResize,()=>{dragTimelineH=UI.timelineH},(dx,dy)=>{
+  UI.timelineH=clamp(dragTimelineH-dy,110,240);
+  applyLayout();
+  fitOrbit();
+});
+if(panelCollapse)panelCollapse.addEventListener('click',()=>{
+  UI.panelCollapsed=!UI.panelCollapsed;
+  applyLayout();saveLayout();resize();
+});
+
+/* 移动端读数账笺：复用桌面左栏 DOM，不复制一份数据 */
+function openPanelSheet(){
+  if(!isMobile()||!panelEl)return;
+  panelEl.classList.remove('is-collapsed');
+  panelEl.classList.add('mobile-open');
+  if(mobileScrim)mobileScrim.hidden=false;
+  panelSheetClose?.focus();
+}
+function closePanelSheet(){
+  if(!panelEl)return;
+  panelEl.classList.remove('mobile-open');
+  if(mobileScrim)mobileScrim.hidden=true;
+}
+if(mobileReadout)mobileReadout.addEventListener('click',openPanelSheet);
+if(mobileBalanceBtn)mobileBalanceBtn.addEventListener('click',openPanelSheet);
+if(mobileAdd)mobileAdd.addEventListener('click',()=>document.querySelector('#btnAdd')?.click());
+if(panelSheetClose)panelSheetClose.addEventListener('click',closePanelSheet);
+if(mobileScrim)mobileScrim.addEventListener('click',closePanelSheet);
+const onMobileChange=()=>{closePanelSheet();resize();};
+if(typeof mobileMedia.addEventListener==='function')mobileMedia.addEventListener('change',onMobileChange);
+else if(typeof mobileMedia.addListener==='function')mobileMedia.addListener(onMobileChange);
+
+/* 软键盘：visualViewport 是唯一知道“键盘占掉多少”的视口；CSS dvh 在部分 Android WebView
+   仍按布局视口算，会把保存按钮推到键盘后面。只同步 CSS 变量，不改图谱布局。 */
+function syncVisualViewport(){
+  const vv=window.visualViewport;
+  if(!vv)return;
+  const root=document.documentElement;
+  root.style.setProperty('--vvh',vv.height+'px');
+  root.style.setProperty('--vv-top',vv.offsetTop+'px');
+}
+if(window.visualViewport){
+  addEventListener('resize',syncVisualViewport);
+  window.visualViewport.addEventListener('resize',syncVisualViewport);
+  window.visualViewport.addEventListener('scroll',syncVisualViewport);
+  syncVisualViewport();
+}
 
 /* ---------- 光晕精灵 ---------- */
 const glowCache={};
@@ -641,7 +776,8 @@ function drawGraph(t){
         // 账单节点只显示金额，不带名字/日期 —— 具体内容点开详情看
         label(fmtYuan(n.amount),'',n.x,n.y+n.R*sc+16,a*(hot?1:.6),hovG===n.id);
       }else{
-        label(n.ref.name,fmtYuan(n.amount),n.x,n.y+n.R*sc+16,a*(hot?1:.6),hovG===n.id);
+        const lbName=isMobile()&&n.kind==='inc'?n.ref.name.replace(/^收入[·.]?/,''):n.ref.name;
+        label(lbName,fmtYuan(n.amount),n.x,n.y+n.R*sc+16,a*(hot?1:.6),hovG===n.id);
       }
     }
   }
@@ -847,7 +983,7 @@ function anchorCenter(maxGap){
     if(d)return axisDay(dayNum(`${d.y}-${pad2(d.m)}-15`),g);
   }else if(lv==='month'){
     const m=MONTHS[TL.sel.idx];
-    if(m)return axisDay(dayNum(`${m.y}-07-01`),g);
+    if(m)return axisDay(dayNum(`${m.y}-${pad2(m.m)}-15`),g);
   }
   return axisDay((full.from+full.to)/2,g);
 }
@@ -1123,6 +1259,8 @@ function wheelZoom(dy){
 /* ---------- 交互 ---------- */
 const tip=$('#tooltip');
 let mouse={x:.5,y:.5},dragN=null,panDrag=null,downPos=null,downT=0;
+const graphPointers=new Map();
+let pinch=null;
 /** 点到线段的距离（共享线 hover 命中判定用） */
 function distToSeg(px,py,x1,y1,x2,y2){
   const dx=x2-x1,dy=y2-y1,L2=dx*dx+dy*dy;
@@ -1234,7 +1372,14 @@ function worldPos(e){
   return {x:(e.clientX-r.left-CAM.x)/CAM.z, y:(e.clientY-r.top-CAM.y)/CAM.z};
 }
 gC.addEventListener('pointermove',e=>{
+  if(graphPointers.has(e.pointerId))graphPointers.set(e.pointerId,{x:e.clientX,y:e.clientY});
   mouse={x:e.clientX/W,y:e.clientY/H};moveTip(e);
+  if(pinch&&graphPointers.size>=2){
+    const [a,b]=[...graphPointers.values()];
+    const d=Math.hypot(a.x-b.x,a.y-b.y);
+    if(pinch.dist>0)setScale(pinch.z*d/pinch.dist);
+    return;
+  }
   if(dragN){const p=worldPos(e);
     dragN.x=p.x;dragN.y=p.y;dragN.vx=dragN.vy=0;dragN.pin=true;
     dragN.ax=dragN.x;dragN.ay=dragN.y;return}
@@ -1255,6 +1400,13 @@ gC.addEventListener('pointermove',e=>{
   }
 });
 gC.addEventListener('pointerdown',e=>{
+  graphPointers.set(e.pointerId,{x:e.clientX,y:e.clientY});
+  if(graphPointers.size===2){
+    const [a,b]=[...graphPointers.values()];
+    pinch={dist:Math.max(1,Math.hypot(a.x-b.x,a.y-b.y)),z:CAM.z};
+    dragN=null;panDrag=null;downPos=null;gC.style.cursor='grabbing';
+    return;
+  }
   const p=worldPos(e);
   downPos={x:e.clientX,y:e.clientY};downT=performance.now();
   for(const n of nodes){if(Math.hypot(n.x-p.x,n.y-p.y)<=n.R+9){dragN=n;break}}
@@ -1264,6 +1416,13 @@ gC.addEventListener('pointerdown',e=>{
   }
 });
 gC.addEventListener('pointerup',e=>{
+  graphPointers.delete(e.pointerId);
+  if(pinch){
+    if(graphPointers.size<2)pinch=null;
+    if(dragN){dragN.pin=false;dragN.ax=dragN.x;dragN.ay=dragN.y}
+    dragN=null;panDrag=null;downPos=null;gC.style.cursor='default';
+    return;
+  }
   if(dragN){dragN.pin=false;dragN.ax=dragN.x;dragN.ay=dragN.y}
   const moved=downPos?Math.hypot(e.clientX-downPos.x,e.clientY-downPos.y):99;
   const quick=performance.now()-downT<600;
@@ -1300,7 +1459,8 @@ gC.addEventListener('pointerup',e=>{
     }
   }
 });
-gC.addEventListener('pointerleave',()=>{setHover(null);dragN=null;panDrag=null;gC.style.cursor='default'});
+gC.addEventListener('pointerleave',()=>{setHover(null);dragN=null;panDrag=null;graphPointers.clear();pinch=null;gC.style.cursor='default'});
+gC.addEventListener('pointercancel',e=>{graphPointers.delete(e.pointerId);if(graphPointers.size<2)pinch=null;dragN=null;panDrag=null;gC.style.cursor='default'});
 // 滚轮缩放星轨粒度（需求基线 §5.4「四路联动」之一：滚轮 / 竖滑块 / 星轨点击 / 回到今天）
 gC.addEventListener('wheel',e=>{e.preventDefault();wheelZoom(e.deltaY)},{passive:false});
 
@@ -1690,9 +1850,10 @@ tagMask.addEventListener('click',e=>{if(e.target===tagMask)tagMask.hidden=true})
 
 
 /* ---------- 顶栏/面板 ---------- */
-function toast(msg,ms=2200){
-  const t=$('#toast');t.textContent=msg;t.hidden=false;
-  clearTimeout(t._h);t._h=setTimeout(()=>t.hidden=true,ms);
+/* 交互提示层已按用户要求全局关闭。保留 toast() 作为无副作用的调用点，
+   避免每个业务分支都改；错误仍写 console，方便排查但不弹通知。 */
+function toast(msg){
+  if(msg) console.debug('[orbit-toast]',msg);
 }
 function animateNum(el,to,fmt){
   const from=el._v||0;el._v=to;const t0=performance.now();
@@ -1724,7 +1885,9 @@ function syncChrome(){
   animateNum($('#pNum'),bal,fmtYuan);
   animateNum($('#pExp'),tot,fmtYuan);
   animateNum($('#pInc'),inc,fmtYuan);
-  $('#pNum').style.color=bal<0?'#c96a5a':'#e3e9df';   // 入不敷出是坏消息，用红字说清楚
+  $('#pNum').style.color=bal<0?'#c96a5a':'#e3e9df';
+  if(mBalNum){mBalNum.textContent=fmtYuan(bal);mBalNum.style.color=bal<0?'#c96a5a':'#e3e9df';}
+  if(mBalSub)mBalSub.textContent=`${selLabel()} · 支出 ${fmtYuan(tot)} · 收入 ${fmtYuan(inc)}`;
   // 日均按当前窗口天数算（日档 1 天、年档 365 天、「全部」按整段时间轴、其余按 30 天）
   const span=lv==='day'?1:(lv==='all'?Math.max(1,Math.round(timelineFull().to-timelineFull().from)):(lv==='year'?365:30));
   $('#pCount').textContent=`${nUnit==='天'?nExp+' 天有记录':nExp+' 笔'} · 日均支出 ${fmtYuan(tot/span)}`;
@@ -1855,16 +2018,24 @@ function renderLedgerDD(){
 /* ---------- 备份导出 / 导入（D-13：账本全量 JSON 快照） ---------- */
 const BACKUP_EXT='.orbit-backup.json';
 
-/** 导出当前账本 → 浏览器下载一个 JSON 备份文件 */
+/** 导出当前账本 → 浏览器下载 / Android 系统分享。
+    桌面浏览器继续用 Blob 下载；Android WebView 的下载不可靠，走原生分享面板。 */
 async function exportBackup(){
   const cur=(Data.ledgers||[]).find(l=>String(l.id)===String(S.ledgerId));
   if(!cur)return;
   try{
     const snap=await OrbitAPI.exportLedger(cur.id);
-    const blob=new Blob([JSON.stringify(snap,null,2)],{type:'application/json'});
+    const text=JSON.stringify(snap,null,2);
+    const filename=cur.name+BACKUP_EXT;
+    if(window.OrbitAndroid?.shareBackup){
+      window.OrbitAndroid.shareBackup(filename,text);
+      toast(`已准备导出「${cur.name}」· ${snap.expenses.length} 笔`);
+      return;
+    }
+    const blob=new Blob([text],{type:'application/json'});
     const url=URL.createObjectURL(blob);
     const a=document.createElement('a');
-    a.href=url;a.download=cur.name+BACKUP_EXT;
+    a.href=url;a.download=filename;
     document.body.appendChild(a);a.click();a.remove();
     setTimeout(()=>URL.revokeObjectURL(url),1000);
     toast(`已导出「${cur.name}」· ${snap.expenses.length} 笔`);
@@ -1873,25 +2044,34 @@ async function exportBackup(){
   }
 }
 
-/** 选一个备份文件 → 回读为**新账本**（不覆盖、不合并），随后切到该账本。
-    导入的文件可能是任意 JSON，所以解析失败与后端校验失败都要给出可读提示。 */
+/** 把备份文本导入成新账本；Web 文件选择器和 Android 原生文件选择器共用。 */
+async function applyBackupText(text){
+  let snapshot;
+  try{ snapshot=JSON.parse(text); }
+  catch{ throw new Error('这个文件不是合法的 JSON') }
+  const out=await OrbitAPI.importLedger(snapshot);
+  Data.ledgers=await OrbitAPI.listLedgers();
+  await switchLedger(out.ledger.id);
+  toast(`已导入「${out.ledger.name}」· ${out.counts.expenses} 笔 / ${out.counts.tags} 个标签`);
+}
+
+/** 选一个备份文件 → 回读为**新账本**（不覆盖、不合并），随后切到该账本。 */
 function importBackup(){
+  if(window.OrbitAndroid?.pickBackup){
+    window.__orbitImportBackup=async (text)=>{
+      try{ await applyBackupText(text); }
+      catch(e){ toast('导入失败：'+(e.message||e)); }
+    };
+    window.OrbitAndroid.pickBackup();
+    return;
+  }
   const inp=document.createElement('input');
   inp.type='file';inp.accept='.json,application/json';
   inp.onchange=async ()=>{
     const file=inp.files&&inp.files[0];
     if(!file)return;
-    try{
-      let snapshot;
-      try{ snapshot=JSON.parse(await file.text()); }
-      catch{ throw new Error('这个文件不是合法的 JSON') }
-      const out=await OrbitAPI.importLedger(snapshot);
-      Data.ledgers=await OrbitAPI.listLedgers();   // 重拉列表（含新账本）
-      await switchLedger(out.ledger.id);           // 切过去并整链重建视图
-      toast(`已导入「${out.ledger.name}」· ${out.counts.expenses} 笔 / ${out.counts.tags} 个标签`);
-    }catch(e){
-      toast('导入失败：'+(e.message||e));
-    }
+    try{ await applyBackupText(await file.text()); }
+    catch(e){ toast('导入失败：'+(e.message||e)); }
   };
   inp.click();
 }
@@ -1935,10 +2115,13 @@ $('#btnToday').onclick=async ()=>{
 /* ---------- 右侧刻度轨：拖动连续跟手，松手吸附到最近档 ---------- */
 const rail=$('#rail'),handle=$('#railHandle');
 function syncRail(){
-  if(!handle||!rail)return;
-  const r=rail.getBoundingClientRect();
-  const h=r.height||1;
-  handle.style.top=clamp(6+TL.z/3*(h-12),4,h-4)+'px';   // 跟手：变焦量连续，手柄就连续（四档归一化）
+  if(handle&&rail){
+    const r=rail.getBoundingClientRect();
+    const h=r.height||1;
+    handle.style.top=clamp(6+TL.z/3*(h-12),4,h-4)+'px';   // 跟手：变焦量连续，手柄就连续（四档归一化）
+  }
+  const active=Math.round(TL.z);
+  for(const b of document.querySelectorAll('#tlLevels [data-z]')) b.classList.toggle('on', Number(b.dataset.z)===active);
 }
 let railDrag=false;
 function railSet(e){
@@ -1963,9 +2146,92 @@ if(rail){
 for(const el of [$('#railWrap'),$('#orbit')]){
   if(el)el.addEventListener('wheel',e=>{e.preventDefault();wheelZoom(e.deltaY)},{passive:false});
 }
+// 移动端没有右轨：在星轨头部给四档快捷入口，不能把年/日粒度藏没。
+for(const b of document.querySelectorAll('#tlLevels [data-z]')){
+  b.addEventListener('click',()=>setZoom(Number(b.dataset.z)));
+}
 
 /* 记账浮层（真实提交：POST → 重拉 → 图谱刷新） */
 const mask=$('#modalMask');
+const mDate=$('#mDate'),mDateBtn=$('#mDateBtn'),mDateLabel=$('#mDateLabel'),
+      mCalendar=$('#mCalendar'),mCalMonth=$('#mCalMonth'),mCalGrid=$('#mCalGrid');
+let calMonth=null;
+
+function parseISODate(v){
+  const m=/^(\d{4})-(\d{2})-(\d{2})$/.exec(v||'');
+  if(!m)return null;
+  const y=Number(m[1]),mo=Number(m[2]),d=Number(m[3]);
+  const dt=new Date(y,mo-1,d);
+  return dt.getFullYear()===y&&dt.getMonth()===mo-1&&dt.getDate()===d?{y,mo,d}:null;
+}
+function syncDateLabel(){ if(mDateLabel)mDateLabel.textContent=mDate?.value||''; }
+function setModalDate(value){
+  if(!mDate)return;
+  mDate.value=value;
+  syncDateLabel();
+  const p=parseISODate(value);
+  if(p)calMonth={y:p.y,mo:p.mo};
+}
+function closeCalendar(){
+  if(!mCalendar)return;
+  mCalendar.hidden=true;
+  mDateBtn?.setAttribute('aria-expanded','false');
+}
+function renderCalendar(){
+  if(!mCalendar||!mCalGrid)return;
+  const p=parseISODate(mDate?.value)||parseISODate(todayISO());
+  const y=calMonth?.y??p.y,mo=calMonth?.mo??p.mo;
+  const first=new Date(y,mo-1,1);
+  const start=(first.getDay()+6)%7;       // 周一开头
+  const days=new Date(y,mo,0).getDate();
+  const selected=mDate?.value||'';
+  const today=todayISO();
+  if(mCalMonth)mCalMonth.textContent=`${y}年${mo}月`;
+  const cells=[];
+  for(let i=0;i<start;i++)cells.push('<span></span>');
+  for(let d=1;d<=days;d++){
+    const ds=`${y}-${String(mo).padStart(2,'0')}-${String(d).padStart(2,'0')}`;
+    const cls=[ds===today?'today':'',ds===selected?'sel':''].filter(Boolean).join(' ');
+    cells.push(`<button type="button" data-date="${ds}" class="${cls}" aria-pressed="${ds===selected}">${d}</button>`);
+  }
+  mCalGrid.innerHTML=cells.join('');
+  mCalGrid.querySelectorAll('button[data-date]').forEach(b=>b.addEventListener('click',()=>{
+    setModalDate(b.dataset.date);
+    closeCalendar();
+    mDateBtn?.focus();
+  }));
+}
+function openCalendar(){
+  const p=parseISODate(mDate?.value)||parseISODate(todayISO());
+  calMonth={y:p.y,mo:p.mo};
+  renderCalendar();
+  mCalendar.hidden=false;
+  mDateBtn.setAttribute('aria-expanded','true');
+}
+function shiftCalendar(delta){
+  const p=parseISODate(mDate?.value)||parseISODate(todayISO());
+  const base=calMonth||{y:p.y,mo:p.mo};
+  const d=new Date(base.y,base.mo-1+delta,1);
+  calMonth={y:d.getFullYear(),mo:d.getMonth()+1};
+  renderCalendar();
+}
+if(mDateBtn){
+  mDateBtn.addEventListener('click',()=>{
+    if(mCalendar.hidden)openCalendar();else closeCalendar();
+  });
+  $('#mCalPrev').addEventListener('click',()=>shiftCalendar(-1));
+  $('#mCalNext').addEventListener('click',()=>shiftCalendar(1));
+  $('#mCalToday').addEventListener('click',()=>{
+    setModalDate(todayISO());renderCalendar();closeCalendar();mDateBtn.focus();
+  });
+  mDate?.addEventListener('input',syncDateLabel);
+  mDate?.addEventListener('change',syncDateLabel);
+  document.addEventListener('click',e=>{
+    if(!mCalendar||mCalendar.hidden)return;
+    if(mCalendar.contains(e.target)||mDateBtn.contains(e.target))return;
+    closeCalendar();
+  });
+}
 
 /* ---- 命名浮层（账本/tag 的新建与重命名共用）---- */
 const nameMask=$('#nameMask');
@@ -2247,7 +2513,7 @@ function openExpenseEditor(exp){
   // 金额回填必须精确到分：以前是 toFixed(0)，一笔 ¥12.34 的收入打开编辑器就变成 12，
   // 切一下类型再保存，小数位就被四舍五入吃掉了（用户实测）。moneyText 直接按「分」排版，无浮点毛刺。
   $('#mAmount').value=moneyText(exp.amount_cents,false);
-  const di=document.querySelector('.m-row input[type=date]');if(di)di.value=exp.date;
+  setModalDate(exp.date);closeCalendar();
   const rm=$('#mNote');if(rm)rm.value=exp.note||'';
   // 账本 select 锁定为该笔所属账本（不支持跨账本迁移）
   syncModalLedgerOptions();
@@ -2265,16 +2531,18 @@ $('#btnAdd').onclick=()=>{
   document.querySelectorAll('.m-tab').forEach(x=>x.classList.toggle('active',x.textContent.trim()==='支出'));
   syncModalLedgerOptions();
   const sel=document.querySelector('.m-row select');if(sel)sel.disabled=false;
-  const di=document.querySelector('.m-row input[type=date]');
-  if(di){di.value=todayISO()}
+  setModalDate(todayISO());closeCalendar();
   const rm=$('#mNote');if(rm)rm.value='';
-  $('#mAmount').value='88';
+  $('#mAmount').value='';
   resetModalSel();
   renderModalChips();
+  // 记一笔直接聚焦金额：手机弹出数字键盘，桌面直接输入
+  requestAnimationFrame(()=>$('#mAmount').focus());
 };
-$('#modalClose').onclick=$('#modalCancel').onclick=()=>mask.hidden=true;
-mask.addEventListener('click',e=>{if(e.target===mask)mask.hidden=true});
+$('#modalClose').onclick=$('#modalCancel').onclick=()=>{closeCalendar();mask.hidden=true};
+mask.addEventListener('click',e=>{if(e.target===mask){closeCalendar();mask.hidden=true}});
 $('#modalSave').onclick=async ()=>{
+  closeCalendar();
   const isIncome=document.querySelector('.m-tab.active')?.textContent.trim()==='收入';
   // 金额：元 → 分
   const yuan=parseFloat($('#mAmount').value);
@@ -2357,9 +2625,29 @@ $('#modalSave').onclick=async ()=>{
     toast('记账失败：'+(e.message||e));
   }
 };
+/** 一次返回：给浏览器 Esc 和 Android 硬件返回键共用。
+    返回 true 表示消费掉了（只关最上层），false 表示已经回到根视图。 */
+function backOnce(){
+  const hide=id=>{
+    const el=document.querySelector(id);
+    if(el&&!el.hidden){el.hidden=true;return true}
+    return false;
+  };
+  // 浮层层级从高到低；先关最上面的那一层。
+  if(hide('#nameMask'))return true;
+  if(hide('#modalMask'))return true;
+  if(hide('#expMask'))return true;
+  if(hide('#tagMask'))return true;
+  if(!viewMask.hidden){closeExpenseView();return true}
+  if(panelEl.classList.contains('mobile-open')){closePanelSheet();return true}
+  if(hide('#ledgerMenu'))return true;
+  if(S.view==='detail'){goBack();return true}
+  return false;
+}
+window.__orbitBack=backOnce;
 addEventListener('keydown',e=>{
   if(e.key!=='Escape')return;
-  if(!viewMask.hidden){closeExpenseView();return}   // 详情开着先关详情
+  if(backOnce())return;
   mask.hidden=true;goBack();
 });
 // 备注是多行文本域，回车换行；保存用 Ctrl/Cmd+Enter
@@ -2381,6 +2669,7 @@ function frame(now){
 
 /* 启动（真实数据） */
 async function boot(){
+  applyLayout();
   resize();
   try{
     await Data.init();
@@ -2401,6 +2690,8 @@ async function boot(){
   TL.z=1;TL.pan=0;   // 默认月档（需求基线 §5.4：启动默认月视图）
   renderLedgerDD();
   buildGraph();syncChrome();syncRail&&syncRail();
+  // 顶栏数据加载后可能从一行变两行，移动端图谱上边界要跟着重新量一次
+  if(isMobile())setTimeout(resize,0);
   requestAnimationFrame(frame);
   history.replaceState(viewState(),'');   // 视图历史基线：站内首次后退＝回主视图，而不是退出站点
   toast('欢迎来到 Orbit 星账 · 真实数据已加载');

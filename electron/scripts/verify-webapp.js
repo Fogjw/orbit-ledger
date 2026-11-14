@@ -9,7 +9,7 @@
 import { app, BrowserWindow } from 'electron';
 import { createServer } from 'node:http';
 import { readFile } from 'node:fs/promises';
-import { mkdirSync, mkdtempSync } from 'node:fs';
+import { mkdirSync, mkdtempSync, writeFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import { dirname, join, extname } from 'node:path';
 
@@ -17,6 +17,8 @@ const here = dirname(fileURLToPath(import.meta.url));
 const distDir = join(here, '../../webapp/dist');
 const SHOT = join(here, '../../webapp/verify-shot.png');
 const SHOT_YEAR = join(here, '../../webapp/verify-year.png');
+const SHOT_MOBILE = join(here, '../../docs/ui-redesign/review/verify-mobile-390.png');
+const SHOT_LANDSCAPE = join(here, '../../docs/ui-redesign/review/verify-mobile-landscape.png');
 
 // 每次跑用全新的 Electron profile：IndexedDB / quota 不能继承上一次，也不能写到
 // 只读的 ~/.config（受限环境里 console 会刷 [storage] 写入失败，测试结论被环境污染）。
@@ -99,7 +101,23 @@ async function main() {
 
   // 1) 引导层应当先出现
   const gateShown = await has('#orbitGate');
-  console.log(`[verify] 引导层出现: ${gateShown}`);
+  const gateInfo = JSON.parse(await js(`(() => {
+    const g = document.querySelector('#orbitGate');
+    return JSON.stringify({
+      role: g?.getAttribute('role') || '',
+      modal: g?.getAttribute('aria-modal') || '',
+      title: document.querySelector('#orbitGateTitle')?.textContent?.trim() || '',
+      idb: Boolean(document.querySelector('#orbitUseIdb')),
+      pick: Boolean(document.querySelector('#orbitPickDir')),
+      reauth: Boolean(document.querySelector('#orbitReauth')),
+      canFile: typeof window.showDirectoryPicker === 'function',
+    });
+  })()`));
+  const gateOk = gateShown && gateInfo.role === 'dialog' && gateInfo.modal === 'true'
+    && gateInfo.title === '账本存放位置' && gateInfo.idb
+    && (gateInfo.canFile ? gateInfo.pick : !gateInfo.pick);
+  console.log(`[verify] 引导层: dialog=${gateInfo.role}/${gateInfo.modal} · 标题=${gateInfo.title}`
+    + ` · 浏览器选项=${gateInfo.idb} · 文件选项=${gateInfo.pick} · FileAccess=${gateInfo.canFile} → ${gateOk ? '✓' : '✗'}`);
 
   // 2) 走浏览器存储分支（选目录需要用户手势，自动化里点不了系统弹窗）
   if (gateShown) {
@@ -128,7 +146,8 @@ async function main() {
 
   const state = await readState();
   console.log(`[verify] 界面已加载: ${state.loadedUi}`);
-  console.log(`[verify] OrbitAPI: ${state.api} · 存储: ${state.storage}`);
+  const storageOk = String(state.storage || '').includes('浏览器本地存储');
+  console.log(`[verify] OrbitAPI: ${state.api} · 存储: ${state.storage} → ${storageOk ? '✓' : '✗'}`);
   console.log(`[verify] 顶部总额: ${state.total} · 账本按钮: ${state.ledgerBtn}`);
   console.log(`[verify] 星图着色采样: ${state.canvasLit}`);
 
@@ -521,50 +540,13 @@ async function main() {
   await click('#modalClose');
   await wait(500);
 
-  // 提示层必须压在所有浮层之上（用户报：弹窗里操作时看不到 toast 提示）。
-  // 判据不靠截图：让最高的浮层（#nameMask）**保持打开**时触发一条 toast，
-  // 再用 elementFromPoint 问「这个点上最顶层的元素是谁」—— 被盖住的话拿到的是 mask 而不是 toast。
-  // 触发方式是空名称点确定：它只 toast 不关浮层（正好保住了遮挡场景）。
-  await click('#btnAdd');
-  await wait(700);
-  await click('#btnAddCat');
-  await wait(500);
-  await js(`(() => { document.querySelector('#nameInput').value = ''; return true; })()`);
-  await click('#nameOk');
-  await wait(400);
-  const zTop = JSON.parse(await js(`(() => {
-    const z = (s) => { const el = document.querySelector(s); return el ? Number(getComputedStyle(el).zIndex) || 0 : 0; };
+  // 用户要求关闭所有 toast/通知；这里断言它既隐藏又不会参与布局。
+  const toastPolicy = JSON.parse(await js(`(() => {
     const t = document.querySelector('#toast');
-    const r = t.getBoundingClientRect();
-    const hit = document.elementFromPoint(Math.round(r.left + r.width / 2), Math.round(r.top + r.height / 2));
-    return JSON.stringify({
-      toastZ: z('#toast'),
-      topMaskZ: Math.max(z('#nameMask'), z('#tagMask'), z('#viewMask'), z('#modalMask'), z('#expMask')),
-      toastShown: !t.hidden && r.width > 0,
-      hit: hit ? (hit.id || String(hit.className)) : null,
-    });
+    return JSON.stringify({ hidden: t ? t.hidden : true, display: t ? getComputedStyle(t).display : 'none' });
   })()`));
-  // toast 是 pointer-events:none（见下一条判据），所以 elementFromPoint 永远命中不到它 ——
-  // 「在最顶层」只能靠 z-index 比较 + 它确实显示着来判断。
-  const toastOnTop = zTop.toastShown && zTop.toastZ > zTop.topMaskZ;
-  console.log(`[verify] 提示层 z = ${zTop.toastZ} · 最高浮层 z = ${zTop.topMaskZ}`
-    + ` · toast 可见 = ${zTop.toastShown} → ${toastOnTop ? '压在所有浮层之上 ✓' : '层级不够 ✗'}`);
-  // 但它必须**不吃点击**：toast 显示的那两秒里，它覆盖到的浮层控件要照样点得动
-  //（用户实测症状：「记一笔时不时点不动、金额和日期都改不了」）。
-  const tHit = JSON.parse(await js(`(() => {
-    const t = document.querySelector('#toast');
-    if (!t || t.hidden) return JSON.stringify({ skipped: true });
-    const r = t.getBoundingClientRect();
-    const hit = document.elementFromPoint(Math.round(r.left + r.width / 2), Math.round(r.top + r.height / 2));
-    return JSON.stringify({ pe: getComputedStyle(t).pointerEvents, hit: hit ? (hit.id || String(hit.className)) : null });
-  })()`));
-  const toastClickThrough = tHit.skipped || (tHit.pe === 'none' && tHit.hit !== 'toast');
-  console.log(`[verify] toast 的 pointer-events = "${tHit.pe}" · 该点命中 = "${tHit.hit}"`
-    + ` → ${toastClickThrough ? '不挡点击 ✓' : '会挡住下面的控件 ✗'}`);
-  await click('#nameCancel');   // 空名称不会关浮层，这里手动收尾
-  await wait(300);
-  await click('#modalClose');
-  await wait(400);
+  const toastOff = toastPolicy.hidden && toastPolicy.display === 'none';
+  console.log(`[verify] 通知层：hidden=${toastPolicy.hidden} · display=${toastPolicy.display} → ${toastOff ? '已关闭 ✓' : '仍显示 ✗'}`);
 
   // 标签管理里的删除（与花销明细里的删除共用同一个流程）。
   // confirm 是原生对话框，自动化里点不了 —— 先把它换成「一律确认」，再走真实 UI 路径。
@@ -789,6 +771,141 @@ async function main() {
   await click('#modalClose');
   await wait(400);
 
+  // 移动端切片：底部导航、顶部结余、读数账笺、记一笔入口
+  // Linux 窗口会被 WM 钳到屏幕尺寸，直接改窗口宽度不可靠；用 CDP 设备仿真改 CSS 视口。
+  const mobileDbg = win.webContents.debugger;
+  mobileDbg.attach('1.3');
+  await mobileDbg.sendCommand('Emulation.setDeviceMetricsOverride', {
+    width: 390, height: 844, deviceScaleFactor: 1, mobile: true,
+  });
+  await wait(900);
+  // 前面的下钻/标签测试可能留下浮层；移动截图必须是干净主视图
+  await js(`document.querySelectorAll('.modal-mask').forEach((m) => { m.hidden = true; });
+    document.querySelector('#insightPanel')?.classList.remove('mobile-open');
+    if (document.querySelector('#mobileScrim')) document.querySelector('#mobileScrim').hidden = true;`);
+  await wait(300);
+  const mobileRaw = await js(`(() => {
+    const nav=document.querySelector('.mobile-nav');
+    const panel=document.querySelector('#insightPanel');
+    const g=document.querySelector('#graph').getBoundingClientRect();
+    return JSON.stringify({
+      nav: nav ? getComputedStyle(nav).display : 'missing',
+      balance: document.querySelector('#mBalNum')?.textContent?.trim() || '',
+      panel: panel ? getComputedStyle(panel).display : 'missing',
+      graphWidth: Math.round(g.width),
+      graphHeight: Math.round(g.height),
+    });
+  })()`);
+  const mobile = JSON.parse(mobileRaw);
+  // 移动端右轨隐藏后，星轨四档必须仍可达
+  await click('#tlLevels [data-z="0"]');
+  await wait(900);
+  const levelDay = await js(`window.OrbitDebug.snapshot().level`);
+  await click('#tlLevels [data-z="2"]');
+  await wait(900);
+  const levelYear = await js(`window.OrbitDebug.snapshot().level`);
+  await click('#tlLevels [data-z="1"]');
+  await wait(900);
+  const levelMonth = await js(`window.OrbitDebug.snapshot().level`);
+  const levelOk = levelDay === 'day' && levelYear === 'year' && levelMonth === 'month';
+  console.log(`[verify] 移动星轨粒度：日=${levelDay} · 年=${levelYear} · 月=${levelMonth} → ${levelOk ? '✓' : '✗'}`);
+
+  await click('#mobileReadout');
+  await wait(500);
+  const sheetOpen = await js(`Boolean(document.querySelector('#insightPanel')?.classList.contains('mobile-open'))`);
+  await click('#panelSheetClose');
+  await wait(300);
+  const sheetClosed = await js(`!document.querySelector('#insightPanel')?.classList.contains('mobile-open')`);
+  await click('#mobileAdd');
+  await wait(700);
+  const mobileEntry = await js(`!document.querySelector('#modalMask')?.hidden`);
+  const entryState = JSON.parse(await js(`JSON.stringify({
+    amount: document.querySelector('#mAmount')?.value,
+    focused: document.activeElement?.id || '',
+    calendarHidden: document.querySelector('#mCalendar')?.hidden,
+  })`));
+  await click('#mDateBtn');
+  await wait(250);
+  const calendarOpen = await js(`!document.querySelector('#mCalendar')?.hidden`);
+  const firstDate = await js(`document.querySelector('#mCalGrid button[data-date]')?.dataset.date || ''`);
+  await js(`document.querySelector('#mCalGrid button[data-date]')?.click()`);
+  await wait(250);
+  const pickedDate = await js(`document.querySelector('#mDate')?.value || ''`);
+  const dateLabel = await js(`document.querySelector('#mDateLabel')?.textContent?.trim() || ''`);
+  const dateOk = entryState.amount === '' && entryState.focused === 'mAmount'
+    && calendarOpen && /^\d{4}-\d{2}-\d{2}$/.test(firstDate) && pickedDate === firstDate && dateLabel === firstDate;
+  console.log(`[verify] 记一笔默认/日期：金额空=${entryState.amount === ''} · 聚焦=${entryState.focused || '无'}`
+    + ` · 日历=${calendarOpen ? '开' : '关'} · 选中=${pickedDate || '无'} → ${dateOk ? '✓' : '✗'}`);
+  // 模拟软键盘：visualViewport 缩到 500，记一笔账笺必须跟着缩，保存区不能被顶到键盘后
+  await mobileDbg.sendCommand('Emulation.setDeviceMetricsOverride', {
+    width: 390, height: 500, deviceScaleFactor: 1, mobile: true,
+  });
+  await wait(500);
+  const keyboard = JSON.parse(await js(`(() => {
+    const m=document.querySelector('#modalMask .modal');
+    const vv=window.visualViewport;
+    return JSON.stringify({
+      vv: vv ? Math.round(vv.height) : null,
+      height: m ? Math.round(m.getBoundingClientRect().height) : null,
+      bottom: m ? Math.round(m.getBoundingClientRect().bottom) : null,
+    });
+  })()`));
+  const keyboardOk = keyboard.vv !== null && keyboard.vv <= 510
+    && keyboard.height !== null && keyboard.height <= 510 && keyboard.bottom <= 510;
+  console.log(`[verify] 软键盘视口：vv=${keyboard.vv} · 账笺=${keyboard.height}px / bottom=${keyboard.bottom}px → ${keyboardOk ? '✓' : '✗'}`);
+  await mobileDbg.sendCommand('Emulation.setDeviceMetricsOverride', {
+    width: 390, height: 844, deviceScaleFactor: 1, mobile: true,
+  });
+  await wait(300);
+  await click('#modalClose');
+  await wait(300);
+  const mobileOk = mobile.nav === 'flex' && /[1-9]/.test(mobile.balance)
+    && mobile.panel === 'none' && sheetOpen && sheetClosed && mobileEntry
+    && mobile.graphWidth > 300 && mobile.graphHeight > 300 && keyboardOk && levelOk && dateOk;
+
+  mkdirSync(dirname(SHOT_MOBILE), { recursive: true });
+  const mobileShot = await mobileDbg.sendCommand('Page.captureScreenshot', { format: 'png', fromSurface: true });
+  writeFileSync(SHOT_MOBILE, Buffer.from(mobileShot.data, 'base64'));
+  console.log(`[verify] 移动视口截图: ${SHOT_MOBILE}`);
+
+  // 横屏短视口：宽度足够时回到三栏桌面骨架，不把竖屏底栏塞进 390px 高
+  await mobileDbg.sendCommand('Emulation.setDeviceMetricsOverride', {
+    width: 844, height: 390, deviceScaleFactor: 1, mobile: true,
+  });
+  await wait(900);
+  const landscape = JSON.parse(await js(`(() => {
+    const panel=document.querySelector('#insightPanel');
+    const nav=document.querySelector('.mobile-nav');
+    const g=document.querySelector('#graph').getBoundingClientRect();
+    return JSON.stringify({
+      panel: panel ? getComputedStyle(panel).display : 'missing',
+      nav: nav ? getComputedStyle(nav).display : 'missing',
+      graphWidth: Math.round(g.width),
+      graphHeight: Math.round(g.height),
+      topbarH: Math.round(document.querySelector('.topbar')?.getBoundingClientRect().height || 0),
+    });
+  })()`));
+  const landscapeOk = landscape.panel === 'flex' && landscape.nav === 'none'
+    && landscape.graphWidth > 800 && landscape.graphHeight > 300 && landscape.topbarH <= 70;
+  console.log(`[verify] 横屏：panel=${landscape.panel} · nav=${landscape.nav} · 图=${landscape.graphWidth}×${landscape.graphHeight}`
+    + ` · 顶栏=${landscape.topbarH}px → ${landscapeOk ? '✓' : '✗'}`);
+  const landscapeShot = await mobileDbg.sendCommand('Page.captureScreenshot', { format: 'png', fromSurface: true });
+  writeFileSync(SHOT_LANDSCAPE, Buffer.from(landscapeShot.data, 'base64'));
+  await mobileDbg.sendCommand('Emulation.clearDeviceMetricsOverride').catch(() => {});
+  console.log(`[verify] 移动端：nav=${mobile.nav} · 结余=${mobile.balance} · 图=${mobile.graphWidth}×${mobile.graphHeight}`
+    + ` · 读数账笺=${sheetOpen ? '开' : '关'}/${sheetClosed ? '关' : '开'} · 记一笔=${mobileEntry ? '开' : '关'} → ${mobileOk ? '✓' : '✗'}`);
+
+  // 浏览器存储选择必须跨刷新记住；否则每次打开都回到 gate，用户会以为数据丢了。
+  win.webContents.reload();
+  await wait(3500);
+  const reload = JSON.parse(await js(`JSON.stringify({
+    gate: Boolean(document.querySelector('#orbitGate')),
+    api: typeof window.OrbitAPI,
+    storage: window.OrbitStorage ? window.OrbitStorage.describe() : null,
+  })`));
+  const reloadOk = !reload.gate && reload.api === 'object' && String(reload.storage || '').includes('浏览器本地存储');
+  console.log(`[verify] 刷新后：gate=${reload.gate} · API=${reload.api} · 存储=${reload.storage} → ${reloadOk ? '✓' : '✗'}`);
+
   if (warnings.length) {
     console.log(`[verify] 页面告警 ${warnings.length} 条（不影响结论）：`);
     for (const w of warnings.slice(0, 5)) console.log('  ~ ' + String(w).split('\n')[0].slice(0, 120));
@@ -800,9 +917,9 @@ async function main() {
     console.log('[verify] 页面无报错');
   }
 
-  const ok = gateShown && state.loadedUi && state.canvasLit > 0 && wrote && inputWorks
+  const ok = gateOk && storageOk && mobileOk && landscapeOk && reloadOk && state.loadedUi && state.canvasLit > 0 && wrote && inputWorks
     && yearVisible && year.centerLit > 0 && errors.length === 0 && noReset !== false
-    && incomeVisible && toastOnTop && toastClickThrough && tagDelOk && pTitleOk && panelOk && ctxShown && stayPut && bounded !== false
+    && incomeVisible && toastOff && tagDelOk && pTitleOk && panelOk && ctxShown && stayPut && bounded !== false
     && dayTipOk && endReachable
     && centsOk && todayMarkOk && todayAbsentOk && editorAmtOk !== false
     && railHasIncome && yearHasIncome && incomePlaceholderVisible && expensePlaceholderVisible

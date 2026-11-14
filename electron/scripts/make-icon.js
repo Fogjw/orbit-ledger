@@ -4,11 +4,15 @@
 // 用法：npm run make:icon（仓库根）
 import { app, BrowserWindow } from 'electron';
 import { readFile, writeFile } from 'node:fs/promises';
+import { mkdirSync, mkdtempSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import { dirname, join } from 'node:path';
 
 const root = join(dirname(fileURLToPath(import.meta.url)), '../..');
 const SIZE = 512;
+// 图标生成也需要可写的 Electron profile；受限环境里 ~/.config 只读会让进程卡住。
+mkdirSync(join(root, '.cache'), { recursive: true });
+app.setPath('userData', mkdtempSync(join(root, '.cache/icon-maker-')));
 
 // 固定 1:1 像素比：否则系统 DPI 缩放（本机实测 150%）会把 512 截成 770×770，
 // 同一份 SVG 在不同机器上产出不同尺寸的图标，既没法比对也污染 diff。

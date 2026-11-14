@@ -2,7 +2,7 @@
   "name": "orbit-ledger",
   "productName": "Orbit 星账",
   "private": true,
-  "version": "1.2.0",
+  "version": "1.2.1",
   "description": "Orbit 星账 · 本地优先的图谱化记账软件（Electron 桌面端 + 浏览器直连 + MCP 同进程）",
   "author": "Fogjw <1778357215@qq.com>",
   "license": "MIT",
@@ -23,7 +23,8 @@
     "pack": "electron-builder --dir --publish never",
     "dist": "electron-builder --publish never",
     "dist:win": "electron-builder --win nsis --publish never",
-    "dist:linux": "electron-builder --linux deb rpm --publish never"
+    "dist:linux": "electron-builder --linux deb rpm --publish never",
+    "shots:mobile": "electron electron/scripts/make-mobile-shots.js"
   },
   "devDependencies": {
     "electron": "^44.3.0",
@@ -61,7 +62,7 @@
           ]
         }
       ],
-      "icon": "assets/icon.png"
+      "icon": "assets/icon.ico"
     },
     "nsis": {
       "include": "electron/installer.nsh",

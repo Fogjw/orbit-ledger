@@ -3,9 +3,9 @@
 > 长期设计资产，不是临时计划。每个界面合入 `develop` 后更新本表；跨会话以本表为准。
 
 - 基线 commit：`b2f2ae0`（Linux 支持合入后的 develop）
-- 当前分支：`ui/polish`
-- 当前阶段：阶段 2.10 · 全局收尾（完成，合入 develop）
-- 下一步：UI 重构完成；是否 develop → main 发版待定。
+- 当前分支：`feat/mobile-m2-android`
+- 当前阶段：M2a/M2b · debug APK + Android 模拟器 WebView E2E（完成，合入 develop）
+- 下一步：M2c 返回键/图标/真机；release 签名需用户 keystore。
 - 约束：账单图谱逻辑冻结；信息量不减少；一界面一分支一合入；合入后保留短分支。
 
 ## 阶段
@@ -24,6 +24,21 @@
 | 2.8 | 账本菜单 + 标签管理 | `ui/menus` | 完成，合入 develop | 已确认 |
 | 2.9 | 花销明细 + 账单详情/编辑 + 命名/取色 | `ui/details` | 完成，合入 develop | 已确认 |
 | 2.10 | 全局收尾、旧玻璃/渐变清理、README 截图 | `ui/polish` | 完成，合入 develop | 已确认 |
+| 2.11 | 左/右/底栏可拖拽；左栏可收起 | `ui/resizable` | 完成，合入 develop | 已确认 |
+| M0 | 移动端布局与触控原型 | `feat/mobile-m0` | 完成，合入 develop | 已确认 |
+| G1 | 网页版首次存储选择页 | `feat/webapp-gate` | 完成，合入 develop | 已确认 |
+| M1a | 移动端生产骨架：主视图 / 读数 / 记一笔 | `feat/mobile-m1` | 完成，合入 develop | 已确认 |
+| M1b | 顶栏紧凑化 / 安全区 / 浮层收口 | `feat/mobile-m1b` | 完成，合入 develop | 已确认 |
+| M1c | 软键盘视口 / 横屏回退 | `feat/mobile-m1c` | 完成，合入 develop | 已确认 |
+| M2a/b | Capacitor APK + Android 模拟器 WebView E2E | `feat/mobile-m2-android` | 完成，合入 develop | 已确认 |
+| M2c | Android 硬件返回键 | `feat/mobile-m2c` | 完成，合入 develop | 已确认 |
+| M2c.1 | Android 品牌图标/启动图 + release 签名位 | `feat/mobile-branding` | 完成，合入 develop | 已确认 |
+| B1 | 桌面/网页图标统一 | `feat/desktop-icon` | 完成，合入 develop | 已确认 |
+| F1 | Android 文件入口 + 移动星轨粒度 | `fix/android-file-timeline` | 完成，合入 develop | 已确认 |
+| M3a | Android 备份导出/文件导入 | `feat/m3-android-backup` | 完成，合入 develop | 已确认 |
+| U1 | 记一笔日历选择 + 金额聚焦 | `feat/entry-calendar` | 完成，合入 develop | 已确认 |
+| T1 | 全局关闭 toast 通知 | `feat/disable-toasts` | 完成，合入 develop | 已确认 |
+| M3b | Android SAF 真实目录存储 | `feat/android-saf-storage` | 实现完成，待真机确认 | 待确认 |
 
 ## 阶段 0 交付
 
@@ -267,6 +282,246 @@
 - README 主截图换成当前 B 方向；其它 docs/screenshots 同步。
 - 如果后续要 A/C 皮肤，只需换 token，不再重复结构。
 
+## 阶段 2.11 交付（完成）
+
+- [x] 左栏右缘可拖拽：默认 268px，范围 200–380px；宽度持久化。
+- [x] 左栏右上角方形按钮可收起为 34px 窄条，箭头改为向右；再点展开，状态持久化。
+- [x] 右轨左缘可拖拽：范围 44–80px；刻度/游标随宽度保持。
+- [x] 星轨上缘可拖拽：范围 110–240px；Canvas 高度、面板/右轨底边、缩放条同步。
+- [x] 图谱边界改为读取布局值，栏宽/高度变化后在松手时重排；默认值与旧版一致。
+- [x] 拖高星轨时每次 pointermove 同步 Canvas 缓冲区，节点不会被纵向拉伸；极限高度也保持正圆。
+- [x] 所有手柄有 1px 黄铜提示线、hover 加亮；触摸用 pointer capture。
+- [x] 小屏（<1100px）仍隐藏左栏/右轨，不破坏现有响应式。
+- [x] `npm test` / `npm run build:web` / `npm run verify:web` 通过。
+- [x] 截图：`docs/ui-redesign/review/resize-2.11.png`、`collapsed-2.11.png`、`wide-2.11.png`、`narrow-2.11.png`、`timeline-tall-2.11.png`。
+- [x] 用户确认
+- [x] 合入 `develop`
+
+### 阶段 2.11 设计点
+
+- 左栏是「可收起的读数柱」：展开是仪器面板，收起是 34px 窄条，只留展开按钮。
+- 右轨是「可调宽的校准尺」；星轨是「可调高的刻度长轨」。
+- 拖动期间只改 CSS 变量，松手后调用 `resize()` 重排图谱/Canvas；避免拖拽过程反复重建账图。
+- 布局写入 `localStorage`（`orbit.ui.layout.v1`）：panelW / railW / timelineH / panelCollapsed。
+
+## 移动端 M0 交付（完成）
+
+- [x] 390×844 / 412×915 移动布局原型：顶栏、结余条、星图、星轨、底部导航。
+- [x] 洞察账笺：结余/支出/收入/环比/记录/TOP5/交叉洞察全在，74% 高可滚动。
+- [x] 记一笔账笺：金额/品类/情境/日期/账本/备注/保存，94% 高；字段与桌面一致。
+- [x] 触控目标：顶栏/关闭 44px，chip 44px，底部导航 48px，星轨节点 44×48px。
+- [x] 安全区、软键盘、Android 返回键列入 M1/M2 实现清单。
+- [x] 可复现截图脚本 `npm run shots:mobile` → `docs/ui-redesign/review/mobile/`。
+- [x] 文档：`docs/ui-redesign/MOBILE.md`。
+- [x] 用户确认原型
+- [x] 合入 `develop`
+
+### M0 设计点
+
+- 移动端不保留桌面左右栏；读数进底部账笺，结余条放在顶栏下方常驻。
+- 星图单指平移、双指缩放；星轨横向拖动；底部导航只保留星图/洞察/记一笔。
+- 当前只是原型，硬编码演示数据；不接 `web/` 业务逻辑，也不改生产 UI。
+
+## G1 · 网页版首次存储选择页（完成）
+
+- [x] 独立 `webapp/gate.js` / `gate.css`：石墨底、黄铜线、直角、无玻璃/无蓝紫渐变。
+- [x] 桌面双卡：存成真实文件（推荐）/ 存在浏览器里；移动端纵向堆叠。
+- [x] 不支持 File System Access 时只显示浏览器存储，不显示不可用按钮。
+- [x] 记住过目录但权限失效时，提供“继续使用上次目录”，可重新授权；不再悄悄开空账本。
+- [x] 取消文件选择留在 gate；选择/启动失败在 gate 内显示错误，可重试。
+- [x] dialog 语义、焦点管理、Tab 焦点陷阱、`role=alert` 错误、48px 触控目标。
+- [x] `npm run build:web` 产出 `dist/gate.css`，并在 `dist/index.html` 注入 link。
+- [x] `npm test` 新增 `webapp/test/storage.test.js`（权限查询安全降级）；`npm run verify:web` 通过并新增 gate 断言。
+- [x] 用户确认
+- [x] 合入 `develop`
+
+### G1 设计点
+
+- 首次进入只做一件事：选存放位置；存储路径只解释到“文件 / 浏览器”层面，不堆技术细节。
+- 文件卡在支持的浏览器显示；不支持时隐藏，不制造死路。
+- 权限失效的错误发生在用户手势之后，gate 不自动请求权限。
+- 切换存放方式不会迁移数据，gate 明确提示“两种存放方式的数据互不相通”。
+
+## M1a · 移动端生产骨架（完成）
+
+- [x] 760px 断点：桌面左栏/右轨/缩放条退场，移动端改为全屏星图。
+- [x] 顶部结余条：结余、支出、收入、读数入口；数值与桌面左栏同源。
+- [x] 底部导航：星图 / 读数 / ＋记一笔；读数打开现有左栏 DOM 的底部账笺。
+- [x] 移动端图谱边界重算：顶栏高度、底部星轨和底部导航都参与，不再给隐藏面板留 300px。
+- [x] 单指拖拽平移；双指 pinch 缩放（复用 CAM/setScale）。
+- [x] 底栏星轨选中月居中；移动端收入标签缩短，避免两颗收入星文字重叠。
+- [x] 记一笔复用现有浮层；390×844 下字段、底部保存按钮可达。
+- [x] `verify:web` 增加移动端断言：底部导航、顶部结余、读数账笺开关、记一笔、图谱尺寸。
+- [x] `npm run build:web` / `npm test` / `verify:web` 通过。
+- [x] 用户确认
+- [x] 合入 `develop`
+
+### M1a 已知边界
+
+- 顶栏在 390px 下会折成 3 行（品牌、账本/维度/今天/记一笔、期间/总额），信息全保留但还不够紧凑；M1b 收成更稳的两行。
+- 右侧粒度轨在移动端隐藏，星图缩放由 pinch 承担；星轨粒度仍可点/拖。
+- 顶部安全区尚未单独处理，M1b 一起补。
+- 本次不迁移数据；只改移动端布局与触控，桌面回归由现有 E2E 覆盖。
+
+## M1b · 移动端顶栏/安全区/浮层收口（完成）
+
+- [x] 移动端隐藏顶栏的重复月总额，顶栏收成两行；月总额已由结余条的“支出”承担，不丢数值。
+- [x] 结余条补上账期（`2026年11月`），避免收掉月总额后失去时间上下文。
+- [x] 顶栏加 `safe-area-inset-top`；底部导航高度/星轨位置吃 `safe-area-inset-bottom`；图谱下边界按导航实际高度重算。
+- [x] 浮层统一 `max-height:calc(100dvh - 24px)` + 滚动，避免小屏记一笔/明细/标签管理被裁掉。
+- [x] 账本下拉限制在视口内。
+- [x] `build:web` / `npm test` / `verify:web`（含 390 移动断言）通过，桌面回归通过。
+- [x] 用户确认
+- [x] 合入 `develop`
+
+### M1b 已知边界
+
+- 移动端不再显示顶栏的“679 天有记录/日均”等长说明，这些在读数账笺里保留。
+- 顶部安全区在无刘海的桌面仿真里为 0，真机需 Android 包 M2 再验。
+- 本次不处理软键盘顶起、横屏和手势返回，留给 M2/M1c。
+
+## M1c · 软键盘视口与横屏回退（完成）
+
+- [x] `visualViewport` 同步 `--vvh` / `--vv-top`；软键盘弹出时，浮层高度跟着可视视口缩。
+- [x] 记一笔账笺在键盘打开时高度 = 可视视口，底部保存区不会被顶到键盘后；字段内部滚动。
+- [x] 横屏短视口（≥761px 宽）回到三栏桌面骨架：面板/右轨恢复，竖屏底栏和 126px 星轨不再硬塞。
+- [x] 横屏顶栏恢复 56px 单行；星轨 110px。
+- [x] `verify:web` 增加两个断言：模拟键盘 390×500 时账笺高度/底边；横屏 844×390 时 panel/nav/图谱。
+- [x] `build:web` / `npm test` / `verify:web` 通过，桌面回归通过。
+- [x] 用户确认
+- [x] 合入 `develop`
+
+### M1c 已知边界
+
+- Android 硬件返回键仍未接；这属于 M2 Capacitor 的 `App.backButton`，不能在纯浏览器里假装完成。
+- 软键盘用 CDP 改可视视口模拟，真实 Gboard/第三方输入法的 offset 还需真机。
+- 横屏只回退到桌面骨架，不另做横屏移动编排；844×390 可读，极窄横屏（<761px）仍走竖屏移动布局。
+
+## M2a/M2b · Android APK 与模拟器链路（完成）
+
+- [x] Capacitor 8.6.2 Android 工程；debug APK 在 GitHub Actions 构建成功。
+- [x] Android Emulator（API 35 / Pixel 6）安装 APK，通过 WebView CDP 驱动真实 DOM。
+- [x] 首次 gate（Android 只显示浏览器存储）；进入移动壳；读数账笺；记一笔 ¥12.34。
+- [x] 系统旋转横屏；force-stop 后重开，12.34 恢复且不再回 gate。
+- [x] 修复浏览器存储模式未持久化的问题（`orbit.storage.mode`）。
+- [x] 截图 artifact：android-main / android-after-add / android-landscape / android-relaunch。
+- [x] 文档：`docs/ui-redesign/M2.md`。
+- [x] 用户确认
+- [x] 合入 `develop`
+
+### M2 已知边界
+
+- 仅 debug APK；没有 release keystore/签名，不发版。
+- 未接 Android 硬件返回键/手势返回。
+- 未在真机验刘海、输入法、厂商 WebView；模拟器不能替代真机。
+- 本地无 JDK/Android SDK/KVM；当前以 CI 的 APK + emulator run 为准。
+
+## M2c · Android 硬件返回键（完成）
+
+- [x] `MainActivity.onBackPressed()` 先调用网页 `window.__orbitBack()`：有浮层时只关最上层，根视图才退出。
+- [x] 返回顺序：命名/记一笔/明细/标签/详情/移动读数账笺/账本菜单/下钻，最后才退出。
+- [x] Android smoke 增加两条断言：返回键关读数账笺、关记一笔账笺，进程仍在。
+- [x] `build:web` / `npm test` / `verify:web` / Android Emulator E2E 通过。
+- [x] 合入 `develop`。
+
+### M2c 仍待
+
+- release keystore 与签名 APK/AAB（不向用户索取 keystore 内容；用 CI secrets）。
+- 真机刘海/输入法/厂商 WebView/性能抽测。
+- APK 品牌图标/启动图。
+
+## M2c.1 · Android 品牌图标与 release 签名位（完成）
+
+- [x] B 方向图标：石墨底、黄铜轨道、象牙主星、朱砂/石绿伴星；替换 legacy/round/adaptive foreground。
+- [x] 深色启动图替换 Capacitor 默认 splash。
+- [x] 生成脚本 `mobile/tools/make-branding.py`，图标/启动图可复现。
+- [x] `build.gradle` release 签名只读 `ORBIT_KEYSTORE_*` 环境变量；无 secrets 时保持 unsigned，不伪造。
+- [x] `android-release.yml` 用 GitHub secrets 生成签名 AAB；未配置 secrets 时明确失败。
+- [x] debug APK + Android Emulator E2E 仍通过（run 43494195215）。
+- [x] `CI` 通过（run 43494181766）。
+- [x] 文档：`mobile/RELEASE.md`、`docs/ui-redesign/M2.md`。
+- [ ] 真实 keystore secrets（需要你配置 GitHub Actions secrets）
+- [ ] 真机刘海/输入法/性能抽测
+
+### M2c.1 边界
+
+- release 签名构建未在无 secrets 环境实际执行；不能把 debug 包当发布包。
+- 真机与厂商 WebView 仍未验。
+
+## B1 · 桌面/网页图标统一（完成）
+
+- [x] `assets/icon.svg` 换成 B 方向图形：石墨圆角底、黄铜轨道、象牙八芒主星、朱砂/石绿伴星。
+- [x] 重新生成 `assets/icon.png`（512）和 Windows `assets/icon.ico`（16–256）。
+- [x] `package.json` Windows 构建改用 `assets/icon.ico`；Linux 继续用 `assets/icon.png`。
+- [x] 顶栏 `web/logo.svg`、浏览器 favicon 同步为同一图形。
+- [x] `npm run build:web` 通过；桌面 UI 代码未改。
+- [x] 合入 `develop`。
+
+## F1 · Android 文件入口与星轨粒度修复（完成）
+
+- [x] Android WebView/APK 强制隐藏“真实文件”入口；不再显示点了没反应的目录选择。
+- [x] `showDirectoryPicker`/`requestPermission` 先于 busy/DOM 修改调用，避免丢失用户手势；桌面 Chrome 的文件选择流程更稳。
+- [x] 移动端星轨头部新增「日 / 月 / 年 / 全部」四档；右轨隐藏后不再固定在月节点。
+- [x] `syncRail` 同步移动端档位按钮 active 状态。
+- [x] Web E2E 新增日→年→月切换断言；Android smoke 新增同样断言。
+- [x] `CI` / Android Emulator E2E 通过。
+- [x] 合入 `develop`。
+
+## M3a · Android 备份导出/文件导入（完成）
+
+- [x] Android 原生桥 `OrbitAndroid.shareBackup`：导出 JSON 走系统分享面板，可存到文件/网盘。
+- [x] `OrbitAndroid.pickBackup`：系统文件选择器读 JSON，回调网页导入为**新账本**。
+- [x] Web/桌面保留原 Blob 下载、`<input type=file>` 导入，行为不变。
+- [x] Android smoke 断言原生桥已挂载；APK/WebView E2E 通过。
+- [x] `CI` 通过；合入 `develop`。
+- [ ] 真机实际点一次分享面板/文件选择（模拟器无法自动点系统 UI）
+- [ ] 自动备份/恢复与 release 签名仍待
+
+### M3a 边界
+
+- 原生分享/文件选择是系统 UI，当前自动化只验证桥存在，不能断言用户最终存到哪个目录。
+- 导入仍是“新账本”，不覆盖/不合并；与现有导出语义一致。
+- 备份文件格式不变，桌面/网页/Android 互通。
+
+## U1 · 记一笔日历/金额聚焦（完成）
+
+- [x] 日期改为可见月历：上月/下月/今天、周一开头、今日/选中高亮，点击日期直接回填。
+- [x] 原 `input[type=date]` 保留为隐藏值载体，导入/编辑/自动化仍可用。
+- [x] 金额不再默认 88；打开记一笔时清空并自动聚焦金额输入，手机直接弹数字键盘。
+- [x] Web E2E：金额为空、焦点在 `mAmount`、日历可开、点日期回填。
+- [x] Android smoke：金额为空、日历可选、日期回填。
+- [x] `CI` / Android Emulator E2E 通过，合入 `develop`。
+
+## T1 · 全局关闭 toast 通知（完成）
+
+- [x] `toast()` 改为无 UI 副作用，仅写 `console.debug`；下钻、切年月日、保存、建 tag 等不再弹通知。
+- [x] `#toast` 强制 `display:none`，安卓/电脑/网页共用同一份行为。
+- [x] Android 原生备份失败提示改为 `Log.e`，不再弹系统 Toast。
+- [x] E2E 断言通知层 hidden 且 display=none；Android APK/WebView E2E 通过。
+- [x] `CI` 通过，合入 `develop`。
+
+### T1 取舍
+
+- 错误/校验也一起静默；需要诊断时看控制台/Logcat。用户明确要求所有通知关闭。
+- Toast 层 DOM 保留但永不显示，便于后续若恢复通知只改一处。
+
+## M3b · Android SAF 真实目录存储（待真机确认）
+
+- [x] Gate 恢复“存成真实文件”：Android 原生 SAF `ACTION_OPEN_DOCUMENT_TREE`，不伪造目录选择。
+- [x] `StorageBridge` 持久化 tree URI；读取/写入所选目录里的 `orbit.db`。
+- [x] `native-storage.js` 与浏览器 `storage.js` 同接口（read/write/flush/describe），启动自动复用已授权目录。
+- [x] 无目录时仍可选“存在浏览器里”；Android 不再显示点了没反应的入口。
+- [x] `documentfile` 依赖；Debug APK/WebView E2E 编译通过。
+- [ ] 真机/模拟器实际选目录、系统授权、重启复用（系统 UI 自动化目前未覆盖）
+- [ ] 用户确认
+- [ ] 合入 `develop`
+
+### M3b 边界
+
+- Android 用 SAF，不申请全盘存储权限；第一次会出现系统“选择文件夹/允许访问”面板。
+- 所选目录里的 `orbit.db` 是真实文件；切换存储方式仍不自动迁移。
+- 系统文件选择器 UI 未纳入 CI 自动点击，CI 只验证入口/原生桥存在。
+
 ## 合入记录
 
 | 日期 | 界面 | 分支 | commit | 确认 | 备注 |
@@ -282,7 +537,22 @@
 | 2026-11-08 | 阶段 2.7 星图 | `ui/graph` | 3f25aae | 已确认 | 石墨星图；逻辑未动 |
 | 2026-11-08 | 阶段 2.8 菜单/标签 | `ui/menus` | 2e431a3 | 已确认 | 仪器菜单与登记板 |
 | 2026-11-08 | 阶段 2.9 明细/详情/取色 | `ui/details` | 6460367 | 已确认 | 三块登记板 |
-| 2026-11-08 | 阶段 2.10 全局收尾 | `ui/polish` | 本次合并 | 已确认 | 清理旧玻璃/光斑；README 截图更新 |
+| 2026-11-08 | 阶段 2.10 全局收尾 | `ui/polish` | 4706cdf | 已确认 | 清理旧玻璃/光斑；README 截图更新 |
+| 2026-11-12 | 阶段 2.11 可调栏 | `ui/resizable` | e41beac | 已确认 | 三栏拖拽/左栏收起；星轨节点不变形 |
+| 2026-11-13 | G1 首次存储页 | `feat/webapp-gate` | 8f9c32b | 已确认 | B 视觉；移动端单选项；目录重授权 |
+| 2026-11-13 | M0 移动端原型 | `feat/mobile-m0` | 285a9ae | 已确认 | 390/412 布局；账笺与触控原型 |
+| 2026-11-13 | M1a 移动端生产骨架 | `feat/mobile-m1` | fc8a931 | 已确认 | 760 断点；结余/底部导航/读数账笺/pinch |
+| 2026-11-14 | M1b 顶栏/安全区/浮层 | `feat/mobile-m1b` | 6f0c800 | 已确认 | 两行顶栏；账期；安全区；浮层滚动 |
+| 2026-11-14 | M1c 键盘/横屏 | `feat/mobile-m1c` | 29c39eb | 已确认 | visualViewport；横屏三栏回退 |
+| 2026-11-14 | M2a/b Android | `feat/mobile-m2-android` | b035e22 | 已确认 | debug APK；API 35 模拟器；持久化 |
+| 2026-11-14 | M2c Android 返回键 | `feat/mobile-m2c` | b60d0fa | 已确认 | 先关浮层再退出 |
+| 2026-11-14 | M2c.1 图标/启动图/签名位 | `feat/mobile-branding` | d169009 | 已确认 | B 图标；release secrets 位 |
+| 2026-11-14 | B1 桌面/网页图标 | `feat/desktop-icon` | 0316fcd | 已确认 | Electron PNG/ICO；顶栏/favicon |
+| 2026-11-14 | F1 文件入口/粒度 | `fix/android-file-timeline` | 72e0bf8 | 已确认 | Android 隐藏文件卡；移动日/月/年/全部 |
+| 2026-11-14 | M3a Android 备份 | `feat/m3-android-backup` | 3a750e7 | 已确认 | 原生分享导出；文件选择导入 |
+| 2026-11-14 | U1 日历/金额聚焦 | `feat/entry-calendar` | b866a73 | 已确认 | 月历选日；金额空焦 |
+| 2026-11-14 | T1 关闭 toast | `feat/disable-toasts` | 3530dc1 | 已确认 | 全平台无通知层 |
+| 2026-11-14 | M3b SAF 目录 | `feat/android-saf-storage` | 本次合并 | 待真机确认 | 系统目录选择；真实 orbit.db |
 
 ## 备注
 

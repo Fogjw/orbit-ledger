@@ -1,0 +1,7 @@
+<?xml version='1.0' encoding='utf-8'?>
+<resources>
+    <string name="app_name">Orbit 星账</string>
+    <string name="title_activity_main">Orbit 星账</string>
+    <string name="package_name">com.fogjw.orbit.ledger</string>
+    <string name="custom_url_scheme">com.fogjw.orbit.ledger</string>
+</resources>

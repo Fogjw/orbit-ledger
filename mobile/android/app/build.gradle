@@ -1,0 +1,73 @@
+apply plugin: 'com.android.application'
+
+// release 签名只从 CI secrets/环境变量读取；本地无 secrets 时保持 unsigned，不伪造签名。
+def orbitKeystore = System.getenv('ORBIT_KEYSTORE_FILE')
+def orbitStorePassword = System.getenv('ORBIT_KEYSTORE_PASSWORD')
+def orbitKeyAlias = System.getenv('ORBIT_KEY_ALIAS')
+def orbitKeyPassword = System.getenv('ORBIT_KEY_PASSWORD')
+def orbitHasSigning = orbitKeystore && orbitStorePassword && orbitKeyAlias && orbitKeyPassword
+
+android {
+    namespace = "com.fogjw.orbit.ledger"
+    compileSdk = rootProject.ext.compileSdkVersion
+    defaultConfig {
+        applicationId "com.fogjw.orbit.ledger"
+        minSdkVersion rootProject.ext.minSdkVersion
+        targetSdkVersion rootProject.ext.targetSdkVersion
+        versionCode 10201
+        versionName "1.2.1"
+        testInstrumentationRunner "androidx.test.runner.AndroidJUnitRunner"
+        aaptOptions {
+             // Files and dirs to omit from the packaged assets dir, modified to accommodate modern web apps.
+             // Default: https://android.googlesource.com/platform/frameworks/base/+/282e181b58cf72b6ca770dc7ca5f91f135444502/tools/aapt/AaptAssets.cpp#61
+            ignoreAssetsPattern = '!.svn:!.git:!.ds_store:!*.scc:.*:!CVS:!thumbs.db:!picasa.ini:!*~'
+        }
+    }
+    signingConfigs {
+        if (orbitHasSigning) {
+            release {
+                storeFile file(orbitKeystore)
+                storePassword orbitStorePassword
+                keyAlias orbitKeyAlias
+                keyPassword orbitKeyPassword
+            }
+        }
+    }
+    buildTypes {
+        release {
+            if (orbitHasSigning) signingConfig signingConfigs.release
+            minifyEnabled false
+            proguardFiles getDefaultProguardFile('proguard-android.txt'), 'proguard-rules.pro'
+        }
+    }
+}
+
+repositories {
+    flatDir{
+        dirs '../capacitor-cordova-android-plugins/src/main/libs', 'libs'
+    }
+}
+
+dependencies {
+    implementation fileTree(include: ['*.jar'], dir: 'libs')
+    implementation "androidx.appcompat:appcompat:$androidxAppCompatVersion"
+    implementation "androidx.coordinatorlayout:coordinatorlayout:$androidxCoordinatorLayoutVersion"
+    implementation "androidx.core:core-splashscreen:$coreSplashScreenVersion"
+    implementation project(':capacitor-android')
+    implementation "androidx.documentfile:documentfile:1.0.1"
+    testImplementation "junit:junit:$junitVersion"
+    androidTestImplementation "androidx.test.ext:junit:$androidxJunitVersion"
+    androidTestImplementation "androidx.test.espresso:espresso-core:$androidxEspressoCoreVersion"
+    implementation project(':capacitor-cordova-android-plugins')
+}
+
+apply from: 'capacitor.build.gradle'
+
+try {
+    def servicesJSON = file('google-services.json')
+    if (servicesJSON.text) {
+        apply plugin: 'com.google.gms.google-services'
+    }
+} catch(Exception e) {
+    logger.info("google-services.json not found, google-services plugin not applied. Push Notifications won't work")
+}

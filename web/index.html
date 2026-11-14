@@ -43,10 +43,21 @@
     </div>
 
     <button class="btn primary" id="btnAdd">＋ 记一笔</button>
+    <!-- 移动端顶部结余条：桌面的左栏读数在这里露出摘要 -->
+    <section class="mobile-balance" id="mobileBalance" aria-label="本月结余">
+      <button id="mobileBalanceBtn" type="button">
+        <span class="mb-main"><small>结余</small><b id="mBalNum">¥0</b></span>
+        <span class="mb-sub" id="mBalSub">支出 ¥0 · 收入 ¥0</span>
+        <span class="mb-more">读数 ›</span>
+      </button>
+    </section>
   </header>
 
   <!-- 左侧洞察面板 -->
   <aside class="panel" id="insightPanel">
+    <button class="panel-collapse" id="panelCollapse" type="button" title="收起左栏" aria-label="收起左栏" aria-expanded="true">‹</button>
+    <button class="panel-sheet-close" id="panelSheetClose" type="button" aria-label="关闭读数">×</button>
+    <div class="panel-resize" id="panelResize" title="拖动调整左栏宽度"></div>
     <div class="p-title"><span id="pTitle">本月星图</span> <span class="live-dot"></span></div>
     <div class="p-total">
       <div class="p-balance"><span class="p-key">结余</span><span class="p-num" id="pNum">¥0</span></div>
@@ -62,6 +73,7 @@
 
   <!-- 右侧粒度轨 -->
   <div class="rail-wrap" id="railWrap" title="星轨变焦：上=日 下=全部（可拖动，滚轮亦可）">
+    <div class="rail-resize" id="railResize" title="拖动调整右轨宽度"></div>
     <div class="rail-scale" id="railScale">
       <span class="rail-level" style="top:2%">日</span>
       <span class="rail-level" style="top:33.33%">月</span>
@@ -73,10 +85,25 @@
     </div>
   </div>
 
+  <!-- 移动端：底部导航与读数遮罩 -->
+  <nav class="mobile-nav" aria-label="移动端主导航">
+    <button class="on" type="button">星图</button>
+    <button id="mobileReadout" type="button">读数</button>
+    <button class="add" id="mobileAdd" type="button">＋ 记一笔</button>
+  </nav>
+  <div class="mobile-scrim" id="mobileScrim" hidden></div>
+
   <!-- 底部星轨 -->
   <footer class="timeline">
+    <div class="timeline-resize" id="timelineResize" title="拖动调整星轨高度"></div>
     <div class="tl-head">
       <span class="tl-title">星轨 · 时间</span>
+      <div class="tl-levels" id="tlLevels" role="group" aria-label="星轨粒度">
+        <button type="button" data-z="0">日</button>
+        <button type="button" data-z="1" class="on">月</button>
+        <button type="button" data-z="2">年</button>
+        <button type="button" data-z="3">全部</button>
+      </div>
       <span class="tl-tip" id="tlTip">点击星星切换月份</span>
     </div>
     <canvas id="orbit"></canvas>
@@ -102,7 +129,7 @@
         <div class="m-tabs"><button class="m-tab active">支出</button><button class="m-tab">收入</button></div>
         <button class="m-close" id="modalClose">✕</button>
       </div>
-      <div class="m-amount"><span>¥</span><input id="mAmount" value="88" inputmode="decimal" /></div>
+      <div class="m-amount"><span>¥</span><input id="mAmount" inputmode="decimal" placeholder="0.00" /></div>
       <div class="m-label">品类 <button class="chip-add" id="btnAddCat" title="新建品类 tag">＋ 新建</button></div>
       <div class="m-chips" id="mCats"></div>
       <!-- 副 tag（细分）：选中主 tag 后出现，可多选；切换主 tag 会清空 -->
@@ -123,8 +150,23 @@
         <div class="m-chips" id="mCtxSubChips"></div>
       </div>
       <div class="m-row">
-        <label>日期 <input type="date" value="2026-06-14" class="m-input" /></label>
+        <label>日期
+          <button type="button" class="m-input m-date-btn" id="mDateBtn" aria-expanded="false">
+            <span id="mDateLabel">2026-06-14</span><span aria-hidden="true">▦</span>
+          </button>
+          <input type="date" id="mDate" value="2026-06-14" class="m-date-native" tabindex="-1" aria-hidden="true" />
+        </label>
         <label>账本 <select class="m-input"><option>生活费</option><option>私人</option></select></label>
+      </div>
+      <div class="m-calendar" id="mCalendar" hidden>
+        <div class="m-cal-head">
+          <button type="button" id="mCalPrev" aria-label="上个月">‹</button>
+          <strong id="mCalMonth"></strong>
+          <button type="button" id="mCalNext" aria-label="下个月">›</button>
+          <button type="button" id="mCalToday" class="m-cal-today">今天</button>
+        </div>
+        <div class="m-cal-week" aria-hidden="true"><span>一</span><span>二</span><span>三</span><span>四</span><span>五</span><span>六</span><span>日</span></div>
+        <div class="m-cal-grid" id="mCalGrid"></div>
       </div>
       <textarea class="m-input m-remark" id="mNote" rows="3" placeholder="备注…（可写多行；Ctrl/Cmd+Enter 保存）"></textarea>
       <div class="m-foot">
