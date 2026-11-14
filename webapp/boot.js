@@ -6,6 +6,7 @@
 import { createLocalApi } from './api-local.js';
 import { createStorage, isFileAccessSupported, pickDirectory, ensurePermission, rememberedDirectory, hasDirectoryPermission } from './storage.js';
 import { showGate } from './gate.js';
+import { createNativeStorage } from './native-storage.js';
 
 const UI_SCRIPTS = ['data.js', 'timeline-nav.js', 'app.js'];   // 顺序不能反：app.js 依赖前两个
 const WASM_DIR = new URL('./sqlite-wasm/', import.meta.url).href;
@@ -17,17 +18,6 @@ function savedStorageMode() {
 }
 function rememberStorageMode(mode) {
   try { localStorage.setItem(STORAGE_MODE_KEY, mode); } catch {}
-}
-
-/** Android WebView/APK 没有可用的目录选择器；即使用户代理里带了 showDirectoryPicker，
-    也不能展示一个点了没反应的“真实文件”入口。 */
-function isNativeAndroidShell() {
-  const cap = window.Capacitor;
-  return Boolean(
-    cap?.isNativePlatform?.()
-    || cap?.getPlatform?.() === 'android'
-    || /\bwv\b/.test(navigator.userAgent),
-  );
 }
 
 /** 自己把 wasm 取回来交给 sql.js，不让它猜路径（原因见 sqlite-browser.js 的注释） */
@@ -64,7 +54,8 @@ async function mount({ bytes, storage }) {
 }
 
 async function main() {
-  const canUseFile = isFileAccessSupported() && !isNativeAndroidShell();
+  const nativeStorage = createNativeStorage();
+  const canUseFile = Boolean(nativeStorage) || isFileAccessSupported();
   const remembered = await rememberedDirectory().catch(() => null);
   let gate = null;
 
@@ -101,6 +92,20 @@ async function main() {
 
   async function chooseDirectory() {
     if (!canUseFile) return;
+    if (nativeStorage) {
+      try {
+        // SAF 目录选择必须由用户手势触发；Android 用 tree URI，不需要传统存储权限。
+        const picked = await nativeStorage.pickDirectory();
+        if (!picked) { gate?.setBusy(false); return; }
+        gate?.setBusy(true);
+        rememberStorageMode('file');
+        await proceed(nativeStorage, gate);
+      } catch (err) {
+        gate?.setError(`选择目录失败：${err.message}`);
+        gate?.setBusy(false);
+      }
+      return;
+    }
     try {
       // 必须先调 showDirectoryPicker（用户手势），不要先禁用按钮/改 DOM；
       // 某些浏览器会因此丢失 transient activation，表现就是“点了没反应”。
@@ -150,7 +155,14 @@ async function main() {
     return;
   }
 
-  // 已记住且权限仍有效：不打扰用户，直接复用原目录。
+  // Android SAF 目录（tree URI + 持久授权）由原生层记住。
+  if (nativeStorage?.hasDirectory()) {
+    rememberStorageMode('file');
+    await proceed(nativeStorage, null);
+    return;
+  }
+
+  // 浏览器目录句柄：已记住且权限仍有效，直接复用。
   if (canUseFile && remembered && await hasDirectoryPermission(remembered)) {
     rememberStorageMode('file');
     await proceed(createStorage({ mode: 'file', dir: remembered }), null);
