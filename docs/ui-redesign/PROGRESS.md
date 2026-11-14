@@ -38,7 +38,9 @@
 | M3a | Android 备份导出/文件导入 | `feat/m3-android-backup` | 完成，合入 develop | 已确认 |
 | U1 | 记一笔日历选择 + 金额聚焦 | `feat/entry-calendar` | 完成，合入 develop | 已确认 |
 | T1 | 全局关闭 toast 通知 | `feat/disable-toasts` | 完成，合入 develop | 已确认 |
-| M3b | Android SAF 真实目录存储 | `feat/android-saf-storage` | 实现完成，待真机确认 | 待确认 |
+| M3b | Android SAF 真实目录存储 | `feat/android-saf-storage` | 完成，合入 develop | 已确认 |
+| D1 | 写操作立即落盘 | `fix/android-durability` | 完成，合入 develop | 已确认 |
+| R1 | Android 签名 CD | `chore/release-1.2.2` | 完成，1.2.2 已发布 | 已确认 |
 
 ## 阶段 0 交付
 
@@ -522,6 +524,22 @@
 - 所选目录里的 `orbit.db` 是真实文件；切换存储方式仍不自动迁移。
 - 系统文件选择器 UI 未纳入 CI 自动点击，CI 只验证入口/原生桥存在。
 
+## D1 · 写操作立即落盘（完成）
+
+- [x] `api-local` 的写操作等待 `persist` 完成才 resolve；不再“API 返回后异步才写盘”。
+- [x] webapp `persist` 串行等待 `storage.write` + `storage.flush`。
+- [x] pagehide/beforeunload 之外增加 `visibilitychange=hidden` 刷盘，覆盖 Android 退后台。
+- [x] 单测：persist promise 未完成时写 API 不得提前 resolve。
+- [x] Android smoke 仍通过 force-stop 后恢复 12.34。
+
+## R1 · Android 签名 CD（完成）
+
+- [x] `android-release.yml` 支持 `workflow_run`：Release 成功后自动构建签名 APK/AAB 并挂到同一 tag。
+- [x] release 资产：`Orbit-Android-1.2.2.apk` / `.aab` / `.sha256`。
+- [x] 1.2.2 桌面 + 网页 + Android 全部发布，Pages 200。
+- [x] 签名材料 gitignore；一键 secrets 脚本。
+- [ ] 真机安装/SAF/输入法抽测
+
 ## 合入记录
 
 | 日期 | 界面 | 分支 | commit | 确认 | 备注 |
@@ -552,6 +570,7 @@
 | 2026-11-14 | M3a Android 备份 | `feat/m3-android-backup` | 3a750e7 | 已确认 | 原生分享导出；文件选择导入 |
 | 2026-11-14 | U1 日历/金额聚焦 | `feat/entry-calendar` | b866a73 | 已确认 | 月历选日；金额空焦 |
 | 2026-11-14 | T1 关闭 toast | `feat/disable-toasts` | 3530dc1 | 已确认 | 全平台无通知层 |
+| 2026-11-15 | 1.2.2 发布 | `release: 1.2.2` | a88fa05 | 已确认 | 桌面 + 网页 + Android CD |
 | 2026-11-14 | M3b SAF 目录 | `feat/android-saf-storage` | 本次合并 | 待真机确认 | 系统目录选择；真实 orbit.db |
 
 ## 备注
