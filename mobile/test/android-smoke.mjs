@@ -139,6 +139,14 @@ try {
   if (mobile.nav !== 'flex' || mobile.panel !== 'none') {
     throw new Error(`Android 移动壳异常：${JSON.stringify(mobile)}`);
   }
+  const bridge = await page.evaluate(`({
+    share: typeof window.OrbitAndroid?.shareBackup,
+    pick: typeof window.OrbitAndroid?.pickBackup,
+  })`);
+  if (bridge.share !== 'function' || bridge.pick !== 'function') {
+    throw new Error(`Android 备份桥未挂载：${JSON.stringify(bridge)}`);
+  }
+  console.log('[android] backup bridge ready');
   console.log('[android] page:', await page.evaluate(`JSON.stringify({href: location.href, visibility: document.visibilityState, gate: Boolean(document.querySelector('#orbitGate')), api: typeof window.OrbitAPI})`));
   await sleep(1200);
   screenshot('android-main');
