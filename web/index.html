@@ -129,7 +129,7 @@
         <div class="m-tabs"><button class="m-tab active">支出</button><button class="m-tab">收入</button></div>
         <button class="m-close" id="modalClose">✕</button>
       </div>
-      <div class="m-amount"><span>¥</span><input id="mAmount" value="88" inputmode="decimal" /></div>
+      <div class="m-amount"><span>¥</span><input id="mAmount" inputmode="decimal" placeholder="0.00" /></div>
       <div class="m-label">品类 <button class="chip-add" id="btnAddCat" title="新建品类 tag">＋ 新建</button></div>
       <div class="m-chips" id="mCats"></div>
       <!-- 副 tag（细分）：选中主 tag 后出现，可多选；切换主 tag 会清空 -->
@@ -150,8 +150,23 @@
         <div class="m-chips" id="mCtxSubChips"></div>
       </div>
       <div class="m-row">
-        <label>日期 <input type="date" value="2026-06-14" class="m-input" /></label>
+        <label>日期
+          <button type="button" class="m-input m-date-btn" id="mDateBtn" aria-expanded="false">
+            <span id="mDateLabel">2026-06-14</span><span aria-hidden="true">▦</span>
+          </button>
+          <input type="date" id="mDate" value="2026-06-14" class="m-date-native" tabindex="-1" aria-hidden="true" />
+        </label>
         <label>账本 <select class="m-input"><option>生活费</option><option>私人</option></select></label>
+      </div>
+      <div class="m-calendar" id="mCalendar" hidden>
+        <div class="m-cal-head">
+          <button type="button" id="mCalPrev" aria-label="上个月">‹</button>
+          <strong id="mCalMonth"></strong>
+          <button type="button" id="mCalNext" aria-label="下个月">›</button>
+          <button type="button" id="mCalToday" class="m-cal-today">今天</button>
+        </div>
+        <div class="m-cal-week" aria-hidden="true"><span>一</span><span>二</span><span>三</span><span>四</span><span>五</span><span>六</span><span>日</span></div>
+        <div class="m-cal-grid" id="mCalGrid"></div>
       </div>
       <textarea class="m-input m-remark" id="mNote" rows="3" placeholder="备注…（可写多行；Ctrl/Cmd+Enter 保存）"></textarea>
       <div class="m-foot">

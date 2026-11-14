@@ -36,6 +36,7 @@
 | B1 | 桌面/网页图标统一 | `feat/desktop-icon` | 完成，合入 develop | 已确认 |
 | F1 | Android 文件入口 + 移动星轨粒度 | `fix/android-file-timeline` | 完成，合入 develop | 已确认 |
 | M3a | Android 备份导出/文件导入 | `feat/m3-android-backup` | 完成，合入 develop | 已确认 |
+| U1 | 记一笔日历选择 + 金额聚焦 | `feat/entry-calendar` | 完成，合入 develop | 已确认 |
 
 ## 阶段 0 交付
 
@@ -480,6 +481,15 @@
 - 导入仍是“新账本”，不覆盖/不合并；与现有导出语义一致。
 - 备份文件格式不变，桌面/网页/Android 互通。
 
+## U1 · 记一笔日历/金额聚焦（完成）
+
+- [x] 日期改为可见月历：上月/下月/今天、周一开头、今日/选中高亮，点击日期直接回填。
+- [x] 原 `input[type=date]` 保留为隐藏值载体，导入/编辑/自动化仍可用。
+- [x] 金额不再默认 88；打开记一笔时清空并自动聚焦金额输入，手机直接弹数字键盘。
+- [x] Web E2E：金额为空、焦点在 `mAmount`、日历可开、点日期回填。
+- [x] Android smoke：金额为空、日历可选、日期回填。
+- [x] `CI` / Android Emulator E2E 通过，合入 `develop`。
+
 ## 合入记录
 
 | 日期 | 界面 | 分支 | commit | 确认 | 备注 |
@@ -507,7 +517,8 @@
 | 2026-11-14 | M2c.1 图标/启动图/签名位 | `feat/mobile-branding` | d169009 | 已确认 | B 图标；release secrets 位 |
 | 2026-11-14 | B1 桌面/网页图标 | `feat/desktop-icon` | 0316fcd | 已确认 | Electron PNG/ICO；顶栏/favicon |
 | 2026-11-14 | F1 文件入口/粒度 | `fix/android-file-timeline` | 72e0bf8 | 已确认 | Android 隐藏文件卡；移动日/月/年/全部 |
-| 2026-11-14 | M3a Android 备份 | `feat/m3-android-backup` | 本次合并 | 已确认 | 原生分享导出；文件选择导入 |
+| 2026-11-14 | M3a Android 备份 | `feat/m3-android-backup` | 3a750e7 | 已确认 | 原生分享导出；文件选择导入 |
+| 2026-11-14 | U1 日历/金额聚焦 | `feat/entry-calendar` | 本次合并 | 已确认 | 月历选日；金额空焦 |
 
 ## 备注
 

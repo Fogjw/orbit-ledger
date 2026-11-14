@@ -2152,6 +2152,85 @@ for(const b of document.querySelectorAll('#tlLevels [data-z]')){
 
 /* 记账浮层（真实提交：POST → 重拉 → 图谱刷新） */
 const mask=$('#modalMask');
+const mDate=$('#mDate'),mDateBtn=$('#mDateBtn'),mDateLabel=$('#mDateLabel'),
+      mCalendar=$('#mCalendar'),mCalMonth=$('#mCalMonth'),mCalGrid=$('#mCalGrid');
+let calMonth=null;
+
+function parseISODate(v){
+  const m=/^(\d{4})-(\d{2})-(\d{2})$/.exec(v||'');
+  if(!m)return null;
+  const y=Number(m[1]),mo=Number(m[2]),d=Number(m[3]);
+  const dt=new Date(y,mo-1,d);
+  return dt.getFullYear()===y&&dt.getMonth()===mo-1&&dt.getDate()===d?{y,mo,d}:null;
+}
+function syncDateLabel(){ if(mDateLabel)mDateLabel.textContent=mDate?.value||''; }
+function setModalDate(value){
+  if(!mDate)return;
+  mDate.value=value;
+  syncDateLabel();
+  const p=parseISODate(value);
+  if(p)calMonth={y:p.y,mo:p.mo};
+}
+function closeCalendar(){
+  if(!mCalendar)return;
+  mCalendar.hidden=true;
+  mDateBtn?.setAttribute('aria-expanded','false');
+}
+function renderCalendar(){
+  if(!mCalendar||!mCalGrid)return;
+  const p=parseISODate(mDate?.value)||parseISODate(todayISO());
+  const y=calMonth?.y??p.y,mo=calMonth?.mo??p.mo;
+  const first=new Date(y,mo-1,1);
+  const start=(first.getDay()+6)%7;       // 周一开头
+  const days=new Date(y,mo,0).getDate();
+  const selected=mDate?.value||'';
+  const today=todayISO();
+  if(mCalMonth)mCalMonth.textContent=`${y}年${mo}月`;
+  const cells=[];
+  for(let i=0;i<start;i++)cells.push('<span></span>');
+  for(let d=1;d<=days;d++){
+    const ds=`${y}-${String(mo).padStart(2,'0')}-${String(d).padStart(2,'0')}`;
+    const cls=[ds===today?'today':'',ds===selected?'sel':''].filter(Boolean).join(' ');
+    cells.push(`<button type="button" data-date="${ds}" class="${cls}" aria-pressed="${ds===selected}">${d}</button>`);
+  }
+  mCalGrid.innerHTML=cells.join('');
+  mCalGrid.querySelectorAll('button[data-date]').forEach(b=>b.addEventListener('click',()=>{
+    setModalDate(b.dataset.date);
+    closeCalendar();
+    mDateBtn?.focus();
+  }));
+}
+function openCalendar(){
+  const p=parseISODate(mDate?.value)||parseISODate(todayISO());
+  calMonth={y:p.y,mo:p.mo};
+  renderCalendar();
+  mCalendar.hidden=false;
+  mDateBtn.setAttribute('aria-expanded','true');
+}
+function shiftCalendar(delta){
+  const p=parseISODate(mDate?.value)||parseISODate(todayISO());
+  const base=calMonth||{y:p.y,mo:p.mo};
+  const d=new Date(base.y,base.mo-1+delta,1);
+  calMonth={y:d.getFullYear(),mo:d.getMonth()+1};
+  renderCalendar();
+}
+if(mDateBtn){
+  mDateBtn.addEventListener('click',()=>{
+    if(mCalendar.hidden)openCalendar();else closeCalendar();
+  });
+  $('#mCalPrev').addEventListener('click',()=>shiftCalendar(-1));
+  $('#mCalNext').addEventListener('click',()=>shiftCalendar(1));
+  $('#mCalToday').addEventListener('click',()=>{
+    setModalDate(todayISO());renderCalendar();closeCalendar();mDateBtn.focus();
+  });
+  mDate?.addEventListener('input',syncDateLabel);
+  mDate?.addEventListener('change',syncDateLabel);
+  document.addEventListener('click',e=>{
+    if(!mCalendar||mCalendar.hidden)return;
+    if(mCalendar.contains(e.target)||mDateBtn.contains(e.target))return;
+    closeCalendar();
+  });
+}
 
 /* ---- 命名浮层（账本/tag 的新建与重命名共用）---- */
 const nameMask=$('#nameMask');
@@ -2433,7 +2512,7 @@ function openExpenseEditor(exp){
   // 金额回填必须精确到分：以前是 toFixed(0)，一笔 ¥12.34 的收入打开编辑器就变成 12，
   // 切一下类型再保存，小数位就被四舍五入吃掉了（用户实测）。moneyText 直接按「分」排版，无浮点毛刺。
   $('#mAmount').value=moneyText(exp.amount_cents,false);
-  const di=document.querySelector('.m-row input[type=date]');if(di)di.value=exp.date;
+  setModalDate(exp.date);closeCalendar();
   const rm=$('#mNote');if(rm)rm.value=exp.note||'';
   // 账本 select 锁定为该笔所属账本（不支持跨账本迁移）
   syncModalLedgerOptions();
@@ -2451,16 +2530,18 @@ $('#btnAdd').onclick=()=>{
   document.querySelectorAll('.m-tab').forEach(x=>x.classList.toggle('active',x.textContent.trim()==='支出'));
   syncModalLedgerOptions();
   const sel=document.querySelector('.m-row select');if(sel)sel.disabled=false;
-  const di=document.querySelector('.m-row input[type=date]');
-  if(di){di.value=todayISO()}
+  setModalDate(todayISO());closeCalendar();
   const rm=$('#mNote');if(rm)rm.value='';
-  $('#mAmount').value='88';
+  $('#mAmount').value='';
   resetModalSel();
   renderModalChips();
+  // 记一笔直接聚焦金额：手机弹出数字键盘，桌面直接输入
+  requestAnimationFrame(()=>$('#mAmount').focus());
 };
-$('#modalClose').onclick=$('#modalCancel').onclick=()=>mask.hidden=true;
-mask.addEventListener('click',e=>{if(e.target===mask)mask.hidden=true});
+$('#modalClose').onclick=$('#modalCancel').onclick=()=>{closeCalendar();mask.hidden=true};
+mask.addEventListener('click',e=>{if(e.target===mask){closeCalendar();mask.hidden=true}});
 $('#modalSave').onclick=async ()=>{
+  closeCalendar();
   const isIncome=document.querySelector('.m-tab.active')?.textContent.trim()==='收入';
   // 金额：元 → 分
   const yuan=parseFloat($('#mAmount').value);

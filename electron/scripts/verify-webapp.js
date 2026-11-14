@@ -856,6 +856,23 @@ async function main() {
   await click('#mobileAdd');
   await wait(700);
   const mobileEntry = await js(`!document.querySelector('#modalMask')?.hidden`);
+  const entryState = JSON.parse(await js(`JSON.stringify({
+    amount: document.querySelector('#mAmount')?.value,
+    focused: document.activeElement?.id || '',
+    calendarHidden: document.querySelector('#mCalendar')?.hidden,
+  })`));
+  await click('#mDateBtn');
+  await wait(250);
+  const calendarOpen = await js(`!document.querySelector('#mCalendar')?.hidden`);
+  const firstDate = await js(`document.querySelector('#mCalGrid button[data-date]')?.dataset.date || ''`);
+  await js(`document.querySelector('#mCalGrid button[data-date]')?.click()`);
+  await wait(250);
+  const pickedDate = await js(`document.querySelector('#mDate')?.value || ''`);
+  const dateLabel = await js(`document.querySelector('#mDateLabel')?.textContent?.trim() || ''`);
+  const dateOk = entryState.amount === '' && entryState.focused === 'mAmount'
+    && calendarOpen && /^\d{4}-\d{2}-\d{2}$/.test(firstDate) && pickedDate === firstDate && dateLabel === firstDate;
+  console.log(`[verify] 记一笔默认/日期：金额空=${entryState.amount === ''} · 聚焦=${entryState.focused || '无'}`
+    + ` · 日历=${calendarOpen ? '开' : '关'} · 选中=${pickedDate || '无'} → ${dateOk ? '✓' : '✗'}`);
   // 模拟软键盘：visualViewport 缩到 500，记一笔账笺必须跟着缩，保存区不能被顶到键盘后
   await mobileDbg.sendCommand('Emulation.setDeviceMetricsOverride', {
     width: 390, height: 500, deviceScaleFactor: 1, mobile: true,
@@ -881,7 +898,7 @@ async function main() {
   await wait(300);
   const mobileOk = mobile.nav === 'flex' && /[1-9]/.test(mobile.balance)
     && mobile.panel === 'none' && sheetOpen && sheetClosed && mobileEntry
-    && mobile.graphWidth > 300 && mobile.graphHeight > 300 && keyboardOk && levelOk;
+    && mobile.graphWidth > 300 && mobile.graphHeight > 300 && keyboardOk && levelOk && dateOk;
 
   mkdirSync(dirname(SHOT_MOBILE), { recursive: true });
   const mobileShot = await mobileDbg.sendCommand('Page.captureScreenshot', { format: 'png', fromSurface: true });

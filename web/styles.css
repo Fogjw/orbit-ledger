@@ -631,3 +631,26 @@ textarea.m-remark{min-height:66px;max-height:30vh;resize:vertical;line-height:1.
   .topbar .month-total{display:flex}
   .month-total{display:flex}
 }
+
+/* 记一笔日期：可见日历，不用系统 date input；隐藏 input 只作为值载体/自动化兼容 */
+.m-row label{position:relative}
+.m-date-native{position:absolute;width:1px;height:1px;opacity:0;pointer-events:none;border:0;padding:0}
+.m-date-btn{display:flex;align-items:center;justify-content:space-between;gap:8px;text-align:left;cursor:pointer;font:600 12.5px var(--font)}
+.m-date-btn span:last-child{color:var(--accent);font-size:14px}
+.m-calendar{margin-top:8px;border:1px solid rgba(176,141,87,.42);background:#0b0f0d;padding:10px;border-radius:0}
+.m-calendar[hidden]{display:none}
+.m-cal-head{display:flex;align-items:center;gap:6px;margin-bottom:8px}
+.m-cal-head strong{flex:1;text-align:center;font:500 12px/1 var(--serif);letter-spacing:.08em;color:var(--text)}
+.m-cal-head button{min-width:30px;height:28px;border:1px solid rgba(223,211,184,.16);background:transparent;color:var(--dim);font:400 15px/1 var(--mono);cursor:pointer;padding:0 6px}
+.m-cal-head button:hover{border-color:var(--accent);color:var(--text)}
+.m-cal-head .m-cal-today{font:400 10px/1 var(--sans);color:var(--accent);letter-spacing:.06em}
+.m-cal-week,.m-cal-grid{display:grid;grid-template-columns:repeat(7,1fr);gap:3px}
+.m-cal-week{margin-bottom:4px;color:var(--dim2);font-size:9px;text-align:center}
+.m-cal-grid button{height:32px;border:1px solid transparent;background:transparent;color:var(--dim);font:400 11px var(--mono);cursor:pointer;padding:0}
+.m-cal-grid button:hover{border-color:rgba(176,141,87,.45);color:var(--text)}
+.m-cal-grid button.today{border-color:rgba(176,141,87,.65);color:var(--accent)}
+.m-cal-grid button.sel{background:var(--accent);border-color:var(--accent);color:#0b0e0c;font-weight:600}
+@media (max-width:760px){
+  .m-cal-grid button{height:36px}
+  .m-cal-head button{height:34px;min-width:36px}
+}
