@@ -88,24 +88,27 @@ function refreshAmounts(){
 }
 function refreshMonths(){
   if(!Data)return;
-  MONTHS=(Data.months||[]).map(m=>({label:m.label,full:m.full,total:m.total,y:m.y,m:m.m,topColor:m.topColor||''}));
+  MONTHS=(Data.months||[]).map(m=>({label:m.label,full:m.full,total:m.total,balance:m.balance||0,y:m.y,m:m.m,topColor:m.topColor||''}));
   const [ty,tm]=todayISO().split('-').map(Number);
   MONTH_TODAY=MONTHS.findIndex(m=>m.y===ty&&m.m===tm);   // 今天没记账 → -1（末尾月上不再冒「今天」）
   // 年档：按年聚合（星轨年视图的数据源）
+  // total 继续表示「这一年有账的总额」，只影响星等；balance 才是节点读数（逐年结余之和）。
   const byY=new Map();
   for(const m of MONTHS){
-    const cur=byY.get(m.y)||{label:m.y+'年',y:m.y,total:0,topColor:''};
+    const cur=byY.get(m.y)||{label:m.y+'年',y:m.y,total:0,balance:0,topColor:''};
     cur.total+=m.total;
+    cur.balance+=m.balance||0;
     if(!cur.topColor&&m.topColor)cur.topColor=m.topColor;
     byY.set(m.y,cur);
   }
-  YEARS=[...byY.values()].sort((a,b)=>a.y-b.y).map(v=>({...v,color:v.topColor||'#9be9ff'}));
+  YEARS=[...byY.values()].sort((a,b)=>a.y-b.y).map(v=>({
+    ...v,balance:Math.round(v.balance*100)/100,color:v.topColor||'#9be9ff'}));
   YEAR_TODAY=YEARS.findIndex(y=>y.y===ty);
 }
 /** 日档：逐日序列（Data.days 由 _loadWindow 填充，取的是全量，星轨日档可拖到任意时间） */
 function refreshDays(){
   if(!Data)return;
-  DAYS=(Data.days||[]).map(d=>({label:d.label,date:d.date,y:d.y,m:d.m,day:d.d,total:d.total,
+  DAYS=(Data.days||[]).map(d=>({label:d.label,date:d.date,y:d.y,m:d.m,day:d.d,total:d.total,balance:d.balance||0,
     topName:d.topName,color:d.topColor||'#9be9ff'}));
   DAY_TODAY=DAYS.findIndex(d=>d.date===todayISO());   // 今天没记账 → -1
 }
@@ -416,12 +419,15 @@ function buildGraph(){
   const X0=gx0(),X1=gx1(),Y0=gy0(),Y1=gy1();
   const P=(nx,ny)=>({x:X0+nx*(X1-X0),y:Y0+ny*(Y1-Y0)});
   if(S.view==='l1'){
-    // 金额降序，沿北斗弧线均匀排布；无支出时显示小星
-    const sorted=[...items].sort((a,b)=>((amts[b.id]||0)-(amts[a.id]||0)));
+    // 主 tag 只画**当前时间窗里有账单**的那些：金额来自当前窗口，别的日/月/年
+    // 有账不算数。否则切到空月时，画面仍会飘着一圈「本期 ¥0」的主 tag。
+    // 金额降序，沿北斗弧线均匀排布；本期没有任何支出时，支出主 tag 为空。
+    const sorted=[...items].filter(c=>(amts[c.id]||0)>0)
+      .sort((a,b)=>((amts[b.id]||0)-(amts[a.id]||0)));
     const n=sorted.length;
     sorted.forEach((c,i)=>{
       const amt=amts[c.id]||0;
-      const R=amt>0?tagR(amt):6;
+      const R=tagR(amt);
       // x 均布，y 正弦起伏；金额最大者靠视觉中心偏上
       let nx,ny;
       if(n===1){nx=.5;ny=.45}
@@ -1091,8 +1097,11 @@ function drawOrbitYear(w,h,t,al){
     }
     oc.save();oc.globalAlpha=al;oc.fillStyle='#e3e9df';oc.font='600 11px "Noto Sans CJK SC","PingFang SC",sans-serif';oc.textAlign='center';
     oc.fillText(y.label+(i===YEAR_TODAY?' · 今':''),x,yy+R+17);
-    oc.font='10px "SFMono-Regular","Cascadia Mono",monospace';oc.fillStyle='rgba(146,151,140,.9)';
-    oc.fillText(fmtYuan(y.total),x,yy+R+31);
+    // 节点读数是**结余的绝对值**：正负不再靠减号，交给颜色（正/零红，负绿）。
+    // 星等仍按 total 算，表示这一年记了多少账；读数只回答「这一年结余多少」。
+    const yBal=Number(y.balance)||0;
+    oc.font='10px "SFMono-Regular","Cascadia Mono",monospace';oc.fillStyle=Data.balanceColor(yBal);
+    oc.fillText(fmtYuan(Data.balanceAbs(yBal)),x,yy+R+31);
     oc.restore();
   });
 }
@@ -1321,19 +1330,23 @@ function setHover(h){
     // 星轨节点：按 hover 的那一档取**那个节点自己**的数据。
     // 此前一律 `MONTHS[h.id]` 取，于是日节点几乎都落到「暂无数据」，
     // 偶尔索引恰好不越界又显示成某个月的数据（用户实测）。
+    // 金额口径与节点读数一致：结余的绝对值，正/零红、负绿。
     let html='<b>暂无数据</b>';
     if(h.kind==='day'){
       const d=DAYS[h.id];
-      if(d)html=`<b>${d.label}</b><div class="tt-amt">${fmtYuan(d.total)}</div>`
-        +`<div style="color:#8b96b5">${d.date}${d.topName?' · '+d.topName:''}</div>`;
+      if(d){const bal=Number(d.balance)||0;
+        html=`<b>${d.label}</b><div class="tt-amt" style="color:${Data.balanceColor(bal)}">${fmtYuan(Data.balanceAbs(bal))}</div>`
+        +`<div style="color:#8b96b5">${d.date}${d.topName?' · '+d.topName:''} · 结余</div>`;}
     }else if(h.kind==='month'){
       const m=MONTHS[h.id];
-      if(m)html=`<b>${m.full||m.label}</b><div class="tt-amt">${fmtYuan(m.total)}</div>`
-        +'<div style="color:#8b96b5">当月合计</div>';
+      if(m){const bal=Number(m.balance)||0;
+        html=`<b>${m.full||m.label}</b><div class="tt-amt" style="color:${Data.balanceColor(bal)}">${fmtYuan(Data.balanceAbs(bal))}</div>`
+        +'<div style="color:#8b96b5">当月结余</div>';}
     }else if(isYearLike(h.kind)){
       const y=YEARS[h.id];
-      if(y)html=`<b>${y.label}</b><div class="tt-amt">${fmtYuan(y.total)}</div>`
-        +`<div style="color:#8b96b5">${h.kind==='all'?'全部时间':'当年合计'}</div>`;
+      if(y){const bal=Number(y.balance)||0;
+        html=`<b>${y.label}</b><div class="tt-amt" style="color:${Data.balanceColor(bal)}">${fmtYuan(Data.balanceAbs(bal))}</div>`
+        +'<div style="color:#8b96b5">当年结余</div>';}
     }
     tip.innerHTML=html;tip.hidden=false;
   }
@@ -1877,17 +1890,24 @@ function syncChrome(){
   $('#mtLabel').textContent=`${selLabel()} · 支出 · ${nUnit==='天'?nExp+' 天有记录':'共 '+nExp+' 笔'}`;
   // 面板标题写清**看的是哪一段时间**（「本月」在选中八月时也会说本月，那是另一层歧义）
   $('#pTitle').textContent=`${selLabel()||periodWord()}星图`;
-  // 面板里三个数都要能自己说明含义：结余（收入−支出，大字）+ 支出 + 收入，
+  // 面板里三个数都要能自己说明含义：结余（收入−支出的绝对值，大字）+ 支出 + 收入，
   // 每个数前面都带文字标签 —— 只甩一个大数字出去，没人知道那是支出还是结余。
   const inc=(Data&&typeof Data.incomeTotal==='number')?Data.incomeTotal:0;
   const bal=inc-tot;
   animateNum($('#mtValue'),tot,fmtYuan);
-  animateNum($('#pNum'),bal,fmtYuan);
+  animateNum($('#pNum'),Data.balanceAbs(bal),fmtYuan);
   animateNum($('#pExp'),tot,fmtYuan);
   animateNum($('#pInc'),inc,fmtYuan);
-  $('#pNum').style.color=bal<0?'#c96a5a':'#e3e9df';
-  if(mBalNum){mBalNum.textContent=fmtYuan(bal);mBalNum.style.color=bal<0?'#c96a5a':'#e3e9df';}
-  if(mBalSub)mBalSub.textContent=`${selLabel()} · 支出 ${fmtYuan(tot)} · 收入 ${fmtYuan(inc)}`;
+  // 看板与星轨同一套口径：结余只显示绝对值，正/零红、负绿；收入红、支出绿。
+  // 颜色从 Data 取，避免「面板一套红绿、星轨另一套」。
+  $('#pInc').style.color=Data.INCOME_RED;
+  $('#pExp').style.color=Data.EXPENSE_GREEN;
+  $('#mtValue').style.color=Data.EXPENSE_GREEN;
+  $('#pNum').style.color=Data.balanceColor(bal);
+  if(mBalNum){mBalNum.textContent=fmtYuan(Data.balanceAbs(bal));mBalNum.style.color=Data.balanceColor(bal);}
+  if(mBalSub)mBalSub.innerHTML=`${selLabel()} · `
+    +`<span style="color:${Data.EXPENSE_GREEN}">支出 ${fmtYuan(tot)}</span> · `
+    +`<span style="color:${Data.INCOME_RED}">收入 ${fmtYuan(inc)}</span>`;
   // 日均按当前窗口天数算（日档 1 天、年档 365 天、「全部」按整段时间轴、其余按 30 天）
   const span=lv==='day'?1:(lv==='all'?Math.max(1,Math.round(timelineFull().to-timelineFull().from)):(lv==='year'?365:30));
   $('#pCount').textContent=`${nUnit==='天'?nExp+' 天有记录':nExp+' 笔'} · 日均支出 ${fmtYuan(tot/span)}`;
@@ -1906,7 +1926,10 @@ function syncChrome(){
   renderTop();
 }
 function renderTop(){
-  const amts=amountsForTime(),items=[...catList()].sort((a,b)=>(amts[b.id]||0)-(amts[a.id]||0)).slice(0,5);
+  // 与主视图主 tag 同一口径：只列当前窗口有账单的类目，别把只在其他月份
+  // 有账的 tag 以 ¥0 排在 TOP 里。
+  const amts=amountsForTime(),items=[...catList()].filter(c=>(amts[c.id]||0)>0)
+    .sort((a,b)=>(amts[b.id]||0)-(amts[a.id]||0)).slice(0,5);
   const pw=periodWord();
   if(!items.length){
     $('#topList').innerHTML=`<div style="color:#8b96b5;font-size:12px">${pw}暂无支出</div>`;

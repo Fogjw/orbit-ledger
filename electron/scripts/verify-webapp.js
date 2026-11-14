@@ -147,9 +147,11 @@ async function main() {
   const state = await readState();
   console.log(`[verify] 界面已加载: ${state.loadedUi}`);
   const storageOk = String(state.storage || '').includes('浏览器本地存储');
+  const emptyLedger = await js(`(window.OrbitData?.months || []).length === 0`);
   console.log(`[verify] OrbitAPI: ${state.api} · 存储: ${state.storage} → ${storageOk ? '✓' : '✗'}`);
   console.log(`[verify] 顶部总额: ${state.total} · 账本按钮: ${state.ledgerBtn}`);
-  console.log(`[verify] 星图着色采样: ${state.canvasLit}`);
+  // 空账本按新口径本来就没有主 tag 可画：画布 0 个亮点是正确空态，不能当渲染失败。
+  console.log(`[verify] 星图着色采样: ${state.canvasLit} · 空账本: ${emptyLedger}`);
 
   // 4) 走**完整的界面流程**记一笔。
   //    不能直接调 OrbitAPI：那样数据虽然进了库，但界面的刷新链路
@@ -188,6 +190,20 @@ async function main() {
     expensePlaceholderVisible = catsAfterExpense.includes('未分类');
     console.log(`[verify] 记完支出后品类维度里的占位 = [${catsAfterExpense.join(', ')}]`
       + ` → ${expensePlaceholderVisible ? '支出占位已进缓存，星图画得出 ✓' : '维度缓存没刷新 ✗'}`);
+
+    // 主视图主 tag 只显示**当前时间窗**里有账单的：默认账本还有餐饮/交通等零金额 tag，
+    // 但本期只记了一笔「未分类」支出，所以星图和 TOP 列表里都只能有它。
+    // 别的月份有账不算 —— 这里当前窗口是本月（2026-11），其余 tag 在所有窗口都没有账。
+    const visibleMain = JSON.parse(await js(`JSON.stringify(
+      window.OrbitDebug.graph().nodes.filter((n) => n.kind === 'cat').map((n) => n.name)
+    )`));
+    const topMain = JSON.parse(await js(`JSON.stringify(
+      [...document.querySelectorAll('#topList .top-row .top-name')].map((el) => el.textContent.trim())
+    )`));
+    const mainTagFilterOk = visibleMain.length === 1 && visibleMain[0] === '未分类'
+      && topMain.length === 1 && topMain[0] === '未分类';
+    console.log(`[verify] 主视图主 tag：图=[${visibleMain.join(', ')}] · TOP=[${topMain.join(', ')}]`
+      + ` → ${mainTagFilterOk ? '只显示本期有账单的 tag ✓' : '混进了本期零账单的 tag ✗'}`);
   }
   console.log(`[verify] 记账写入链路（走界面）: ${wrote}`);
   await wait(1200);
@@ -425,34 +441,54 @@ async function main() {
     + ` → ${dayTipOk ? '显示的是当天数据 ✓' : '有节点没取到当天数据 ✗'}`);
 
   // 面板里的数字必须自带含义标签，并且算得对：脚本记了一笔 ¥66 支出、没有任何收入，
-  // 所以应当是 支出 ¥66 / 收入 ¥0 / 结余 -¥66（超支用红字）。等数字动画走完再读。
+  // 所以应当是 支出 ¥66 / 收入 ¥0 / 结余 ¥66（只显示绝对值；为负=绿、支出=绿、收入=红）。
+  // 等数字动画走完再读。
   await wait(900);
   const panel = JSON.parse(await js(`(() => {
     const t = (s) => { const el = document.querySelector(s); return el ? el.textContent.trim() : ''; };
+    const c = (s) => { const el = document.querySelector(s); return el ? (el.style.color || '') : ''; };
     return JSON.stringify({
       keys: [...document.querySelectorAll('#insightPanel .p-key')].map((e) => e.textContent.trim()),
       bal: t('#pNum'), exp: t('#pExp'), inc: t('#pInc'),
-      color: document.querySelector('#pNum').style.color || '',
+      balColor: c('#pNum'), expColor: c('#pExp'), incColor: c('#pInc'),
     });
   })()`));
   const panelOk = panel.keys.join('/') === '结余/支出/收入'
-    && panel.exp === '¥66' && panel.inc === '¥0' && panel.bal === '-¥66'
-    && panel.color.includes('201, 106, 90');
+    && panel.exp === '¥66' && panel.inc === '¥0' && panel.bal === '¥66'
+    && panel.balColor.includes('0, 200, 83')       // 结余为负 → 鲜绿
+    && panel.expColor.includes('0, 200, 83')       // 支出 → 鲜绿
+    && panel.incColor.includes('255, 77, 79');     // 收入 → 鲜红
   console.log(`[verify] 面板 ${panel.keys.join(' / ')} → 支出 ${panel.exp} · 收入 ${panel.inc} · 结余 ${panel.bal}`
-    + `（${panel.color || '默认色'}）→ ${panelOk ? '标签齐全、数字算对、超支标红 ✓' : '✗'}`);
+    + `（结余 ${panel.balColor || '默认色'} / 支出 ${panel.expColor || '默认色'} / 收入 ${panel.incColor || '默认色'}）`
+    + ` → ${panelOk ? '标签齐全、数字算对、负结余/支出绿、收入红 ✓' : '✗'}`);
 
   // 补记一笔**别的月份**的账，画面不该被拽走（用户实测：「加一笔过去的收入…结果节点显示在
   // 这个月、左边洞察也变了，必须手动点当月节点才恢复正常」）。此刻窗口是日档的那一天。
+  // 这笔专门选「餐饮」：它只在八月有账，用来验「主视图主 tag 只算当前时间窗」。
   const titleBefore = await js(`document.querySelector('#pTitle').textContent.trim()`);
   await click('#btnAdd');
   await wait(700);
+  const pickedOther = await js(`(() => {
+    const b = [...document.querySelectorAll('#mCats .m-chip')].find((x) => x.textContent.trim() === '餐饮');
+    if (b) b.click();
+    return Boolean(b);
+  })()`);
   await js(`(() => { document.querySelector('.m-row input[type=date]').value = '2026-08-20'; return true; })()`);
   await click('#modalSave');
   await wait(1200);
   const titleAfter = await js(`document.querySelector('#pTitle').textContent.trim()`);
   const stayPut = titleBefore === titleAfter;
-  console.log(`[verify] 补记一笔 8 月的账：面板时段 "${titleBefore}" → "${titleAfter}"`
+  console.log(`[verify] 补记一笔 8 月的账（餐饮）：面板时段 "${titleBefore}" → "${titleAfter}"`
     + ` → ${stayPut ? '画面没被拽走 ✓' : '窗口被切到了那笔所在的月份 ✗'}`);
+
+  // 这笔八月有账、当前窗口（11/15）没账 → 餐饮不能出现在主视图主 tag 里。
+  // 若过滤按「全部时间」算，餐饮会混进来，这条会红。
+  const otherMonthCats = JSON.parse(await js(`JSON.stringify(
+    window.OrbitDebug.graph().nodes.filter((n) => n.kind === 'cat').map((n) => n.name)
+  )`));
+  const otherMonthFiltered = pickedOther && !otherMonthCats.includes('餐饮') && otherMonthCats.includes('未分类');
+  console.log(`[verify] 其他月份有账的「餐饮」在主视图 = [${otherMonthCats.join(', ')}]`
+    + ` → ${otherMonthFiltered ? '当前窗口没账就不显示 ✓' : '混进了其他月份的 tag ✗'}`);
 
   // 最高一档「全部」：把右轨滑块拖到底，窗口应切成全量（面板标题写「全部时间」）
   win.webContents.debugger.attach('1.3');
@@ -917,7 +953,7 @@ async function main() {
     console.log('[verify] 页面无报错');
   }
 
-  const ok = gateOk && storageOk && mobileOk && landscapeOk && reloadOk && state.loadedUi && state.canvasLit > 0 && wrote && inputWorks
+  const ok = gateOk && storageOk && mobileOk && landscapeOk && reloadOk && state.loadedUi && (state.canvasLit > 0 || emptyLedger) && wrote && inputWorks
     && yearVisible && year.centerLit > 0 && errors.length === 0 && noReset !== false
     && incomeVisible && toastOff && tagDelOk && pTitleOk && panelOk && ctxShown && stayPut && bounded !== false
     && dayTipOk && endReachable
