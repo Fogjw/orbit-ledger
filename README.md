@@ -1,7 +1,7 @@
 # Orbit（星账）
 
-> ⚠️ **暂不支持移动设备访问。** 界面按桌面宽屏设计（左侧面板在窄屏下会收起、星轨的拖拽与滚轮
-> 交互也依赖鼠标），手机上体验不完整 —— 移动端适配不在当前计划内。请用桌面浏览器或桌面端。
+> **桌面端（Windows / Linux）、网页版、Android APK 都可用。** 桌面端是完整工作台；手机端有独立移动编排，
+> 支持 SAF 选择真实文件夹、备份导入导出、横屏和系统返回键。iOS 暂未打包。
 
 > **每一笔支出都是一颗流星。**
 > 它划过某一天、某一月、某一年，留下一道轨迹 —— Orbit 把这些轨迹连成星轨（Orbit 就是「轨道」）。
@@ -9,7 +9,8 @@
 > 偶尔有几颗反向划过的星，那是收入。
 
 **[在线试用](https://fogjw.github.io/orbit-ledger/)**（免安装，打开即用） ·
-**[下载桌面端（Windows / Linux）](https://github.com/Fogjw/orbit-ledger/releases/latest)**
+**[下载桌面端（Windows / Linux）](https://github.com/Fogjw/orbit-ledger/releases/latest)** ·
+**[下载 Android APK](https://github.com/Fogjw/orbit-ledger/releases/latest)**
 
 ![Orbit 星账 · 主视图](docs/screenshots/overview.png)
 
@@ -63,14 +64,30 @@ Linux 下账本默认在 `~/.config/Orbit 星账/orbit.db`。
 **再启动一次 Orbit 即可唤回窗口**；窗口菜单「文件 → 退出」可彻底退出。
 如果托盘完全不可用，应用会把关窗降级为退出，不会留下无入口的后台进程。
 
-### 方式二：网页版（免安装）
+### 方式二：Android
+
+到 [Releases](https://github.com/Fogjw/orbit-ledger/releases/latest) 下载：
+
+```text
+Orbit-Android-<版本>.apk
+```
+
+- 可覆盖安装旧正式版；如果旧版是 debug 包，签名不同，需要先卸载一次。
+- 首次打开选择存放方式：
+  - **存成真实文件** → Android 系统文件夹选择器（SAF），在所选目录生成 `orbit.db`；不需要全盘存储权限，授权会持久化。
+  - **存在浏览器里** → App 内部 WebView 存储；清应用数据会丢，需要定期导出。
+- 备份：账本菜单 → 导出备份，会打开系统分享面板；导入备份会打开系统文件选择器。
+- 硬件返回键会先关浮层/读数账笺，再退出 App。
+- Android 端没有 MCP 接口。
+
+### 方式三：网页版（免安装）
 
 打开 <https://fogjw.github.io/orbit-ledger/> 就能用，功能与桌面端基本一致，**数据也存在你自己这台设备上**。
 
 - 首次打开会先让你选存放方式：**存成真实文件**（支持 File System Access 的 Chrome / Edge）
   会在选定目录里生成 `orbit.db`，可备份、可拷走；**存在浏览器里**则使用浏览器内部存储，
   **清站点数据会丢**，需要定期导出备份；
-- 手机和其他不支持直接写文件的浏览器只显示浏览器存储，不再给一个点了就报错的“选择目录”；
+- 手机浏览器只显示浏览器存储；Android APK 才有系统文件夹选择器（SAF）；
 - 上次目录权限失效时，会提示“继续使用上次目录”，不会悄悄打开一个空账本；
 - 网页版**没有** MCP 接口（那需要本地服务），要让 AI 助手记账请用桌面端。
 
@@ -81,6 +98,15 @@ Linux 下账本默认在 `~/.config/Orbit 星账/orbit.db`。
 右上角「＋ 记一笔」：填金额、日期，选品类（不选也行，会落到「未分类」）。
 顶部有「支出 / 收入」两个页签 —— **收入请切到收入页签**，它的类目是单独的（以「收入」开头），
 在星图上会画成绿色的四角星，和花销的星体明显不同。
+
+### 手机端
+
+- 顶部是品牌/账本/维度 + 当天/记一笔；下面是结余条和全屏星图；
+- 底部导航：**星图 / 读数 / ＋记一笔**；
+- 读数账笺复用桌面左栏的全部数据；
+- 星轨头部有「日 / 月 / 年 / 全部」四档，右轨在移动端隐藏；
+- 双指缩放、单指平移；系统返回键先关最上层；
+- 记一笔打开时金额为空并自动聚焦，日期直接在月历上点。
 
 ### 看懂界面
 
@@ -108,6 +134,8 @@ Linux 下账本默认在 `~/.config/Orbit 星账/orbit.db`。
 账本下拉 →「⇩ 导出备份」得到该账本的完整 JSON 快照；
 「⇧ 导入备份」会把它读成**一个新账本** —— 不覆盖、不合并，对现有数据零影响。
 换电脑时，把 `orbit.db` 拷过去、或在新的机器上导入这份 JSON 都可以。
+
+Android 上导出/导入走系统分享面板和系统文件选择器；如果账本在 SAF 真实目录里，`orbit.db` 可直接在电脑上备份。
 
 ## 让 AI 助手连上它（MCP）
 
@@ -159,6 +187,7 @@ http://localhost:5310/mcp
   安装时改过「账本数据位置」的，实际位置记在 `%APPDATA%\Orbit 星账\data-path.txt`。
 - Linux：`~/.config/Orbit 星账/orbit.db`（Linux 没有安装器改写路径，默认就在 userData）。
 网页版则是你首次打开时选的那个目录里的 `orbit.db`。
+Android：选「存成真实文件」时，数据在你选的系统文件夹里的 `orbit.db`；选「存在浏览器里」时在 App 的 WebView 存储里，卸载/清数据会丢。
 
 **覆盖更新会不会丢数据？**
 不会。更新时程序原地替换，**数据位置保持你原来的设置**，配置文件一个字节都不动；
@@ -179,7 +208,7 @@ Linux 的 deb/rpm 固定装到 `/opt`；数据目录同样可手动迁移。
 或者用「导出备份 / 导入备份」。
 
 **手机上能用吗？**
-暂不支持，见页面开头。
+可以。Android 有正式 APK；iOS 暂未打包。Android 支持 SAF 真实目录，也可选 WebView 内部存储。手机浏览器本身只支持浏览器存储。
 
 ## 给开发者
 
@@ -194,7 +223,8 @@ Linux 的 deb/rpm 固定装到 `/opt`；数据目录同样可手动迁移。
 |---|---|
 | `core/` | 共享业务层：业务规则 + SQL（纯 JS）—— 桌面端与纯前端版共用同一份 |
 | `server/` | 本地服务：HTTP + MCP + node:sqlite 驱动，引用 `core/` |
-| `web/` | 界面：零依赖 Canvas2D 星图 + 星轨 + 玻璃 UI，数据源由注入的 `OrbitAPI` 决定 |
+| `web/` | 界面：零依赖 Canvas2D 星图 + 星轨 + B 方向仪器视觉，数据源由注入的 `OrbitAPI` 决定 |
+| `mobile/` | Capacitor Android 壳：SAF 存储、系统返回键、备份分享/文件选择、签名与 CD |
 | `webapp/` | 纯前端版：浏览器里跑 SQLite + 本地存储，构建成静态站点 |
 | `electron/` | 桌面壳层：主进程内嵌同一个本地服务 + 窗口（仓库根 `package.json` 是应用清单） |
 
@@ -212,9 +242,17 @@ npm run pack                                 # 当前平台目录，不产安装
 
 # 纯前端版
 npm run build:web                            # 产出静态站点到 webapp/dist/
-npm run verify:web                           # 端到端：起静态服务 + Electron 跑一遍真实 UI 路径
+npm run verify:web                           # 端到端：静态服务 + Electron 真实 UI（含移动视口/键盘/横屏/日期）
 npm run verify:linux                         # Linux 内嵌服务冒烟（无窗口；CI 会跑）
 npm run verify:upgrade                       # 端到端：装两次，验证覆盖更新不重装两份、不丢账本（仅 Windows）
+
+# Android
+npm ci --prefix mobile
+cd mobile && npx cap sync android
+cd android && ./gradlew assembleDebug --no-daemon
+# 签名发布：在 repo Secrets 配好后
+# gh workflow run android-release.yml --ref main
+# 产物：Orbit-Android-<版本>.apk / .aab，自动挂到对应 GitHub Release
 ```
 
 受限网络下打包需要镜像：
@@ -227,7 +265,10 @@ Linux 打 rpm 需要系统 `rpmbuild`、`7zip` 和 `fpm`：
 持续集成与发布：`.github/workflows/ci.yml`（任意分支 push、PR 到 `develop` / `main` 都会跑，
 短分支必须等到「CI 通过」，其中包含 Linux deb/rpm 构建）、
 `release.yml`（push 到 `main` 即 CD：校验版本 → 打包 Windows exe 与 Linux deb/rpm → 创建 tag 与 Release）、
+`android.yml`（Android debug APK + Emulator WebView E2E）、
+`android-release.yml`（Release 成功后自动构建签名 APK/AAB 并挂到同一 Release）、
 `pages.yml`（push 到 `main` 构建纯前端版并部署 GitHub Pages）。
-发版前在 `develop` 的短分支里升仓库根 `package.json` 的版本并合入；`main` 上不再手工改版本或推 tag。
+发版前在 `develop` 的短分支里升根 `package.json` / `mobile/package.json` / Android `versionName`+`versionCode`，
+CI 通过后合入 `develop`，再由 `develop → main` 发布；`main` 上不再手工改版本或推 tag。
 
 截图由 `npm run shots` 生成（Electron 自己渲染并截屏，尺寸与等待时机都可复现）。
