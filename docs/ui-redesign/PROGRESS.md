@@ -38,6 +38,7 @@
 | M3a | Android 备份导出/文件导入 | `feat/m3-android-backup` | 完成，合入 develop | 已确认 |
 | U1 | 记一笔日历选择 + 金额聚焦 | `feat/entry-calendar` | 完成，合入 develop | 已确认 |
 | T1 | 全局关闭 toast 通知 | `feat/disable-toasts` | 完成，合入 develop | 已确认 |
+| M3b | Android SAF 真实目录存储 | `feat/android-saf-storage` | 实现完成，待真机确认 | 待确认 |
 
 ## 阶段 0 交付
 
@@ -504,6 +505,23 @@
 - 错误/校验也一起静默；需要诊断时看控制台/Logcat。用户明确要求所有通知关闭。
 - Toast 层 DOM 保留但永不显示，便于后续若恢复通知只改一处。
 
+## M3b · Android SAF 真实目录存储（待真机确认）
+
+- [x] Gate 恢复“存成真实文件”：Android 原生 SAF `ACTION_OPEN_DOCUMENT_TREE`，不伪造目录选择。
+- [x] `StorageBridge` 持久化 tree URI；读取/写入所选目录里的 `orbit.db`。
+- [x] `native-storage.js` 与浏览器 `storage.js` 同接口（read/write/flush/describe），启动自动复用已授权目录。
+- [x] 无目录时仍可选“存在浏览器里”；Android 不再显示点了没反应的入口。
+- [x] `documentfile` 依赖；Debug APK/WebView E2E 编译通过。
+- [ ] 真机/模拟器实际选目录、系统授权、重启复用（系统 UI 自动化目前未覆盖）
+- [ ] 用户确认
+- [ ] 合入 `develop`
+
+### M3b 边界
+
+- Android 用 SAF，不申请全盘存储权限；第一次会出现系统“选择文件夹/允许访问”面板。
+- 所选目录里的 `orbit.db` 是真实文件；切换存储方式仍不自动迁移。
+- 系统文件选择器 UI 未纳入 CI 自动点击，CI 只验证入口/原生桥存在。
+
 ## 合入记录
 
 | 日期 | 界面 | 分支 | commit | 确认 | 备注 |
@@ -533,7 +551,8 @@
 | 2026-11-14 | F1 文件入口/粒度 | `fix/android-file-timeline` | 72e0bf8 | 已确认 | Android 隐藏文件卡；移动日/月/年/全部 |
 | 2026-11-14 | M3a Android 备份 | `feat/m3-android-backup` | 3a750e7 | 已确认 | 原生分享导出；文件选择导入 |
 | 2026-11-14 | U1 日历/金额聚焦 | `feat/entry-calendar` | b866a73 | 已确认 | 月历选日；金额空焦 |
-| 2026-11-14 | T1 关闭 toast | `feat/disable-toasts` | 本次合并 | 已确认 | 全平台无通知层 |
+| 2026-11-14 | T1 关闭 toast | `feat/disable-toasts` | 3530dc1 | 已确认 | 全平台无通知层 |
+| 2026-11-14 | M3b SAF 目录 | `feat/android-saf-storage` | 本次合并 | 待真机确认 | 系统目录选择；真实 orbit.db |
 
 ## 备注
 
