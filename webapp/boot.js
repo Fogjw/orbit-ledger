@@ -43,7 +43,7 @@ async function mount({ bytes, storage }) {
     bytes,
     wasmBinary: await loadWasm(),
     locateFile: (file) => WASM_DIR + file,   // 仅作为回退
-    persist: (b) => storage.write(b),
+    persist: async (b) => { await storage.write(b); await storage.flush(); },
   });
   window.OrbitAPI = api;
   window.OrbitStorage = storage;       // 界面上可以显示「数据存哪了」
@@ -51,6 +51,10 @@ async function mount({ bytes, storage }) {
   // 关闭页面前把排队中的写入刷出去（写文件是异步的，不能靠它自己赶在卸载前完成）
   addEventListener('pagehide', () => { storage.flush().catch(() => {}); });
   addEventListener('beforeunload', () => { storage.flush().catch(() => {}); });
+  // Android 退后台不一定触发 pagehide；隐藏时再主动刷一次。
+  document.addEventListener('visibilitychange', () => {
+    if (document.visibilityState === 'hidden') storage.flush().catch(() => {});
+  });
 }
 
 async function main() {
