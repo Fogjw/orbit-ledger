@@ -56,7 +56,7 @@ jobs:
           ./gradlew bundleRelease assembleRelease --no-daemon
           APKSIGNER="$(find "$ANDROID_HOME/build-tools" -name apksigner -type f | sort | tail -1)"
           test -n "$APKSIGNER"
-          "$APKSIGNER" verify --print-certs mobile/android/app/build/outputs/apk/release/app-release.apk
+          "$APKSIGNER" verify --print-certs app/build/outputs/apk/release/app-release.apk
       - uses: actions/upload-artifact@v4
         with:
           name: orbit-release
