@@ -22,17 +22,53 @@ export function createNativeStorage() {
 
   let pending = null;
   let writing = null;
+  let writeSeq = 0;
+  const writeWaiters = new Map();
+
+  // 原生写盘放到后台线程；这里只等回调，不阻塞 WebView 主线程。
+  globalThis.__orbitNativeWriteDone = (token, ok) => {
+    const waiter = writeWaiters.get(String(token));
+    if (!waiter) return;
+    writeWaiters.delete(String(token));
+    clearTimeout(waiter.timer);
+    if (ok) waiter.resolve(true);
+    else waiter.reject(new Error('无法写入所选目录里的 orbit.db'));
+  };
+
+  function writeNative(base64) {
+    if (typeof bridge.writeDatabaseAsync !== 'function') {
+      // 旧 APK 没有异步桥时退回同步写；新包不会走到这里。
+      if (!bridge.writeDatabase(base64)) return Promise.reject(new Error('无法写入所选目录里的 orbit.db'));
+      return Promise.resolve(true);
+    }
+    return new Promise((resolve, reject) => {
+      const token = String(++writeSeq);
+      const timer = setTimeout(() => {
+        writeWaiters.delete(token);
+        reject(new Error('写入 orbit.db 超时'));
+      }, 30000);
+      writeWaiters.set(token, { resolve, reject, timer });
+      try { bridge.writeDatabaseAsync(base64, token); }
+      catch (err) {
+        clearTimeout(timer);
+        writeWaiters.delete(token);
+        reject(err);
+      }
+    });
+  }
 
   async function pump() {
     if (writing) return writing;
     writing = (async () => {
-      while (pending) {
-        const bytes = pending;
-        pending = null;
-        const ok = bridge.writeDatabase(bytesToBase64(bytes));
-        if (!ok) throw new Error('无法写入所选目录里的 orbit.db');
+      try {
+        while (pending) {
+          const bytes = pending;
+          pending = null;
+          await writeNative(bytesToBase64(bytes));
+        }
+      } finally {
+        writing = null;
       }
-      writing = null;
     })();
     return writing;
   }
