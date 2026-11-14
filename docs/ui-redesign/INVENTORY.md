@@ -2,7 +2,8 @@
 
 > 阶段 0 基线，作为「不阉割」验收合同。
 > 规则：只允许改排版、分组、字体、颜色、材质、动效；不允许删除字段、入口、操作或 Canvas 信息。
-> 桌面默认 1440×900 / 1920×1080 下，当前可见的信息改版后仍须可见；现有窄屏断点（<1100 隐藏左面板、<760 隐藏右轨）是既有行为，不额外新增隐藏。
+> 桌面默认 1440×900 / 1920×1080 下，当前可见的信息改版后仍须可见；移动端按 760px 断点重新编排（不是隐藏信息），桌面布局不变。
+> 1.2.3 起 Android APK 与桌面/网页共用同一份界面与业务能力；toast 通知层已全局关闭。
 
 ## 全局约定
 
@@ -12,8 +13,8 @@
 | 日期/今天 | 本地日期 `todayISO()`；星轨只给真实今天加标记；今天没记账时下标为 -1 | `docs/frontend-rendering.md` 的测试与 E2E |
 | 刷新链 | `Data.afterChange()` → `refreshTagArrays()` → `refreshMonths()` / `refreshAmounts()` → `buildGraph()` / `syncChrome()` | 记账/导入/编辑/删除后不出现「数据有了但图里没有」 |
 | 历史 | 账本/维度/主视图↔下钻各占一条浏览器历史；浮层与星轨浏览位置不入历史 | 前进/后退恢复正确 |
-| 提示 | toast 压在所有浮层之上且 `pointer-events:none`；tooltip 跟随指针 | 浮层内提示可见、不挡点击 |
-| 空/错误 | 空账本、空时段、导入坏文件、删除保护、网络失败都有可读提示 | 文案仍可理解，无静默失败 |
+| 提示 | 通知层已按用户要求全局关闭（toast hidden/display:none）；tooltip 仍跟随指针 | tooltip 不挡点击；不再弹 toast |
+| 空/错误 | 空账本/空时段仍显示空态；坏文件/删除保护/网络失败进控制台或原生日志（toast 已关闭） | 不再弹通知；排查看 Console/Logcat |
 
 ## 顶栏 `header.topbar`
 
@@ -89,7 +90,7 @@
 | 日期 | `.m-row input[type=date]` | 默认今天；编辑回填原日期 |
 | 账本 | `.m-row select` | 默认当前账本；编辑锁定原账本 |
 | 备注 | `#mNote` | 多行；编辑回填；Ctrl/Cmd+Enter 保存 |
-| 保存 | `#modalSave` | 校验、提交、刷新链、toast；失败有提示 |
+| 保存 | `#modalSave` | 校验、提交、刷新链；错误只进控制台（toast 已关闭） |
 | 编辑回填 | `.m-tab` / 主/副 tag / 金额 / 日期 / 备注 | 打开编辑时全部原样回填 |
 
 ## 下钻二部图 `#graph`（L1 → detail）
@@ -120,7 +121,7 @@
 | 新建账本 | `#ddNewLedger` | 打开命名浮层 |
 | 重命名当前账本 | `#ddRenameLedger` | 打开命名浮层并回填 |
 | 标签管理 | `#ddManageTags` | 打开标签管理浮层 |
-| 导出备份 | `#ddExportBackup` | 下载 JSON；toast 笔数 |
+| 导出备份 | `#ddExportBackup` | 下载 / Android 系统分享 JSON |
 | 导入备份 | `#ddImportBackup` | 选文件；导入为新账本；失败提示 |
 | 删除当前账本 | `#ddDelLedger` | 二次确认；删空后自动建默认账本 |
 
@@ -169,7 +170,7 @@
 | 色板 | `#nameColors` / `#ncSwatches` | 新建/重命名 tag 时可见；可选 |
 | 自动取色 | `#ncDefault` | 清除覆盖色 |
 | 自定义色 | `#ncCustom` | 取色生效 |
-| 取消/创建 | `#nameCancel` / `#nameOk` | 校验、提交、toast |
+| 取消/创建 | `#nameCancel` / `#nameOk` | 校验、提交 |
 
 ## Canvas 专属信息（截图也要核对）
 
@@ -177,3 +178,9 @@
 - 下钻：副 tag 名称/金额、账单金额、归属实线、共享虚线、hover 高亮、pin 持续高亮、返回按钮主 tag 名/金额。
 - 星轨：月/日/年标签、金额、今天标记、选中环、hover tooltip、刻度。
 - 以上信息不能因为「画面更干净」而消失；拥挤时用错位、引线、缩小字号或分层，不隐藏。
+
+## 平台补充（1.2.3）
+
+- Android APK 与桌面/网页共用信息与操作集合；移动端读数、记一笔、备份/导入、返回键均保留。
+- 通知层在桌面、网页、Android 全部关闭；工具提示（tooltip）保留。
+- Android 存储支持 SAF 真实目录与 WebView 内部存储两种模式。

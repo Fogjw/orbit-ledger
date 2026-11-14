@@ -50,6 +50,11 @@ npm run build:web
 # 桌面端 / 端到端（需要 GUI，不在 CI 跑）
 npm start
 npm run verify:web
+
+# Android（需要 JDK 21 + Android SDK；CI 也会跑）
+npm ci --prefix mobile
+cd mobile && npx cap sync android
+cd android && ./gradlew assembleDebug --no-daemon
 ```
 
 CI 使用 Node 24；`server/package.json` 要求 Node >= 22.5。
@@ -70,6 +75,7 @@ CI 使用 Node 24；`server/package.json` 要求 Node >= 22.5。
 - [ ] 需求对应的行为已实现，没有顺手改无关代码；
 - [ ] 同分支补了测试，含失败路径与边界；
 - [ ] `cd server && npm test` 全绿；涉及 `web/`、`webapp/` 时 `npm run build:web` 通过；
+- [ ] 涉及 Android/`mobile/` 时，Android CI（debug APK + Emulator E2E）通过；签名发布用 `android-release.yml`；
 - [ ] 涉及桌面壳层/打包时，对应平台安装包构建通过（Linux: `npm run dist:linux` + `npm run verify:linux`）；
 - [ ] 该短分支的 `CI 通过` 为绿；
 - [ ] 以 `--no-ff` 合入 `develop`，合并后回归仍绿，`develop` 已推送；

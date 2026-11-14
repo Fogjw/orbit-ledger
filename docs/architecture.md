@@ -13,6 +13,7 @@ orbit-ledger/
 ├─ webapp/       纯前端版：浏览器里跑 SQLite（sql.js）+ 本地数据存储，构建成静态站点
 ├─ web/          界面：零依赖 Canvas2D 星图 + 记账 / 统计 / tag 管理（数据来源由注入的 OrbitAPI 决定）
 ├─ electron/     桌面壳层：主进程内嵌本地服务（bootstrap）+ 窗口 + 安装包配置
+├─ mobile/       Android 壳（Capacitor）：复用 webapp/dist；SAF 目录、返回键、备份桥、签名/CD
 └─ docs/
    └─ architecture.md（本文档）
 ```
@@ -32,6 +33,24 @@ orbit-ledger/
 ```
 
 依赖只向下：api → services → repos → db。模块用工厂函数注入 `db`，便于测试（内存库）与将来复用。
+
+## 客户端与存储
+
+同一份 `core/` + `web/` 有四个运行入口：
+
+| 入口 | 数据源 | 数据位置 |
+|---|---|---|
+| Electron 桌面 | 内嵌 Express + node:sqlite | `~/.config/Orbit 星账/orbit.db` / `%APPDATA%` |
+| 浏览器直连 | 本地 REST `/api` | 服务端 SQLite |
+| 网页版 webapp | `OrbitAPI` 本地适配 + sql.js | File System Access 目录 / IndexedDB |
+| Android APK | Capacitor WebView + webapp bundle | SAF tree URI 目录 / WebView IndexedDB |
+
+- 网页版/Android 的首次 gate 选择“真实文件”或“浏览器存储”；选择会持久化，下次直接进入。
+- Android 通过 `OrbitAndroidStorage` 原生桥访问 SAF 目录；`native-storage.js` 包装成与浏览器存储相同的
+  `read/write/flush/describe` 接口。文件写入在原生后台线程完成，JS 等待回调，避免阻塞 WebView 主线程。
+- 写操作必须等整库导出 + 落盘完成才 resolve；退后台/杀进程前不依赖未完成的异步写。
+- Android 签名与 CD：`android-release.yml` 在桌面 Release 成功后自动构建签名 APK/AAB 并挂到同一 tag；
+  keystore 只来自 GitHub Actions secrets。
 
 ## 数据模型（五表；正交多维度 —— 每维内部互斥、维度之间互不影响）
 
@@ -146,4 +165,5 @@ Base: `http://localhost:5310/api`（端口 env `ORBIT_PORT` 覆盖）。CORS 放
 
 - `README.md` —— 项目定位、运行与打包方式
 - `web/` —— 前端实现（零依赖 Canvas2D 星图 / 星轨 / 浮层交互）
+- `mobile/` —— Capacitor Android 壳、SAF 存储与签名/CD
 - `electron/` —— 桌面壳层与安装包配置（根 `package.json` 的 `build` 段）
