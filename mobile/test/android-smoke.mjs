@@ -121,7 +121,7 @@ try {
     file: Boolean(document.querySelector('#orbitPickDir')),
     idb: Boolean(document.querySelector('#orbitUseIdb')),
   })`);
-  if (gate.title !== '账本存放位置' || !gate.idb || gate.file) {
+  if (gate.title !== '账本存放位置' || !gate.idb || !gate.file) {
     throw new Error(`Android gate 状态异常：${JSON.stringify(gate)}`);
   }
   await page.evaluate(`document.querySelector('#orbitUseIdb').click()`);
@@ -142,8 +142,10 @@ try {
   const bridge = await page.evaluate(`({
     share: typeof window.OrbitAndroid?.shareBackup,
     pick: typeof window.OrbitAndroid?.pickBackup,
+    storagePick: typeof window.OrbitAndroidStorage?.pickDirectory,
+    storageRead: typeof window.OrbitAndroidStorage?.readDatabase,
   })`);
-  if (bridge.share !== 'function' || bridge.pick !== 'function') {
+  if (bridge.share !== 'function' || bridge.pick !== 'function' || bridge.storagePick !== 'function' || bridge.storageRead !== 'function') {
     throw new Error(`Android 备份桥未挂载：${JSON.stringify(bridge)}`);
   }
   console.log('[android] backup bridge ready');
