@@ -57,7 +57,7 @@ canvas{display:block}
 .spacer{flex:1}
 .month-total{display:flex;flex-direction:column;align-items:flex-end;line-height:1.2;padding:0 4px}
 .mt-label{font-size:10px;color:var(--dim);letter-spacing:1px}
-.mt-value{font-size:18px;font-weight:400;font-variant-numeric:tabular-nums;text-shadow:none}
+.mt-value{font-size:18px;font-weight:400;font-variant-numeric:tabular-nums;text-shadow:none;color:#00c853}
 
 /* 顶栏内部：只覆盖顶栏，不影响浮层里的 .btn / .segment */
 .topbar .brand{display:flex;align-items:center;gap:10px;padding-right:18px;border-right:1px solid var(--tb-hair);white-space:nowrap}
@@ -82,7 +82,7 @@ canvas{display:block}
 .topbar .btn.primary:hover{background:var(--tb-brass);color:#0b0e0c;box-shadow:none;transform:none}
 .topbar .month-total{align-items:flex-end;padding:0 2px}
 .topbar .mt-label{font:400 9px/1.3 "Noto Sans CJK SC","PingFang SC","Microsoft YaHei",sans-serif;letter-spacing:.16em;color:var(--tb-dim)}
-.topbar .mt-value{font-family:"SFMono-Regular","Cascadia Mono","Consolas",monospace;font-size:20px;font-weight:400;letter-spacing:.02em;color:var(--tb-star);text-shadow:none}
+.topbar .mt-value{font-family:"SFMono-Regular","Cascadia Mono","Consolas",monospace;font-size:20px;font-weight:400;letter-spacing:.02em;color:#00c853;text-shadow:none}
 
 /* 左侧面板：孔制读数，不是卡片 */
 .panel{
@@ -121,8 +121,8 @@ canvas{display:block}
 .p-balance .p-num{font-size:32px}
 .p-key{font-size:9px;letter-spacing:.18em;color:#7d8278;flex:none}
 .p-val{font-family:"SFMono-Regular","Cascadia Mono","Consolas",monospace;font-size:12px;font-weight:400;font-variant-numeric:tabular-nums;color:#e8e2d2}
-.p-exp{color:#e8e2d2}
-.p-inc{color:#7fb0a4}
+.p-exp{color:#00c853}
+.p-inc{color:#ff4d4f}
 .p-sub{display:flex;align-items:baseline;gap:8px;margin-top:4px}
 .panel .chip{font-size:9px;padding:3px 6px;border-radius:0;font-weight:400;letter-spacing:.03em}
 .panel .chip.up{color:#b08d57;background:transparent;border:1px solid rgba(176,141,87,.35)}
@@ -571,7 +571,7 @@ textarea.m-remark{min-height:66px;max-height:30vh;resize:vertical;line-height:1.
   .mobile-balance button{width:100%;min-height:42px;display:flex;align-items:center;gap:10px;padding:5px 12px;border:0;background:transparent;text-align:left}
   .mb-main{display:flex;align-items:baseline;gap:7px;flex:none}
   .mb-main small{font-size:8px;letter-spacing:.14em;color:#7d8278}
-  .mb-main b{font:400 18px/1 var(--mono);color:#d98676;letter-spacing:-.03em}
+  .mb-main b{font:400 18px/1 var(--mono);color:#ff4d4f;letter-spacing:-.03em}
   .mb-sub{flex:1;font:400 9px/1.4 var(--mono);color:#92978c;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
   .mb-more{font-size:9px;color:#b08d57;letter-spacing:.08em;white-space:nowrap}
   .timeline{bottom:calc(58px + env(safe-area-inset-bottom));height:126px;padding:8px 14px 0}

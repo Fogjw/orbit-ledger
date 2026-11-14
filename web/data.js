@@ -160,7 +160,10 @@ const Data = {
         const name = d.topName || (d.income > 0 ? '收入' : '');
         return {
           label: mm + '月' + dd + '日', date: d.date, y: yy, m: mm, d: dd,
+          // total 仍表示「当天有账的总额」，只用于星轨节点大小；
+          // balance 才是节点读数与面板共用的结余（收入−支出）。
           total: centsToYuan(d.expense + d.income),
+          balance: centsToYuan(d.income - d.expense),
           topName: name,
           topColor: d.topColor || hashColor(name),
         };
@@ -310,10 +313,19 @@ const Data = {
     // 按月聚合：**支出和收入都算** —— 星轨节点的存在与否看的是「这个月有没有账」，
     // 之前只收 expense，于是「只记了收入的月份」在星轨上根本没有节点（用户实测）。
     // 主导色仍取该月支出最大的品类；整月只有收入时用收入绿兜底。
+    // 同时分开累计收入/支出：结余 = 收入 − 支出，必须是两个方向各自求和后再相减，
+    // 不能拿展示用的 total（两者之和）倒推。
     const byMonth = {};
+    const expenseByMonth = {};
+    const incomeByMonth = {};
     const topOf = {};
     for (const r of monthly) {
       byMonth[r.month] = (byMonth[r.month] || 0) + r.amount_cents;
+      if (r.type === 'income') {
+        incomeByMonth[r.month] = (incomeByMonth[r.month] || 0) + r.amount_cents;
+      } else {
+        expenseByMonth[r.month] = (expenseByMonth[r.month] || 0) + r.amount_cents;
+      }
       if (r.type === 'expense' && r.top_name) {
         topOf[r.month] = { name: r.top_name, color: r.top_color || hashColor(r.top_name) };
       } else if (r.type === 'income' && !topOf[r.month]) {
@@ -330,6 +342,7 @@ const Data = {
           label: monthLabel(mo),
           full: monthFull(y, mo),
           total: centsToYuan(byMonth[m]),
+          balance: centsToYuan((incomeByMonth[m] || 0) - (expenseByMonth[m] || 0)),
           topName: top.name,
           topColor: top.color,
           y,
@@ -338,6 +351,18 @@ const Data = {
       });
   },
 };
+
+// —— 金额显示口径（看板与星轨共用）——
+// 股票式涨跌色：收入/结余为正用鲜红，支出/结余为负用鲜绿；相等按正数处理（红）。
+// 结余一律显示绝对值，正负只由颜色表达 —— 两个界面都从这里取色，避免各写一套红绿。
+const BALANCE_RED = '#ff4d4f';
+const BALANCE_GREEN = '#00c853';
+Data.INCOME_RED = BALANCE_RED;
+Data.EXPENSE_GREEN = BALANCE_GREEN;
+/** 结余 → 显示色。先按分取整再判符号，避免浮点毛刺把 0 判成负数。 */
+Data.balanceColor = (v) => (Math.round((Number(v) || 0) * 100) < 0 ? BALANCE_GREEN : BALANCE_RED);
+/** 结余 → 显示金额（绝对值，元；先按分取整，与 moneyText 的分位口径一致）。 */
+Data.balanceAbs = (v) => Math.abs(Math.round((Number(v) || 0) * 100)) / 100;
 
 // —— 挂载（唯一对外出口）——
 (typeof window !== 'undefined' ? window : globalThis).OrbitData = Data;
