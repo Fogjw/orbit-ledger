@@ -2,19 +2,33 @@ name: Android Signed Release
 
 on:
   workflow_dispatch:
+  workflow_run:
+    workflows: ["Release"]
+    types: [completed]
 
 permissions:
-  contents: read
+  contents: write
 
 jobs:
   release:
-    name: 签名 AAB
+    name: 签名 AAB/APK 并挂 Release
+    if: github.event_name == 'workflow_dispatch' || (github.event.workflow_run.conclusion == 'success' && github.event.workflow_run.head_branch == 'main')
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+        with:
+          ref: main
       - uses: actions/setup-node@v4
         with:
           node-version: 24
+      - name: 读取版本并校验 Android 版本
+        id: version
+        run: |
+          VERSION="$(node -p "require('./package.json').version")"
+          ANDROID_VERSION="$(grep -oP 'versionName "\K[^"]+' mobile/android/app/build.gradle)"
+          test "$VERSION" = "$ANDROID_VERSION" || (echo "package=$VERSION android=$ANDROID_VERSION 不一致"; exit 1)
+          echo "version=$VERSION" >> "$GITHUB_OUTPUT"
+          echo "tag=v$VERSION" >> "$GITHUB_OUTPUT"
       - name: 构建 webapp
         run: |
           npm ci
@@ -53,9 +67,27 @@ jobs:
           test -n "$ORBIT_KEYSTORE_PASSWORD" && test -n "$ORBIT_KEY_ALIAS" && test -n "$ORBIT_KEY_PASSWORD" || (echo "缺少签名 secrets"; exit 1)
           cd mobile/android
           chmod +x gradlew
-          ./gradlew bundleRelease --no-daemon
+          ./gradlew bundleRelease assembleRelease --no-daemon
+          APKSIGNER="$(find "$ANDROID_HOME/build-tools" -name apksigner -type f | sort | tail -1)"
+          test -n "$APKSIGNER"
+          "$APKSIGNER" verify --print-certs app/build/outputs/apk/release/app-release.apk
       - uses: actions/upload-artifact@v4
         with:
-          name: orbit-release-aab
-          path: mobile/android/app/build/outputs/bundle/release/app-release.aab
+          name: orbit-release
+          path: |
+            mobile/android/app/build/outputs/bundle/release/app-release.aab
+            mobile/android/app/build/outputs/apk/release/app-release.apk
           if-no-files-found: error
+      - name: 挂到 GitHub Release
+        env:
+          GH_TOKEN: ${{ github.token }}
+          VERSION: ${{ steps.version.outputs.version }}
+          TAG: ${{ steps.version.outputs.tag }}
+        run: |
+          gh release view "$TAG" >/dev/null
+          mkdir -p release-assets
+          cp mobile/android/app/build/outputs/apk/release/app-release.apk "release-assets/Orbit-Android-${VERSION}.apk"
+          cp mobile/android/app/build/outputs/bundle/release/app-release.aab "release-assets/Orbit-Android-${VERSION}.aab"
+          (cd release-assets && sha256sum "Orbit-Android-${VERSION}.apk" "Orbit-Android-${VERSION}.aab" > "Orbit-Android-${VERSION}.sha256")
+          gh release upload "$TAG" release-assets/* --clobber
+          echo "已上传 Android 资产到 $TAG"

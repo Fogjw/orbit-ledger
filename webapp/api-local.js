@@ -58,10 +58,15 @@ export async function createLocalApi(opts = {}) {
     imports: createImportService(db),
   };
 
-  /** 写操作后把整库导出交给 persist（落盘交给上层决定：文件或 IndexedDB） */
-  const flush = () => {
+  /** 写操作后把整库导出交给 persist，并等它真正写完才返回。
+      Android 退后台/被杀不会等异步写盘；不 await 就是“记完立即退后台会丢”。 */
+  const flush = async () => {
     if (!persist) return;
-    try { persist(db.export()); } catch (err) { console.error('[local-api] 落盘失败', err); }
+    try { await persist(db.export()); }
+    catch (err) {
+      console.error('[local-api] 落盘失败', err);
+      throw err;
+    }
   };
 
   /**
@@ -73,7 +78,7 @@ export async function createLocalApi(opts = {}) {
   async function call(fn, write = false) {
     try {
       const out = fn();
-      if (write) flush();
+      if (write) await flush();
       return out;
     } catch (err) {
       if (err instanceof BizError) {

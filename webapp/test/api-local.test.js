@@ -92,6 +92,24 @@ const shapeOf = (e) => Object.keys(e).sort();
 const keyOf = (e) => [e.type, e.amount_cents, e.date, e.note].join('|');
 
 describe('本地版 API 与 REST 版一致性', () => {
+  test('写操作必须等 persist 完成才 resolve（Android 退后台不丢）', async () => {
+    let release;
+    let persisted = 0;
+    const gate = new Promise((resolve) => { release = resolve; });
+    const local = await createLocalApi({
+      persist: async () => { persisted += 1; await gate; },
+    });
+    let done = false;
+    const pending = local.createLedger('耐久测试').then(() => { done = true; });
+    await new Promise((r) => setTimeout(r, 80));
+    assert.equal(done, false, 'persist 未完成时 API 不能提前 resolve');
+    assert.equal(persisted, 1);
+    release();
+    await pending;
+    assert.equal(done, true);
+    local.close();
+  });
+
   test('同一串操作，两种实现返回相同的形状与数据', async () => {
     const local = await createLocalApi();
     const a = await scenario(rest);
