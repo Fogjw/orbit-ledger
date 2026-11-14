@@ -35,6 +35,7 @@
 | M2c.1 | Android 品牌图标/启动图 + release 签名位 | `feat/mobile-branding` | 完成，合入 develop | 已确认 |
 | B1 | 桌面/网页图标统一 | `feat/desktop-icon` | 完成，合入 develop | 已确认 |
 | F1 | Android 文件入口 + 移动星轨粒度 | `fix/android-file-timeline` | 完成，合入 develop | 已确认 |
+| M3a | Android 备份导出/文件导入 | `feat/m3-android-backup` | 完成，合入 develop | 已确认 |
 
 ## 阶段 0 交付
 
@@ -463,6 +464,22 @@
 - [x] `CI` / Android Emulator E2E 通过。
 - [x] 合入 `develop`。
 
+## M3a · Android 备份导出/文件导入（完成）
+
+- [x] Android 原生桥 `OrbitAndroid.shareBackup`：导出 JSON 走系统分享面板，可存到文件/网盘。
+- [x] `OrbitAndroid.pickBackup`：系统文件选择器读 JSON，回调网页导入为**新账本**。
+- [x] Web/桌面保留原 Blob 下载、`<input type=file>` 导入，行为不变。
+- [x] Android smoke 断言原生桥已挂载；APK/WebView E2E 通过。
+- [x] `CI` 通过；合入 `develop`。
+- [ ] 真机实际点一次分享面板/文件选择（模拟器无法自动点系统 UI）
+- [ ] 自动备份/恢复与 release 签名仍待
+
+### M3a 边界
+
+- 原生分享/文件选择是系统 UI，当前自动化只验证桥存在，不能断言用户最终存到哪个目录。
+- 导入仍是“新账本”，不覆盖/不合并；与现有导出语义一致。
+- 备份文件格式不变，桌面/网页/Android 互通。
+
 ## 合入记录
 
 | 日期 | 界面 | 分支 | commit | 确认 | 备注 |
@@ -489,7 +506,8 @@
 | 2026-11-14 | M2c Android 返回键 | `feat/mobile-m2c` | b60d0fa | 已确认 | 先关浮层再退出 |
 | 2026-11-14 | M2c.1 图标/启动图/签名位 | `feat/mobile-branding` | d169009 | 已确认 | B 图标；release secrets 位 |
 | 2026-11-14 | B1 桌面/网页图标 | `feat/desktop-icon` | 0316fcd | 已确认 | Electron PNG/ICO；顶栏/favicon |
-| 2026-11-14 | F1 文件入口/粒度 | `fix/android-file-timeline` | 本次合并 | 已确认 | Android 隐藏文件卡；移动日/月/年/全部 |
+| 2026-11-14 | F1 文件入口/粒度 | `fix/android-file-timeline` | 72e0bf8 | 已确认 | Android 隐藏文件卡；移动日/月/年/全部 |
+| 2026-11-14 | M3a Android 备份 | `feat/m3-android-backup` | 本次合并 | 已确认 | 原生分享导出；文件选择导入 |
 
 ## 备注
 

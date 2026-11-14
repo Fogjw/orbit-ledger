@@ -2017,16 +2017,24 @@ function renderLedgerDD(){
 /* ---------- 备份导出 / 导入（D-13：账本全量 JSON 快照） ---------- */
 const BACKUP_EXT='.orbit-backup.json';
 
-/** 导出当前账本 → 浏览器下载一个 JSON 备份文件 */
+/** 导出当前账本 → 浏览器下载 / Android 系统分享。
+    桌面浏览器继续用 Blob 下载；Android WebView 的下载不可靠，走原生分享面板。 */
 async function exportBackup(){
   const cur=(Data.ledgers||[]).find(l=>String(l.id)===String(S.ledgerId));
   if(!cur)return;
   try{
     const snap=await OrbitAPI.exportLedger(cur.id);
-    const blob=new Blob([JSON.stringify(snap,null,2)],{type:'application/json'});
+    const text=JSON.stringify(snap,null,2);
+    const filename=cur.name+BACKUP_EXT;
+    if(window.OrbitAndroid?.shareBackup){
+      window.OrbitAndroid.shareBackup(filename,text);
+      toast(`已准备导出「${cur.name}」· ${snap.expenses.length} 笔`);
+      return;
+    }
+    const blob=new Blob([text],{type:'application/json'});
     const url=URL.createObjectURL(blob);
     const a=document.createElement('a');
-    a.href=url;a.download=cur.name+BACKUP_EXT;
+    a.href=url;a.download=filename;
     document.body.appendChild(a);a.click();a.remove();
     setTimeout(()=>URL.revokeObjectURL(url),1000);
     toast(`已导出「${cur.name}」· ${snap.expenses.length} 笔`);
@@ -2035,25 +2043,34 @@ async function exportBackup(){
   }
 }
 
-/** 选一个备份文件 → 回读为**新账本**（不覆盖、不合并），随后切到该账本。
-    导入的文件可能是任意 JSON，所以解析失败与后端校验失败都要给出可读提示。 */
+/** 把备份文本导入成新账本；Web 文件选择器和 Android 原生文件选择器共用。 */
+async function applyBackupText(text){
+  let snapshot;
+  try{ snapshot=JSON.parse(text); }
+  catch{ throw new Error('这个文件不是合法的 JSON') }
+  const out=await OrbitAPI.importLedger(snapshot);
+  Data.ledgers=await OrbitAPI.listLedgers();
+  await switchLedger(out.ledger.id);
+  toast(`已导入「${out.ledger.name}」· ${out.counts.expenses} 笔 / ${out.counts.tags} 个标签`);
+}
+
+/** 选一个备份文件 → 回读为**新账本**（不覆盖、不合并），随后切到该账本。 */
 function importBackup(){
+  if(window.OrbitAndroid?.pickBackup){
+    window.__orbitImportBackup=async (text)=>{
+      try{ await applyBackupText(text); }
+      catch(e){ toast('导入失败：'+(e.message||e)); }
+    };
+    window.OrbitAndroid.pickBackup();
+    return;
+  }
   const inp=document.createElement('input');
   inp.type='file';inp.accept='.json,application/json';
   inp.onchange=async ()=>{
     const file=inp.files&&inp.files[0];
     if(!file)return;
-    try{
-      let snapshot;
-      try{ snapshot=JSON.parse(await file.text()); }
-      catch{ throw new Error('这个文件不是合法的 JSON') }
-      const out=await OrbitAPI.importLedger(snapshot);
-      Data.ledgers=await OrbitAPI.listLedgers();   // 重拉列表（含新账本）
-      await switchLedger(out.ledger.id);           // 切过去并整链重建视图
-      toast(`已导入「${out.ledger.name}」· ${out.counts.expenses} 笔 / ${out.counts.tags} 个标签`);
-    }catch(e){
-      toast('导入失败：'+(e.message||e));
-    }
+    try{ await applyBackupText(await file.text()); }
+    catch(e){ toast('导入失败：'+(e.message||e)); }
   };
   inp.click();
 }
