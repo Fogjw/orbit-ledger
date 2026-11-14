@@ -55,3 +55,9 @@ webapp/verify-shot.png
 webapp/verify-year.png
 # 临时预览目录（把图挂到本地服务上给用户看，用完即删）
 web/_preview/
+
+# Android release signing material — never commit
+*.jks
+*.keystore
+mobile/orbit-release.keystore
+*.b64

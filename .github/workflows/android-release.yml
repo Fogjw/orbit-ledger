@@ -53,9 +53,14 @@ jobs:
           test -n "$ORBIT_KEYSTORE_PASSWORD" && test -n "$ORBIT_KEY_ALIAS" && test -n "$ORBIT_KEY_PASSWORD" || (echo "缺少签名 secrets"; exit 1)
           cd mobile/android
           chmod +x gradlew
-          ./gradlew bundleRelease --no-daemon
+          ./gradlew bundleRelease assembleRelease --no-daemon
+          APKSIGNER="$(find "$ANDROID_HOME/build-tools" -name apksigner -type f | sort | tail -1)"
+          test -n "$APKSIGNER"
+          "$APKSIGNER" verify --print-certs mobile/android/app/build/outputs/apk/release/app-release.apk
       - uses: actions/upload-artifact@v4
         with:
-          name: orbit-release-aab
-          path: mobile/android/app/build/outputs/bundle/release/app-release.aab
+          name: orbit-release
+          path: |
+            mobile/android/app/build/outputs/bundle/release/app-release.aab
+            mobile/android/app/build/outputs/apk/release/app-release.apk
           if-no-files-found: error
