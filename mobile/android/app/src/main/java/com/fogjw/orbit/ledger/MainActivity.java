@@ -135,6 +135,19 @@ public class MainActivity extends BridgeActivity {
         }
 
         @JavascriptInterface
+        public void writeDatabaseAsync(String base64, String token) {
+            // 全库 Base64/文件写在后台线程；JS 等回调，不阻塞 WebView 主线程。
+            new Thread(() -> {
+                boolean ok = writeDatabase(base64);
+                WebView webView = getBridge() != null ? getBridge().getWebView() : null;
+                if (webView == null) return;
+                String script = "window.__orbitNativeWriteDone && window.__orbitNativeWriteDone("
+                    + JSONObject.quote(token) + "," + ok + ")";
+                runOnUiThread(() -> webView.evaluateJavascript(script, null));
+            }, "orbit-db-write").start();
+        }
+
+        @JavascriptInterface
         public String describe() {
             try {
                 DocumentFile dir = DocumentFile.fromTreeUri(MainActivity.this, treeUri());
