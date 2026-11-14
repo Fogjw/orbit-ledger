@@ -1850,9 +1850,10 @@ tagMask.addEventListener('click',e=>{if(e.target===tagMask)tagMask.hidden=true})
 
 
 /* ---------- 顶栏/面板 ---------- */
-function toast(msg,ms=2200){
-  const t=$('#toast');t.textContent=msg;t.hidden=false;
-  clearTimeout(t._h);t._h=setTimeout(()=>t.hidden=true,ms);
+/* 交互提示层已按用户要求全局关闭。保留 toast() 作为无副作用的调用点，
+   避免每个业务分支都改；错误仍写 console，方便排查但不弹通知。 */
+function toast(msg){
+  if(msg) console.debug('[orbit-toast]',msg);
 }
 function animateNum(el,to,fmt){
   const from=el._v||0;el._v=to;const t0=performance.now();

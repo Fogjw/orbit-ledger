@@ -6,7 +6,6 @@ import android.net.Uri;
 import android.os.Bundle;
 import android.webkit.JavascriptInterface;
 import android.webkit.WebView;
-import android.widget.Toast;
 
 import androidx.core.content.FileProvider;
 
@@ -78,7 +77,7 @@ public class MainActivity extends BridgeActivity {
                     send.addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION);
                     startActivity(Intent.createChooser(send, "导出备份"));
                 } catch (Exception e) {
-                    Toast.makeText(MainActivity.this, "导出失败：" + e.getMessage(), Toast.LENGTH_LONG).show();
+                    android.util.Log.e("OrbitBackup", "导出失败", e);
                 }
             });
         }
@@ -116,7 +115,7 @@ public class MainActivity extends BridgeActivity {
                 + JSONObject.quote(text) + ")";
             webView.evaluateJavascript(script, null);
         } catch (Exception e) {
-            Toast.makeText(this, "读取备份失败：" + e.getMessage(), Toast.LENGTH_LONG).show();
+            android.util.Log.e("OrbitBackup", "读取备份失败", e);
         }
     }
 }

@@ -37,6 +37,7 @@
 | F1 | Android 文件入口 + 移动星轨粒度 | `fix/android-file-timeline` | 完成，合入 develop | 已确认 |
 | M3a | Android 备份导出/文件导入 | `feat/m3-android-backup` | 完成，合入 develop | 已确认 |
 | U1 | 记一笔日历选择 + 金额聚焦 | `feat/entry-calendar` | 完成，合入 develop | 已确认 |
+| T1 | 全局关闭 toast 通知 | `feat/disable-toasts` | 完成，合入 develop | 已确认 |
 
 ## 阶段 0 交付
 
@@ -490,6 +491,19 @@
 - [x] Android smoke：金额为空、日历可选、日期回填。
 - [x] `CI` / Android Emulator E2E 通过，合入 `develop`。
 
+## T1 · 全局关闭 toast 通知（完成）
+
+- [x] `toast()` 改为无 UI 副作用，仅写 `console.debug`；下钻、切年月日、保存、建 tag 等不再弹通知。
+- [x] `#toast` 强制 `display:none`，安卓/电脑/网页共用同一份行为。
+- [x] Android 原生备份失败提示改为 `Log.e`，不再弹系统 Toast。
+- [x] E2E 断言通知层 hidden 且 display=none；Android APK/WebView E2E 通过。
+- [x] `CI` 通过，合入 `develop`。
+
+### T1 取舍
+
+- 错误/校验也一起静默；需要诊断时看控制台/Logcat。用户明确要求所有通知关闭。
+- Toast 层 DOM 保留但永不显示，便于后续若恢复通知只改一处。
+
 ## 合入记录
 
 | 日期 | 界面 | 分支 | commit | 确认 | 备注 |
@@ -518,7 +532,8 @@
 | 2026-11-14 | B1 桌面/网页图标 | `feat/desktop-icon` | 0316fcd | 已确认 | Electron PNG/ICO；顶栏/favicon |
 | 2026-11-14 | F1 文件入口/粒度 | `fix/android-file-timeline` | 72e0bf8 | 已确认 | Android 隐藏文件卡；移动日/月/年/全部 |
 | 2026-11-14 | M3a Android 备份 | `feat/m3-android-backup` | 3a750e7 | 已确认 | 原生分享导出；文件选择导入 |
-| 2026-11-14 | U1 日历/金额聚焦 | `feat/entry-calendar` | 本次合并 | 已确认 | 月历选日；金额空焦 |
+| 2026-11-14 | U1 日历/金额聚焦 | `feat/entry-calendar` | b866a73 | 已确认 | 月历选日；金额空焦 |
+| 2026-11-14 | T1 关闭 toast | `feat/disable-toasts` | 本次合并 | 已确认 | 全平台无通知层 |
 
 ## 备注
 

@@ -540,50 +540,13 @@ async function main() {
   await click('#modalClose');
   await wait(500);
 
-  // 提示层必须压在所有浮层之上（用户报：弹窗里操作时看不到 toast 提示）。
-  // 判据不靠截图：让最高的浮层（#nameMask）**保持打开**时触发一条 toast，
-  // 再用 elementFromPoint 问「这个点上最顶层的元素是谁」—— 被盖住的话拿到的是 mask 而不是 toast。
-  // 触发方式是空名称点确定：它只 toast 不关浮层（正好保住了遮挡场景）。
-  await click('#btnAdd');
-  await wait(700);
-  await click('#btnAddCat');
-  await wait(500);
-  await js(`(() => { document.querySelector('#nameInput').value = ''; return true; })()`);
-  await click('#nameOk');
-  await wait(400);
-  const zTop = JSON.parse(await js(`(() => {
-    const z = (s) => { const el = document.querySelector(s); return el ? Number(getComputedStyle(el).zIndex) || 0 : 0; };
+  // 用户要求关闭所有 toast/通知；这里断言它既隐藏又不会参与布局。
+  const toastPolicy = JSON.parse(await js(`(() => {
     const t = document.querySelector('#toast');
-    const r = t.getBoundingClientRect();
-    const hit = document.elementFromPoint(Math.round(r.left + r.width / 2), Math.round(r.top + r.height / 2));
-    return JSON.stringify({
-      toastZ: z('#toast'),
-      topMaskZ: Math.max(z('#nameMask'), z('#tagMask'), z('#viewMask'), z('#modalMask'), z('#expMask')),
-      toastShown: !t.hidden && r.width > 0,
-      hit: hit ? (hit.id || String(hit.className)) : null,
-    });
+    return JSON.stringify({ hidden: t ? t.hidden : true, display: t ? getComputedStyle(t).display : 'none' });
   })()`));
-  // toast 是 pointer-events:none（见下一条判据），所以 elementFromPoint 永远命中不到它 ——
-  // 「在最顶层」只能靠 z-index 比较 + 它确实显示着来判断。
-  const toastOnTop = zTop.toastShown && zTop.toastZ > zTop.topMaskZ;
-  console.log(`[verify] 提示层 z = ${zTop.toastZ} · 最高浮层 z = ${zTop.topMaskZ}`
-    + ` · toast 可见 = ${zTop.toastShown} → ${toastOnTop ? '压在所有浮层之上 ✓' : '层级不够 ✗'}`);
-  // 但它必须**不吃点击**：toast 显示的那两秒里，它覆盖到的浮层控件要照样点得动
-  //（用户实测症状：「记一笔时不时点不动、金额和日期都改不了」）。
-  const tHit = JSON.parse(await js(`(() => {
-    const t = document.querySelector('#toast');
-    if (!t || t.hidden) return JSON.stringify({ skipped: true });
-    const r = t.getBoundingClientRect();
-    const hit = document.elementFromPoint(Math.round(r.left + r.width / 2), Math.round(r.top + r.height / 2));
-    return JSON.stringify({ pe: getComputedStyle(t).pointerEvents, hit: hit ? (hit.id || String(hit.className)) : null });
-  })()`));
-  const toastClickThrough = tHit.skipped || (tHit.pe === 'none' && tHit.hit !== 'toast');
-  console.log(`[verify] toast 的 pointer-events = "${tHit.pe}" · 该点命中 = "${tHit.hit}"`
-    + ` → ${toastClickThrough ? '不挡点击 ✓' : '会挡住下面的控件 ✗'}`);
-  await click('#nameCancel');   // 空名称不会关浮层，这里手动收尾
-  await wait(300);
-  await click('#modalClose');
-  await wait(400);
+  const toastOff = toastPolicy.hidden && toastPolicy.display === 'none';
+  console.log(`[verify] 通知层：hidden=${toastPolicy.hidden} · display=${toastPolicy.display} → ${toastOff ? '已关闭 ✓' : '仍显示 ✗'}`);
 
   // 标签管理里的删除（与花销明细里的删除共用同一个流程）。
   // confirm 是原生对话框，自动化里点不了 —— 先把它换成「一律确认」，再走真实 UI 路径。
@@ -956,7 +919,7 @@ async function main() {
 
   const ok = gateOk && storageOk && mobileOk && landscapeOk && reloadOk && state.loadedUi && state.canvasLit > 0 && wrote && inputWorks
     && yearVisible && year.centerLit > 0 && errors.length === 0 && noReset !== false
-    && incomeVisible && toastOnTop && toastClickThrough && tagDelOk && pTitleOk && panelOk && ctxShown && stayPut && bounded !== false
+    && incomeVisible && toastOff && tagDelOk && pTitleOk && panelOk && ctxShown && stayPut && bounded !== false
     && dayTipOk && endReachable
     && centsOk && todayMarkOk && todayAbsentOk && editorAmtOk !== false
     && railHasIncome && yearHasIncome && incomePlaceholderVisible && expensePlaceholderVisible
