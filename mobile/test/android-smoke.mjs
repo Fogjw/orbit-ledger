@@ -177,6 +177,21 @@ try {
   // 记一笔：默认金额 88 / 默认日期，保存后应关闭并刷新
   await page.evaluate(`document.querySelector('#mobileAdd').click()`);
   await waitEval(page, `!document.querySelector('#modalMask').hidden`, Boolean, '记一笔打开');
+  const entryState = await page.evaluate(`({
+    amount: document.querySelector('#mAmount')?.value,
+    focused: document.activeElement?.id || '',
+  })`);
+  await page.evaluate(`document.querySelector('#mDateBtn').click()`);
+  await sleep(250);
+  const calendarOpen = await page.evaluate(`!document.querySelector('#mCalendar')?.hidden`);
+  const firstDate = await page.evaluate(`document.querySelector('#mCalGrid button[data-date]')?.dataset.date || ''`);
+  await page.evaluate(`document.querySelector('#mCalGrid button[data-date]')?.click()`);
+  await sleep(250);
+  const pickedDate = await page.evaluate(`document.querySelector('#mDate')?.value || ''`);
+  if (entryState.amount !== '' || !calendarOpen || !/^\d{4}-\d{2}-\d{2}$/.test(firstDate) || pickedDate !== firstDate) {
+    throw new Error(`Android 记一笔日期/金额异常：${JSON.stringify({ entryState, calendarOpen, firstDate, pickedDate })}`);
+  }
+  console.log('[android] calendar:', pickedDate, 'amount empty, focus=' + (entryState.focused || 'none'));
   // Android 返回键应关掉记账账笺，而不是退到桌面
   adb('shell', 'input', 'keyevent', '4');
   await waitEval(page, `document.querySelector('#modalMask').hidden`, Boolean, '返回键关记账账笺');
