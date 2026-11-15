@@ -1156,7 +1156,7 @@ async function reloadDetailExpenses(){
   if(!detailTag)return;
   const {from,to}=Data.monthRange;
   try{
-    const {items=[]}=await OrbitAPI.listExpenses(Data.ledgerId,{from,to});
+    const {items=[]}=await OrbitAPI.listExpenses(Data.ledgerId,{from,to,planId:currentPlanId()});
     detailExpenses=items.filter(e=>e.tags.some(t=>t.role==='primary'&&t.tag_id===detailTag.tagId));
   }catch(e){detailExpenses=[]}
 }
@@ -1524,7 +1524,7 @@ async function enterDetail(id,opts={}){
   if(!tag)return;
   const {from,to}=Data.monthRange;
   try{
-    const {items=[]}=await OrbitAPI.listExpenses(Data.ledgerId,{from,to});
+    const {items=[]}=await OrbitAPI.listExpenses(Data.ledgerId,{from,to,planId:currentPlanId()});
     detailExpenses=items.filter(e=>e.tags.some(t=>t.role==='primary'&&t.tag_id===tag.tagId));
   }catch(e){
     detailExpenses=[];
@@ -1681,7 +1681,7 @@ async function refreshExpList(){
   $('#expSub').textContent=(from&&to)?(from.slice(0,7).replace('-','年')+'月 · '+expCtx.name):expCtx.name;
   box.innerHTML='<div class="e-empty">加载中…</div>';
   try{
-    const {items=[]}=await OrbitAPI.listExpenses(Data.ledgerId,{from,to});
+    const {items=[]}=await OrbitAPI.listExpenses(Data.ledgerId,{from,to,planId:currentPlanId()});
     // 匹配：该 tag 作为 primary（category 维按 primary；context 同）——也包含副 tag 提及？只列 primary
     // 主 tag 匹配 primary；副 tag 匹配 secondary
     const mine=items.filter(e=>e.tags.some(t=>t.tag_id===expCtx.tagId&&t.role===(expCtx.isSub?'secondary':'primary')));
@@ -1957,8 +1957,16 @@ function syncChrome(){
     const lab=document.querySelector('.mb-main small');if(lab)lab.textContent='结余';
   }
   renderTop();
-  if(planScope){const src=$('#topList'),dst=$('#prTop');if(src&&dst)dst.innerHTML=src.innerHTML;}
+  if(planScope){const src=$('#topList'),dst=$('#prTop');if(src&&dst){dst.innerHTML=src.innerHTML;bindTopRows(dst);}}
   renderPlanMenu();
+}
+function bindTopRows(root){
+  if(!root)return;
+  root.querySelectorAll('.top-row').forEach(el=>{
+    el.onmouseenter=()=>setHover({kind:'cat',id:el.dataset.id});
+    el.onmouseleave=()=>setHover(null);
+    el.onclick=()=>{const tag=(CATS.concat(CTXS)).find(c=>c.id===el.dataset.id);if(tag)openExpenseList(tag)};
+  });
 }
 function renderTop(){
   // 与主视图主 tag 同一口径：只列当前窗口有账单的类目，别把只在其他月份
@@ -1979,11 +1987,7 @@ function renderTop(){
       <span class="top-bar"><span class="top-fill" style="display:block;width:${Math.round((amts[c.id]||0)/max*100)}%;background:${c.color}"></span></span>
       <span class="top-amt">${fmtYuan(amts[c.id]||0)}</span>
     </div>`).join('');
-  document.querySelectorAll('.top-row').forEach(el=>{
-    el.onmouseenter=()=>setHover({kind:'cat',id:el.dataset.id});
-    el.onmouseleave=()=>setHover(null);
-    el.onclick=()=>{const tag=(CATS.concat(CTXS)).find(c=>c.id===el.dataset.id);if(tag)openExpenseList(tag)};
-  });
+  bindTopRows($('#topList'));
   const topName=items[0]?items[0].name:'—';
   $('#insightBox').innerHTML=`${pw} 最大支出星系：<b>${topName}</b>`;
 }
@@ -2007,6 +2011,7 @@ async function switchLedger(id,opts={}){
   }catch(e){toast('切换账本失败：'+(e.message||e))}
   renderLedgerDD();
   buildGraph();syncChrome();
+  renderPlanPage();renderPlanMenu();
   if(opts.history!==false)pushView();   // 换账本＝换视图
   const cur=(Data.ledgers||[]).find(l=>String(l.id)===String(S.ledgerId));
   toast('账本 · '+(cur?cur.name:''));
@@ -2675,7 +2680,9 @@ $('#modalSave').onclick=async ()=>{
   const tags=[...modalSel.category.subs,...modalSel.context.subs];
   // 备注
   const note=$('#mNote')?.value.trim()||undefined;
-  const payload={type,amountCents,date,note,primary,tags,planIds:[...modalPlans]};
+  const validPlanIds=new Set((Data.plans||[]).map(p=>String(p.id)));
+  const planIds=[...modalPlans].filter(id=>validPlanIds.has(String(id)));
+  const payload={type,amountCents,date,note,primary,tags,planIds};
   try{
     if(editingExpense){
       // 编辑：PUT 全量替换（保持原 ledger_id）
@@ -2792,6 +2799,9 @@ const START_PAGE_KEY='orbit.startPage';
 
 function escHtml(v){
   return String(v==null?'':v).replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+}
+function currentPlanId(){
+  return (Data&&Data.scope&&Data.scope.kind==='plan')?Data.scope.planId:undefined;
 }
 function readStartPage(){try{return PlanU.parseStartPage(localStorage.getItem(START_PAGE_KEY))}catch(e){return null}}
 function writeStartPage(planId){

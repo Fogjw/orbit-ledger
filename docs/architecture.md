@@ -101,8 +101,8 @@ Base: `http://localhost:5310/api`（端口 env `ORBIT_PORT` 覆盖）。CORS 放
 | GET | `/ledgers/:id` | 账本 |
 | GET | `/ledgers/:id/dimensions` | 维度+tag 树（录入下拉/图谱源） |
 | POST | `/ledgers/:id/dimensions` | 启用扩展维度 `{key,name?}`（如 payment；不预设占位 tag） |
-| GET | `/ledgers/:id/export` | 账本全量 JSON 快照（备份，D-13） |
-| POST | `/ledgers/import` | 用快照回读为**新账本**（不覆盖/不合并，主键全部重分配）；坏备份 → 400 `INVALID_BACKUP` / `BACKUP_INCOMPLETE`。路由须声明在 `/:id` 之前，否则 `import` 会被当成账本 id |
+| GET | `/ledgers/:id/export` | 账本全量 JSON 快照（备份，D-13；v2 含 `plans` / `expense_plan_links`） |
+| POST | `/ledgers/import` | 用快照回读为**新账本**（不覆盖/不合并，主键全部重分配；兼容 v1/v2 备份，v1 计划为空）；坏备份 → 400 `INVALID_BACKUP` / `BACKUP_INCOMPLETE`。路由须声明在 `/:id` 之前，否则 `import` 会被当成账本 id |
 | PATCH/DELETE | `/ledgers/:id` | 改名 `{name}` / 删除 |
 | POST | `/ledgers/:id/tags` | 建 tag `{dimensionKey,name,color?,parentTagId?}`——带 `parentTagId` 则在其下建副 tag（父须为同维度主 tag） |
 | PATCH/DELETE | `/ledgers/:id/tags/:tagId` | 改名/改色 `{name?,color?}`（同层级唯一，「未分类」锁定） / 删除（「未分类」与被引用 tag、以及副 tag 被引用的父 tag 409 保护） |
