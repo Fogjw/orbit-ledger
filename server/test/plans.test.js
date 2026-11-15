@@ -9,6 +9,7 @@ import { createTagService } from '../src/services/tagService.js';
 import { createExpenseService } from '../src/services/expenseService.js';
 import { createPlanService } from '../src/services/planService.js';
 import { createPlanRepo } from '../src/repos/planRepo.js';
+import { createReportService } from '../src/services/reportService.js';
 
 function setup() {
   const db = openDatabase(':memory:');
@@ -18,6 +19,7 @@ function setup() {
     tags: createTagService(db),
     expenses: createExpenseService(db),
     plans: createPlanService(db),
+    reports: createReportService(db),
   };
   return { db, svc };
 }
@@ -121,5 +123,30 @@ describe('账单 ↔ 计划', () => {
     svc.plans.remove(l.id, p.id);
     assert.ok(svc.expenses.getInLedger(l.id, inPlan.id), '账单仍在');
     assert.deepEqual(svc.expenses.getInLedger(l.id, inPlan.id).plans, []);
+  });
+});
+
+
+describe('统计按计划过滤', () => {
+  test('总额/维度/月/日都只含计划内账单', () => {
+    const { svc } = setup();
+    const l = svc.ledgers.create('L');
+    const p = svc.plans.create(l.id, { name: 'P', budgetCents: 0, startDate: '2026-10-01', endDate: '2026-11-30' });
+    svc.expenses.add({ ledgerId: l.id, amountCents: 1000, date: '2026-11-05', primary: { category: '餐饮' }, planIds: [p.id] });
+    svc.expenses.add({ ledgerId: l.id, amountCents: 2000, date: '2026-11-06', primary: { category: '交通' } });
+    svc.expenses.add({ ledgerId: l.id, amountCents: 500, date: '2026-10-05', primary: { category: '餐饮' }, planIds: [p.id] });
+
+    // 成员关系优先：10 月那笔仍计入计划（不因窗口外被剔除）
+    const all = svc.reports.windowView(l.id, { planId: p.id });
+    assert.equal(all.totals.expense, 1500);
+
+    const nov = svc.reports.windowView(l.id, { from: '2026-11-01', to: '2026-11-30', planId: p.id });
+    assert.equal(nov.totals.expense, 1000);
+    assert.deepEqual(nov.byDimension.category.map(r => r.name), ['餐饮']);
+    assert.equal(nov.monthly.filter(r => r.type === 'expense').length, 1);
+    assert.equal(nov.monthly.find(r => r.type === 'expense').month, '2026-11');
+    assert.equal(nov.daily.length, 1);
+    assert.equal(nov.daily[0].date, '2026-11-05');
+    assert.equal(nov.daily[0].top_name, '餐饮');
   });
 });
