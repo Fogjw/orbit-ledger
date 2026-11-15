@@ -931,6 +931,61 @@ async function main() {
   console.log(`[verify] 移动端：nav=${mobile.nav} · 结余=${mobile.balance} · 图=${mobile.graphWidth}×${mobile.graphHeight}`
     + ` · 读数账笺=${sheetOpen ? '开' : '关'}/${sheetClosed ? '关' : '开'} · 记一笔=${mobileEntry ? '开' : '关'} → ${mobileOk ? '✓' : '✗'}`);
 
+  // 计划：总览 → 进入计划 → 记账默认勾选 → 超支显示绿色 → 回整本账
+  const planSeed = JSON.parse(await js(`(async()=>{
+    const today = new Date().toLocaleDateString('sv-SE');
+    const [y,m] = today.split('-');
+    const start = y + '-' + m + '-01';
+    const last = new Date(Number(y), Number(m), 0);
+    const end = y + '-' + m + '-' + String(last.getDate()).padStart(2, '0');
+    const p = await OrbitAPI.createPlan(OrbitData.ledgerId, {
+      name: '验收计划', budgetCents: 10000, startDate: start, endDate: end,
+    });
+    await OrbitData.loadPlans();
+    return JSON.stringify({ id: p.id });
+  })()`));
+  await click('#planBtn');
+  await wait(200);
+  const planMenuOpen = await has('#planMenu:not([hidden])');
+  await js(`document.querySelector('#planMenu [data-nav="overview"]').click()`);
+  await wait(300);
+  const planOverviewOpen = await has('#planPage:not([hidden])');
+  const planCardShown = await has(`.plan-card[data-plan-id="${planSeed.id}"]`);
+  await js(`document.querySelector('.plan-card[data-plan-id="${planSeed.id}"] [data-act="open"]').click()`);
+  await wait(500);
+  const planScope = JSON.parse(await js(`JSON.stringify({
+    readout: !document.querySelector('#planReadout').hidden,
+    ledgerHidden: document.querySelector('#ledgerReadout').hidden,
+    bal: document.querySelector('#prBalance').textContent,
+  })`));
+  await click('#btnAdd');
+  await wait(300);
+  const planPreset = await js(`document.querySelectorAll('#mPlans .m-plan-chip.on').length`);
+  await js(`(() => {
+    const a = document.querySelector('#mAmount'); a.value = '150';
+    a.dispatchEvent(new Event('input', { bubbles: true }));
+    document.querySelector('#modalSave').click();
+    return true;
+  })()`);
+  await wait(1400);
+  const planOver = JSON.parse(await js(`JSON.stringify({
+    label: document.querySelector('#prLabel').textContent,
+    bal: document.querySelector('#prBalance').textContent,
+    color: getComputedStyle(document.querySelector('#prBalance')).color,
+  })`));
+  await click('#planBtn');
+  await wait(200);
+  await js(`document.querySelector('#planMenu [data-nav="ledger"]').click()`);
+  await wait(500);
+  const planLeft = await js(`document.querySelector('#planReadout').hidden === true && document.querySelector('#ledgerReadout').hidden === false`);
+  const planOk = planMenuOpen && planOverviewOpen && planCardShown && planScope.readout
+    && planScope.ledgerHidden && planScope.bal === '¥100' && planPreset === 1
+    && planOver.label === '超支' && planOver.bal === '¥50' && planOver.color === 'rgb(0, 200, 83)'
+    && planLeft;
+  console.log(`[verify] 计划：菜单=${planMenuOpen} · 总览=${planOverviewOpen} · 卡片=${planCardShown}`
+    + ` · 计划读数=${planScope.readout}/${planScope.bal} · 默认勾选=${planPreset}`
+    + ` · 超支=${planOver.label}/${planOver.bal}/${planOver.color} · 回整本账=${planLeft} → ${planOk ? '✓' : '✗'}`);
+
   // 浏览器存储选择必须跨刷新记住；否则每次打开都回到 gate，用户会以为数据丢了。
   win.webContents.reload();
   await wait(3500);
@@ -959,7 +1014,7 @@ async function main() {
     && dayTipOk && endReachable
     && centsOk && todayMarkOk && todayAbsentOk && editorAmtOk !== false
     && railHasIncome && yearHasIncome && incomePlaceholderVisible && expensePlaceholderVisible
-    && graphDetailOk && graphBackOk;
+    && graphDetailOk && graphBackOk && planOk;
   console.log(`[verify] 结论: ${ok ? '通过' : '未通过'}`);
   win.destroy();
   server.close();
