@@ -58,3 +58,68 @@ describe('计划 CRUD 与余额', () => {
     assert.equal(svc.plans.list(a.id).length, 1);
   });
 });
+
+describe('账单 ↔ 计划', () => {
+  test('一笔账进多个计划：各自全额计入，改/删同步', () => {
+    const { svc } = setup();
+    const l = svc.ledgers.create('L');
+    const p1 = svc.plans.create(l.id, { name: '生活费', budgetCents: 200000, startDate: '2026-11-01', endDate: '2026-11-30' });
+    const p2 = svc.plans.create(l.id, { name: '旅行', budgetCents: 100000, startDate: '2026-11-01', endDate: '2026-11-30' });
+
+    const e = svc.expenses.add({ ledgerId: l.id, amountCents: 5000, date: '2026-11-05', planIds: [p1.id, p2.id] });
+    assert.deepEqual(e.plans.map(x => x.id).sort(), [p1.id, p2.id]);
+    const rows = svc.plans.list(l.id);
+    assert.equal(rows.find(r => r.id === p1.id).spent_cents, 5000);
+    assert.equal(rows.find(r => r.id === p2.id).spent_cents, 5000);
+
+    svc.expenses.update(l.id, e.id, { type: 'expense', amountCents: 7000, date: '2026-11-05', primary: {}, tags: [], planIds: [p2.id] });
+    const after = svc.plans.list(l.id);
+    assert.equal(after.find(r => r.id === p1.id).spent_cents, 0, 'p1 解绑');
+    assert.equal(after.find(r => r.id === p2.id).spent_cents, 7000);
+
+    svc.expenses.removeInLedger(l.id, e.id);
+    assert.equal(svc.plans.list(l.id).find(r => r.id === p2.id).spent_cents, 0);
+  });
+
+  test('已关联的计划在日期改到区间外后仍保留', () => {
+    const { svc } = setup();
+    const l = svc.ledgers.create('L');
+    const p = svc.plans.create(l.id, { name: 'P', budgetCents: 0, startDate: '2026-11-01', endDate: '2026-11-30' });
+    const e = svc.expenses.add({ ledgerId: l.id, amountCents: 100, date: '2026-11-05', planIds: [p.id] });
+    const moved = svc.expenses.update(l.id, e.id, {
+      type: 'expense', amountCents: 100, date: '2026-12-05', primary: {}, tags: [], planIds: [p.id],
+    });
+    assert.deepEqual(moved.plans.map(x => x.id), [p.id], '越界编辑不静默丢链接');
+    assert.equal(svc.plans.list(l.id)[0].spent_cents, 100, '仍计入该计划');
+  });
+
+  test('计划归属与日期窗口校验', () => {
+    const { svc } = setup();
+    const a = svc.ledgers.create('A');
+    const b = svc.ledgers.create('B');
+    const p = svc.plans.create(a.id, { name: 'P', budgetCents: 0, startDate: '2026-11-01', endDate: '2026-11-30' });
+    assert.throws(
+      () => svc.expenses.add({ ledgerId: a.id, amountCents: 100, date: '2026-12-01', planIds: [p.id] }),
+      (e) => e.code === 'PLAN_OUT_OF_RANGE'
+    );
+    assert.throws(
+      () => svc.expenses.add({ ledgerId: b.id, amountCents: 100, date: '2026-11-05', planIds: [p.id] }),
+      (e) => e.code === 'PLAN_NOT_FOUND'
+    );
+    const e = svc.expenses.add({ ledgerId: a.id, amountCents: 100, date: '2026-11-05' });
+    assert.deepEqual(e.plans, []);
+  });
+
+  test('删计划不删账单；列表可按计划过滤', () => {
+    const { svc } = setup();
+    const l = svc.ledgers.create('L');
+    const p = svc.plans.create(l.id, { name: 'P', budgetCents: 0, startDate: '2026-11-01', endDate: '2026-11-30' });
+    const inPlan = svc.expenses.add({ ledgerId: l.id, amountCents: 100, date: '2026-11-05', planIds: [p.id] });
+    svc.expenses.add({ ledgerId: l.id, amountCents: 200, date: '2026-11-06' });
+
+    assert.equal(svc.expenses.listByWindow(l.id, { planId: p.id }).length, 1);
+    svc.plans.remove(l.id, p.id);
+    assert.ok(svc.expenses.getInLedger(l.id, inPlan.id), '账单仍在');
+    assert.deepEqual(svc.expenses.getInLedger(l.id, inPlan.id).plans, []);
+  });
+});

@@ -19,13 +19,17 @@ export function createExpenseRepo(db) {
       return plain(db.prepare(`SELECT ${COLS} FROM expenses WHERE id = ?`).get(id));
     },
 
-    /** 时间窗内花销（账本内，按日期倒序） */
-    listByWindow(ledgerId, { from = null, to = null, type = null } = {}) {
+    /** 时间窗内花销（账本内，按日期倒序）；planId 给定时只返回该计划内的账单 */
+    listByWindow(ledgerId, { from = null, to = null, type = null, planId = null } = {}) {
       let sql = `SELECT ${COLS} FROM expenses WHERE ledger_id = ?`;
       const args = [ledgerId];
       if (from) { sql += ' AND date >= ?'; args.push(from); }
       if (to) { sql += ' AND date <= ?'; args.push(to); }
       if (type) { sql += ' AND type = ?'; args.push(type); }
+      if (planId) {
+        sql += ' AND EXISTS (SELECT 1 FROM expense_plan_links pl WHERE pl.expense_id = expenses.id AND pl.plan_id = ?)';
+        args.push(planId);
+      }
       sql += ' ORDER BY date DESC, id DESC';
       return plainAll(db.prepare(sql).all(...args));
     },
@@ -62,6 +66,25 @@ export function createExpenseRepo(db) {
      * 一笔花销的全部 tag（带维度 key 与名称）。
      * parent_tag_id 供前端把副 tag 归到它所属的主 tag 下（L3 分类内「花销×标签」视图）。
      */
+    /** 账单关联的计划（id + 名称），账单详情与编辑回填用 */
+    plansOf(expenseId) {
+      return plainAll(db.prepare(
+        `SELECT p.id, p.name FROM expense_plan_links l JOIN plans p ON p.id = l.plan_id
+          WHERE l.expense_id = ? ORDER BY p.start_date, p.id`
+      ).all(expenseId));
+    },
+
+    linkPlans(expenseId, planIds) {
+      const stmt = db.prepare('INSERT OR IGNORE INTO expense_plan_links (expense_id, plan_id) VALUES (?, ?)');
+      for (const planId of planIds) stmt.run(expenseId, planId);
+    },
+
+    /** 编辑语义：计划关联也整笔替换（显式 [] 才清空，见 expenseService.plan） */
+    replacePlans(expenseId, planIds) {
+      db.prepare('DELETE FROM expense_plan_links WHERE expense_id = ?').run(expenseId);
+      this.linkPlans(expenseId, planIds);
+    },
+
     tagsOf(expenseId) {
       return plainAll(db.prepare(
         `SELECT l.role, l.tag_id, t.name, t.is_unnamed, t.parent_tag_id, d.key AS dim_key, d.name AS dim_name
