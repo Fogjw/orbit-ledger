@@ -102,25 +102,36 @@ const API = {
   deleteExpense: (ledgerId, expenseId) =>
     request(`/ledgers/${ledgerId}/expenses/${expenseId}`, { method: 'DELETE' }),
 
-  // 列出花销（支持时间窗和类型过滤）
-  listExpenses: (ledgerId, { from, to, type } = {}) => {
+  // 列出花销（支持时间窗、类型与计划过滤）
+  listExpenses: (ledgerId, { from, to, type, planId } = {}) => {
     const params = new URLSearchParams();
     if (from) params.append('from', from);
     if (to) params.append('to', to);
     if (type) params.append('type', type);
+    if (planId) params.append('planId', planId);
     const query = params.toString();
     return request(`/ledgers/${ledgerId}/expenses${query ? '?' + query : ''}`);
   },
 
-  // 获取统计数据
-  getStats: (ledgerId, { from, to, type } = {}) => {
+  // 获取统计数据（planId 给定时只统计该计划）
+  getStats: (ledgerId, { from, to, type, planId } = {}) => {
     const params = new URLSearchParams();
     if (from) params.append('from', from);
     if (to) params.append('to', to);
     if (type) params.append('type', type);
+    if (planId) params.append('planId', planId);
     const query = params.toString();
     return request(`/ledgers/${ledgerId}/stats${query ? '?' + query : ''}`);
   },
+
+  // 计划（预算轨道）
+  listPlans: (ledgerId) => request(`/ledgers/${ledgerId}/plans`),
+  createPlan: (ledgerId, { name, budgetCents, startDate, endDate }) =>
+    request(`/ledgers/${ledgerId}/plans`, { method: 'POST', body: { name, budgetCents, startDate, endDate } }),
+  updatePlan: (ledgerId, planId, patch = {}) =>
+    request(`/ledgers/${ledgerId}/plans/${planId}`, { method: 'PATCH', body: patch }),
+  deletePlan: (ledgerId, planId) =>
+    request(`/ledgers/${ledgerId}/plans/${planId}`, { method: 'DELETE' }),
 
   // 导出账本（备份快照）
   exportLedger: (ledgerId) => request(`/ledgers/${ledgerId}/export`),

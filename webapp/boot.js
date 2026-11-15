@@ -8,7 +8,7 @@ import { createStorage, isFileAccessSupported, pickDirectory, ensurePermission, 
 import { showGate } from './gate.js';
 import { createNativeStorage } from './native-storage.js';
 
-const UI_SCRIPTS = ['data.js', 'timeline-nav.js', 'app.js'];   // 顺序不能反：app.js 依赖前两个
+const UI_SCRIPTS = ['data.js', 'timeline-nav.js', 'plan-utils.js', 'app.js'];   // 顺序不能反：app.js 依赖前两个
 const WASM_DIR = new URL('./sqlite-wasm/', import.meta.url).href;
 const WASM_URL = new URL('./sqlite-wasm/sql-wasm.wasm', import.meta.url).href;
 const STORAGE_MODE_KEY = 'orbit.storage.mode';
