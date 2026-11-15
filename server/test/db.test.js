@@ -220,12 +220,59 @@ describe('v4/v5 收入的 context 归属迁移', () => {
        WHERE l.expense_id = ? AND d.key = 'context' AND l.role = 'primary'`).all(id).map(r => r.name);
     assert.deepEqual(ctxPrimaryName(inc.id), ['未分类'], '迁移前：收入挂在支出的「未分类」上');
 
-    // 抹掉 v4/v5 记录再迁移 —— 等价于「用新版打开一个老库」
-    db.prepare('DELETE FROM schema_version WHERE version IN (4, 5)').run();
+    // 抹掉 v4 及以后的记录再迁移 —— 等价于「用新版打开一个 v3 老库」。
+    // 用 >= 而不是 IN (4,5)：新增迁移后 MAX(version) 会大于 5，只删 4/5 的话
+    // migrate() 认为库已经是新版，v4/v5 根本不会重跑（新增 v6 时踩到过）。
+    db.prepare('DELETE FROM schema_version WHERE version >= 4').run();
     migrate(db);
 
     assert.deepEqual(ctxPrimaryName(inc.id), ['收入·未分类'], '迁移后：收入改挂自己的占位');
     assert.deepEqual(ctxPrimaryName(exp.id), ['未分类'], '支出的情境归属不受影响');
     assert.ok(versionRows(db).includes(5), 'v5 记录在案');
   });
+});
+
+test('v6：计划表与关联表就位，删除计划只清链接', () => {
+  const db = openDatabase(':memory:');
+  migrate(db);
+  const planCols = db.prepare('PRAGMA table_info(plans)').all().map(c => c.name);
+  assert.ok(planCols.includes('budget_cents'), 'plans 有 budget_cents');
+  assert.ok(planCols.includes('start_date'), 'plans 有 start_date');
+  assert.ok(db.prepare('PRAGMA table_info(expense_plan_links)').all().some(c => c.name === 'plan_id'));
+
+  db.prepare("INSERT INTO ledgers (name) VALUES ('L')").run();
+  const ledgerId = db.prepare('SELECT id FROM ledgers').get().id;
+  const planId = Number(db.prepare(
+    "INSERT INTO plans (ledger_id,name,budget_cents,start_date,end_date) VALUES (?,?,?,?,?)"
+  ).run(ledgerId, '生活费', 200000, '2026-11-01', '2026-11-30').lastInsertRowid);
+  const expId = Number(db.prepare(
+    "INSERT INTO expenses (ledger_id,type,amount_cents,date) VALUES (?,?,?,?)"
+  ).run(ledgerId, 'expense', 4560, '2026-11-05').lastInsertRowid);
+  db.prepare('INSERT INTO expense_plan_links (expense_id, plan_id) VALUES (?,?)').run(expId, planId);
+
+  db.prepare('DELETE FROM plans WHERE id = ?').run(planId);
+  assert.equal(db.prepare('SELECT COUNT(*) n FROM expense_plan_links').get().n, 0, '删计划清链接');
+  assert.equal(db.prepare('SELECT COUNT(*) n FROM expenses WHERE id = ?').get(expId).n, 1, '账单保留');
+
+  db.prepare("INSERT INTO expenses (ledger_id,type,amount_cents,date) VALUES (?,?,?,?)")
+    .run(ledgerId, 'expense', 100, '2026-11-06');
+  const e2 = Number(db.prepare('SELECT MAX(id) id FROM expenses').get().id);
+  const p2 = Number(db.prepare(
+    "INSERT INTO plans (ledger_id,name,budget_cents,start_date,end_date) VALUES (?,?,?,?,?)"
+  ).run(ledgerId, 'P2', 0, '2026-11-01', '2026-11-30').lastInsertRowid);
+  db.prepare('INSERT INTO expense_plan_links (expense_id, plan_id) VALUES (?,?)').run(e2, p2);
+  db.prepare('DELETE FROM expenses WHERE id = ?').run(e2);
+  assert.equal(db.prepare('SELECT COUNT(*) n FROM expense_plan_links').get().n, 0, '删账单清链接');
+});
+
+test('v6 约束：预算不得为负、结束日不得早于开始日', () => {
+  const db = openDatabase(':memory:');
+  migrate(db);
+  db.prepare("INSERT INTO ledgers (name) VALUES ('L')").run();
+  const ledgerId = db.prepare('SELECT id FROM ledgers').get().id;
+  const ins = db.prepare(
+    "INSERT INTO plans (ledger_id,name,budget_cents,start_date,end_date) VALUES (?,?,?,?,?)"
+  );
+  assert.throws(() => ins.run(ledgerId, '负预算', -1, '2026-11-01', '2026-11-30'));
+  assert.throws(() => ins.run(ledgerId, '倒序', 0, '2026-11-30', '2026-11-01'));
 });
