@@ -654,3 +654,130 @@ textarea.m-remark{min-height:66px;max-height:30vh;resize:vertical;line-height:1.
   .m-cal-grid button{height:36px}
   .m-cal-head button{height:34px;min-width:36px}
 }
+
+/* ---------- 计划（预算轨道） ---------- */
+.plan-dd{position:relative}
+.plan-btn{color:var(--dim)}
+.plan-btn.has-plan{color:var(--accent);border-color:var(--accent)}
+.plan-btn .plan-count{font-family:"SFMono-Regular","Cascadia Mono",Consolas,monospace;font-size:9px;
+  border:1px solid rgba(176,141,87,.35);padding:0 4px;line-height:13px;margin-left:5px;color:var(--accent)}
+.dd-plan-amt{margin-left:auto;font-family:"SFMono-Regular","Cascadia Mono",Consolas,monospace;font-size:10px;flex:none}
+
+.plan-page{position:fixed;left:0;right:0;top:64px;bottom:0;z-index:9;background:var(--bg);
+  overflow:auto;padding:26px 32px 72px;display:block}
+.plan-page[hidden]{display:none}
+.pp-head{display:flex;align-items:flex-end;justify-content:space-between;gap:20px}
+.pp-title{font-family:"Noto Serif CJK SC","Source Han Serif SC","Songti SC",serif;font-size:26px;line-height:1.1;
+  letter-spacing:.08em;color:#e3e9df}
+.pp-title em{font-style:normal;font-family:var(--font);font-size:11px;color:var(--dim);letter-spacing:.18em;margin-left:12px;vertical-align:2px}
+.pp-sub{font-size:11px;color:var(--dim2);letter-spacing:.06em;margin-top:7px}
+.pp-actions{display:flex;align-items:center;gap:8px;flex:none}
+.pp-close{font-size:13px;color:var(--dim)}
+.pp-sum{display:flex;margin-top:20px;border-top:1px solid var(--border2);border-bottom:1px solid var(--border)}
+.pp-sum .ps{flex:1;padding:11px 16px;border-right:1px solid var(--border);display:flex;flex-direction:column;gap:2px}
+.pp-sum .ps:last-child{border-right:0}
+.pp-sum .k{font-size:9.5px;letter-spacing:.2em;color:var(--dim2)}
+.pp-sum .v{font-family:"SFMono-Regular","Cascadia Mono",Consolas,monospace;font-size:17px;color:var(--text)}
+.pp-sum .v small{font-family:var(--font);font-size:10px;color:var(--dim2);margin-left:4px}
+.xgroup{margin-top:16px}
+.group-h{display:flex;align-items:center;gap:10px;margin:0 0 9px;font-size:10px;letter-spacing:.22em;color:var(--dim)}
+.group-h .rule{flex:1;height:1px;background:var(--border)}
+.group-h span{font-family:"SFMono-Regular","Cascadia Mono",Consolas,monospace;color:var(--dim2);letter-spacing:0}
+.xnav{display:flex;gap:4px;margin-left:2px}
+.xnav .arrow{width:24px;height:22px;border:1px solid var(--border);color:var(--accent);font-size:11px;
+  display:grid;place-items:center;line-height:1;background:transparent}
+.xnav .arrow:disabled{color:var(--dim2);opacity:.35;border-color:rgba(223,211,184,.08)}
+.xwrap{position:relative}
+.xwrap::after{content:"";position:absolute;right:0;top:0;bottom:0;width:46px;pointer-events:none;
+  background:linear-gradient(90deg,rgba(7,10,9,0),rgba(7,10,9,.72))}
+.xtrack{display:flex;gap:16px;overflow-x:auto;overflow-y:hidden;scroll-snap-type:x proximity;
+  scrollbar-width:none;padding-bottom:2px;cursor:grab}
+.xtrack::-webkit-scrollbar{display:none}
+.xtrack .plan-card{flex:0 0 420px;scroll-snap-align:start}
+.xtrack.filled .plan-card{flex:1 1 0;min-width:0;max-width:520px}
+.xgroup.no-overflow .xnav,.xgroup.no-overflow .xbar{display:none}
+.xbar{position:relative;height:1px;background:rgba(223,211,184,.10);margin-top:10px}
+.xbar i{position:absolute;top:-1px;height:2px;background:var(--accent);opacity:.45}
+.xbar::before,.xbar::after{content:"";position:absolute;top:-3px;width:1px;height:7px;background:rgba(223,211,184,.25)}
+.xbar::before{left:0}.xbar::after{right:0}
+
+.plan-card{position:relative;border:1px solid var(--border);background:rgba(17,22,19,.5);
+  padding:16px 18px 12px;min-height:184px;box-shadow:inset 2px 0 0 var(--accent)}
+.plan-card.over{box-shadow:inset 2px 0 0 #00c853}
+.plan-card.done{opacity:.66;box-shadow:inset 2px 0 0 var(--dim2)}
+.pc-head{display:flex;align-items:baseline;justify-content:space-between;gap:8px}
+.pc-name{font-family:"Noto Serif CJK SC","Source Han Serif SC","Songti SC",serif;font-size:16px;
+  letter-spacing:.08em;color:#e3e9df;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.pc-pin{font-size:9.5px;color:var(--dim2);letter-spacing:.08em;border:1px solid transparent;padding:1px 5px;background:transparent}
+.pc-pin.on{color:var(--accent);border-color:rgba(176,141,87,.28)}
+.pc-dates{font-family:"SFMono-Regular","Cascadia Mono",Consolas,monospace;font-size:10px;color:var(--dim2);margin-top:6px}
+.pc-dates em{font-style:normal;font-family:var(--font);color:var(--dim);margin-left:8px}
+.pc-remain{display:flex;align-items:baseline;gap:8px;margin-top:14px}
+.pc-remain span{font-size:9.5px;letter-spacing:.2em;color:var(--dim2)}
+.pc-remain b{font-family:"SFMono-Regular","Cascadia Mono",Consolas,monospace;font-size:25px;font-weight:400;line-height:1}
+.pc-bar{height:4px;background:rgba(255,255,255,.06);position:relative;margin-top:11px}
+.pc-bar i{position:absolute;left:0;top:0;bottom:0;background:var(--accent)}
+.plan-card.over .pc-bar i{background:#00c853}
+.pc-bar u{position:absolute;top:-4px;bottom:-4px;width:1px;background:var(--accent2)}
+.pc-meta{display:flex;gap:10px;margin-top:8px;font-size:10px;color:var(--dim2);letter-spacing:.04em;flex-wrap:wrap}
+.pc-meta b{font-family:"SFMono-Regular","Cascadia Mono",Consolas,monospace;font-weight:400;color:var(--dim)}
+.pc-foot{display:flex;gap:8px;margin-top:12px;padding-top:10px;border-top:1px solid var(--border)}
+.pp-empty{border:1px dashed var(--border);padding:26px;text-align:center;color:var(--dim2);font-size:11px;letter-spacing:.1em}
+.pp-boot{display:flex;align-items:center;gap:14px;margin-top:18px;border-top:1px solid var(--border2);padding:10px 0 6px;
+  font-size:10.5px;color:var(--dim2);letter-spacing:.06em;flex-wrap:wrap;position:sticky;bottom:0;background:var(--bg)}
+.pp-boot b{font-weight:400;color:var(--dim);letter-spacing:.14em}
+.pp-boot .segment .seg{height:24px;font-size:10px}
+
+.plan-modal{width:520px}
+.pf-field{margin-top:14px}
+.pf-field label{display:flex;align-items:center;gap:8px;font-size:10px;letter-spacing:.18em;color:var(--dim);margin-bottom:6px}
+.pf-field label small{font-size:9.5px;letter-spacing:.04em;color:var(--dim2)}
+.pf-money{height:38px;border:1px solid var(--border);display:flex;align-items:center;padding:0 10px;gap:7px}
+.pf-money span{color:var(--accent);font-family:"SFMono-Regular","Cascadia Mono",Consolas,monospace;font-size:13px}
+.pf-money input{flex:1;height:100%;border:0;background:transparent;color:var(--text);outline:none;
+  font-family:"SFMono-Regular","Cascadia Mono",Consolas,monospace;font-size:19px}
+.pf-range{display:flex;align-items:center;gap:8px}
+.pf-range input{flex:1;font-family:"SFMono-Regular","Cascadia Mono",Consolas,monospace;font-size:11px}
+.pf-range span{color:var(--dim2);font-size:10px}
+.pf-presets{display:flex;gap:6px;margin-top:8px}
+.pf-info{border:1px solid var(--border);padding:9px 11px;margin-top:14px;font-size:10px;color:var(--dim);
+  letter-spacing:.04em;line-height:1.7}
+.pf-info b{color:var(--accent);font-weight:400}
+
+@media (max-width:760px){
+  .plan-page{top:104px;padding:16px 14px 72px}
+  .pp-head{align-items:flex-start;flex-wrap:wrap;gap:12px}
+  .pp-actions{width:100%;justify-content:space-between}
+  .pp-sum{flex-wrap:wrap}
+  .pp-sum .ps{flex:1 1 40%;border-bottom:1px solid var(--border)}
+  .xtrack .plan-card,.xtrack.filled .plan-card{flex:0 0 86%}
+  .plan-modal{width:calc(100vw - 24px)}
+}
+
+/* ---------- 计划读数 / 记账里选计划 ---------- */
+#ledgerReadout[hidden],#planReadout[hidden]{display:none}
+.plan-readout .pr-title{display:flex;align-items:center;gap:8px;font-size:10px;letter-spacing:.18em;color:var(--dim)}
+.plan-readout .pr-title #prTitle{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.plan-readout .pr-star{color:var(--accent);font-size:9px;letter-spacing:0;flex:none}
+.plan-readout .pr-balance{display:flex;align-items:baseline;gap:10px;margin:8px 0 4px}
+.plan-readout .pr-balance .k{font-size:10px;color:var(--dim2);letter-spacing:.14em}
+.plan-readout .pr-balance .v{font-family:"SFMono-Regular","Cascadia Mono",Consolas,monospace;
+  font-size:26px;line-height:1.1}
+.plan-readout .pr-row{display:flex;align-items:baseline;justify-content:space-between;padding:5px 0;border-bottom:1px solid var(--border)}
+.plan-readout .pr-row span{font-size:10.5px;color:var(--dim2);letter-spacing:.1em}
+.plan-readout .pr-row b{font-family:"SFMono-Regular","Cascadia Mono",Consolas,monospace;font-weight:400;font-size:12px;color:var(--text)}
+.plan-readout .pr-gauge{height:4px;background:rgba(255,255,255,.06);position:relative;margin:10px 0 6px}
+.plan-readout .pr-gauge i{position:absolute;left:0;top:0;bottom:0;background:var(--accent)}
+.plan-readout .pr-gauge u{position:absolute;top:-4px;bottom:-4px;width:1px;background:#6f8f82}
+.plan-readout .pr-pace{font-size:10px;color:var(--copper,#8a5a44);letter-spacing:.04em;line-height:1.6;margin-bottom:6px}
+.plan-readout .pr-sec{margin-top:12px;padding-top:10px;border-top:1px solid var(--border2);font-size:10px;letter-spacing:.2em;color:var(--dim)}
+.plan-readout .pr-edit{margin-top:12px;font-size:10px;color:var(--accent);letter-spacing:.06em;cursor:pointer}
+.m-plan-chip{gap:7px}
+.m-plan-chip .m-plan-check{width:12px;height:12px;border:1px solid var(--border2);display:inline-grid;place-items:center;
+  font-size:8px;color:var(--accent);flex:none}
+.m-plan-chip.on .m-plan-check{background:rgba(176,141,87,.16);border-color:var(--accent)}
+.m-plan-chip small{font-family:"SFMono-Regular","Cascadia Mono",Consolas,monospace;font-size:9.5px;margin-left:2px;color:var(--dim)}
+.m-plan-empty{font-size:10px;color:var(--dim2);letter-spacing:.04em;padding:2px 0}
+.m-plan-preview{border-left:2px solid var(--accent);background:rgba(176,141,87,.06);padding:7px 10px;margin-top:8px;
+  font-size:10.5px;color:var(--text);letter-spacing:.02em;line-height:1.8}
+.m-plan-preview b{font-family:"SFMono-Regular","Cascadia Mono",Consolas,monospace;font-weight:400}

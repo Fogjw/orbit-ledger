@@ -85,10 +85,10 @@ const API = {
   // 花销相关
 
   // 记一笔
-  addExpense: (ledgerId, { type, amountCents, date, note, primary, tags }) =>
+  addExpense: (ledgerId, { type, amountCents, date, note, primary, tags, planIds }) =>
     request(`/ledgers/${ledgerId}/expenses`, {
       method: 'POST',
-      body: { type, amountCents, date, note, primary, tags },
+      body: { type, amountCents, date, note, primary, tags, ...(planIds !== undefined ? { planIds } : {}) },
     }),
 
   // 更新花销（全量替换）

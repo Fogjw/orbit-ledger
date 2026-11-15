@@ -69,7 +69,13 @@
   function planGroups(plans, today) {
     const active = [], ended = [];
     for (const p of plans || []) (planStatus(p, today) === 'ended' ? ended : active).push(p);
-    active.sort((a, b) => (a.start_date === b.start_date ? a.id - b.id : (a.start_date < b.start_date ? -1 : 1)));
+    // 正在进行的排前面（未开始的排后），同组内开始晚的在前：最近开始的计划最常被看
+    active.sort((a, b) => {
+      const sa = planStatus(a, today) === 'active' ? 0 : 1;
+      const sb = planStatus(b, today) === 'active' ? 0 : 1;
+      if (sa !== sb) return sa - sb;
+      return a.start_date === b.start_date ? a.id - b.id : (a.start_date > b.start_date ? -1 : 1);
+    });
     ended.sort((a, b) => (a.end_date === b.end_date ? b.id - a.id : (a.end_date > b.end_date ? -1 : 1)));
     return { active, ended };
   }
