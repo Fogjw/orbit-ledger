@@ -3029,9 +3029,16 @@ async function savePlanForm(){
       await Data.exitPlan();
       refreshTagArrays();refreshMonths();refreshAmounts();
       buildGraph();syncChrome();
+    }else if(Data.scope.kind==='plan'){
+      // 编辑/新建时若正在看某个计划：只重载它的统计，不要把总览页关掉（enterPlan 会）
+      const curId=Data.scope.planId;
+      if(await Data.selectPlan(curId)){
+        refreshTagArrays();refreshMonths();refreshAmounts();
+        TL.z=1;TL.pan=0;if(typeof relockSel==='function')relockSel();
+        buildGraph();syncChrome();syncRail&&syncRail();
+      }
     }
     renderPlanPage();renderPlanMenu();
-    if(Data.scope.kind==='plan'&&Data.currentPlan())await enterPlan(Data.scope.planId);
   }catch(e){toast('保存失败：'+(e.message||e))}
 }
 async function deletePlan(){
