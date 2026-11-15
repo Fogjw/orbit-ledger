@@ -60,6 +60,10 @@ export function createPlanService(db) {
     },
 
     create(ledgerId, input = {}) {
+      // 账本不存在 → 404；不能落到 SQLite 外键错误（500）或纯前端版的无外键孤儿行
+      if (!db.prepare('SELECT 1 AS ok FROM ledgers WHERE id = ?').get(ledgerId)) {
+        throw new BizError(`账本不存在: ${ledgerId}`, 'LEDGER_NOT_FOUND', 404);
+      }
       const name = normalizeName(input.name);
       const budgetCents = normalizeBudget(input.budgetCents, 0);
       const { startDate, endDate } = normalizeRange(input.startDate, input.endDate);

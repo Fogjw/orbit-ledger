@@ -12,6 +12,10 @@ function expenseBody(body) {
   if (typeof primary !== 'object' || Array.isArray(primary)) {
     throw new BizError('primary 须为对象', 'INVALID_FIELD');
   }
+  // 只有「不传」和「数组」两种合法形态：传错类型必须是 400，不能悄悄当成 [] 把关联清空
+  if (body.planIds !== undefined && !Array.isArray(body.planIds)) {
+    throw new BizError('planIds 须为数组', 'INVALID_FIELD');
+  }
   return {
     type: body.type === 'income' ? 'income' : 'expense',
     amountCents: requireInt(body, 'amountCents', { min: 1 }),

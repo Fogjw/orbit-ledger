@@ -950,6 +950,20 @@ async function main() {
   await js(`document.querySelector('#planMenu [data-nav="overview"]').click()`);
   await wait(300);
   const planOverviewOpen = await has('#planPage:not([hidden])');
+  // Android 返回键：总览与新建计划浮层都必须先关一层，而不是直接退出 Activity
+  const planPageBack = await js(`(() => {
+    const ok = window.__orbitBack();
+    return ok === true && document.querySelector('#planPage').hidden === true;
+  })()`);
+  await js(`openPlanPage({ history: false })`);
+  await wait(200);
+  await click('#ppNew');
+  await wait(200);
+  const planMaskBack = await js(`(() => {
+    const ok = window.__orbitBack();
+    return ok === true && document.querySelector('#planMask').hidden === true;
+  })()`);
+  await wait(150);
   const planCardShown = await has(`.plan-card[data-plan-id="${planSeed.id}"]`);
   await js(`document.querySelector('.plan-card[data-plan-id="${planSeed.id}"] [data-act="open"]').click()`);
   await wait(500);
@@ -973,18 +987,50 @@ async function main() {
     bal: document.querySelector('#prBalance').textContent,
     color: getComputedStyle(document.querySelector('#prBalance')).color,
   })`));
+  // 横向轨道：再建 3 个进行中计划 → 4 张时出现溢出与箭头滚动
+  await click('#planBtn');
+  await wait(200);
+  await js(`document.querySelector('#planMenu [data-nav="overview"]').click()`);
+  await wait(300);
+  const rail = JSON.parse(await js(`(async () => {
+    const today = new Date().toLocaleDateString('sv-SE');
+    const [y,m] = today.split('-');
+    const start = y + '-' + m + '-01';
+    const last = new Date(Number(y), Number(m), 0);
+    const end = y + '-' + m + '-' + String(last.getDate()).padStart(2, '0');
+    for (const n of ['验收A','验收B','验收C']) {
+      await OrbitAPI.createPlan(OrbitData.ledgerId, { name: n, budgetCents: 0, startDate: start, endDate: end });
+    }
+    await OrbitData.loadPlans(); renderPlanPage();
+    const t = document.querySelector('.xgroup .xtrack');
+    const a = document.querySelector('.xgroup .xnav .arrow:last-child');
+    const sw = t.scrollWidth, cw = t.clientWidth;
+    a.click();
+    return JSON.stringify({ sw, cw });
+  })()`));
+  await wait(700);
+  const railScrolled = await js(`document.querySelector('.xgroup .xtrack').scrollLeft > 0`);
+  const planRailOk = rail.sw > rail.cw && railScrolled;
+  // 启动页：卡片星标写入本机设置
+  const pinSaved = await js(`(() => {
+    document.querySelector('.plan-card[data-plan-id="${planSeed.id}"] [data-act="pin"]').click();
+    const sp = JSON.parse(localStorage.getItem('orbit.startPage') || 'null');
+    return sp && String(sp.planId) === '${planSeed.id}';
+  })()`);
   await click('#planBtn');
   await wait(200);
   await js(`document.querySelector('#planMenu [data-nav="ledger"]').click()`);
   await wait(500);
   const planLeft = await js(`document.querySelector('#planReadout').hidden === true && document.querySelector('#ledgerReadout').hidden === false`);
-  const planOk = planMenuOpen && planOverviewOpen && planCardShown && planScope.readout
-    && planScope.ledgerHidden && planScope.bal === '¥100' && planPreset === 1
+  const planOk = planMenuOpen && planOverviewOpen && planPageBack && planMaskBack && planCardShown
+    && planScope.readout && planScope.ledgerHidden && planScope.bal === '¥100' && planPreset === 1
     && planOver.label === '超支' && planOver.bal === '¥50' && planOver.color === 'rgb(0, 200, 83)'
-    && planLeft;
+    && planRailOk && pinSaved && planLeft;
   console.log(`[verify] 计划：菜单=${planMenuOpen} · 总览=${planOverviewOpen} · 卡片=${planCardShown}`
     + ` · 计划读数=${planScope.readout}/${planScope.bal} · 默认勾选=${planPreset}`
-    + ` · 超支=${planOver.label}/${planOver.bal}/${planOver.color} · 回整本账=${planLeft} → ${planOk ? '✓' : '✗'}`);
+    + ` · 超支=${planOver.label}/${planOver.bal}/${planOver.color}`
+    + ` · 返回键=${planPageBack}/${planMaskBack} · 轨道=${planRailOk} · 启动页=${pinSaved}`
+    + ` · 回整本账=${planLeft} → ${planOk ? '✓' : '✗'}`);
 
   // 浏览器存储选择必须跨刷新记住；否则每次打开都回到 gate，用户会以为数据丢了。
   win.webContents.reload();
@@ -993,9 +1039,27 @@ async function main() {
     gate: Boolean(document.querySelector('#orbitGate')),
     api: typeof window.OrbitAPI,
     storage: window.OrbitStorage ? window.OrbitStorage.describe() : null,
+    scope: window.OrbitData ? window.OrbitData.scope.kind : null,
+    readout: !document.querySelector('#planReadout')?.hidden,
   })`));
   const reloadOk = !reload.gate && reload.api === 'object' && String(reload.storage || '').includes('浏览器本地存储');
-  console.log(`[verify] 刷新后：gate=${reload.gate} · API=${reload.api} · 存储=${reload.storage} → ${reloadOk ? '✓' : '✗'}`);
+  const startupOk = reload.scope === 'plan' && reload.readout === true;
+  console.log(`[verify] 刷新后：gate=${reload.gate} · API=${reload.api} · 存储=${reload.storage}`
+    + ` · 启动页=${reload.scope}/${reload.readout} → ${reloadOk && startupOk ? '✓' : '✗'}`);
+
+  // 启动页指向的计划被删 → 回落整本账并清掉设置
+  await js(`OrbitAPI.deletePlan(OrbitData.ledgerId, ${planSeed.id})`);
+  win.webContents.reload();
+  await wait(3000);
+  const startupFallback = JSON.parse(await js(`JSON.stringify({
+    scope: window.OrbitData ? window.OrbitData.scope.kind : null,
+    readout: !document.querySelector('#planReadout')?.hidden,
+    saved: localStorage.getItem('orbit.startPage'),
+  })`));
+  const fallbackOk = startupFallback.scope === 'ledger' && startupFallback.readout === false
+    && startupFallback.saved === null;
+  console.log(`[verify] 启动页失效回落：scope=${startupFallback.scope} · 读数=${startupFallback.readout}`
+    + ` · 设置=${startupFallback.saved} → ${fallbackOk ? '✓' : '✗'}`);
 
   if (warnings.length) {
     console.log(`[verify] 页面告警 ${warnings.length} 条（不影响结论）：`);
@@ -1014,7 +1078,7 @@ async function main() {
     && dayTipOk && endReachable
     && centsOk && todayMarkOk && todayAbsentOk && editorAmtOk !== false
     && railHasIncome && yearHasIncome && incomePlaceholderVisible && expensePlaceholderVisible
-    && graphDetailOk && graphBackOk && planOk;
+    && graphDetailOk && graphBackOk && planOk && startupOk && fallbackOk;
   console.log(`[verify] 结论: ${ok ? '通过' : '未通过'}`);
   win.destroy();
   server.close();

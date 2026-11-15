@@ -1883,8 +1883,11 @@ function toast(msg){
   if(msg) console.debug('[orbit-toast]',msg);
 }
 function animateNum(el,to,fmt){
+  // _freeze：计划 scope 下总金额由计划自己直接写，旧账本动画必须立刻停，
+  // 否则进计划后它会继续跑完 700ms，把大字改回账本总额。
+  if(el._freeze){el.textContent=fmt(to);el._v=to;return}
   const from=el._v||0;el._v=to;const t0=performance.now();
-  (function f(t){const k=clamp((t-t0)/700,0,1),e=1-Math.pow(1-k,3);
+  (function f(t){if(el._freeze)return;const k=clamp((t-t0)/700,0,1),e=1-Math.pow(1-k,3);
     el.textContent=fmt(lerp(from,to,e));if(k<1)requestAnimationFrame(f)})(t0);
 }
 function syncChrome(){
@@ -1892,6 +1895,7 @@ function syncChrome(){
   const w=Data&&Data._window;
   const lv=(w&&w.kind)||'month';
   const planScope=(Data&&Data.scope&&Data.scope.kind==='plan')?Data.currentPlan():null;
+  const mtv=$('#mtValue');if(mtv)mtv._freeze=!!planScope;
   // 笔数：Data.days 为有支出的天数，笔数保守估算；总额必须真实
   // nExp 的两个来源语义不同：Data.days.length 是「有支出的**天数**」，
   // 而兜底的 tot/58 是笔数估算 —— 以前两者都写成「共 N 笔」，于是「615 天」被读成「615 笔」，
@@ -2757,9 +2761,12 @@ function backOnce(){
   if(hide('#modalMask'))return true;
   if(hide('#expMask'))return true;
   if(hide('#tagMask'))return true;
+  if(hide('#planMask'))return true;
   if(!viewMask.hidden){closeExpenseView();return true}
   if(panelEl.classList.contains('mobile-open')){closePanelSheet();return true}
   if(hide('#ledgerMenu'))return true;
+  if(hide('#planMenu'))return true;
+  if(planPageOpen){closePlanPage({history:false});return true}
   if(S.view==='detail'){goBack();return true}
   return false;
 }
@@ -2938,7 +2945,12 @@ function renderPlanBoot(){
   const box=$('#ppBoot');if(!box)return;
   const sp=readStartPage();
   const pid=sp&&String(sp.ledgerId)===String(Data.ledgerId)?sp.planId:null;
-  const plans=PlanU.planGroups(Data.plans||[],todayISO()).active.slice(0,4);
+  let plans=PlanU.planGroups(Data.plans||[],todayISO()).active.slice(0,4);
+  // 已结束/第 5 个之后的计划也可能被设为启动页：必须让它的 segment 出现，否则条上只显示「概览」
+  if(pid!=null&&!plans.some(p=>String(p.id)===String(pid))){
+    const pinned=(Data.plans||[]).find(p=>String(p.id)===String(pid));
+    if(pinned)plans=plans.slice(0,3).concat([pinned]);
+  }
   box.innerHTML=`<b>启动页</b>
     <div class="segment">
       <button class="seg${pid==null?' active':''}" data-boot="none">概览</button>

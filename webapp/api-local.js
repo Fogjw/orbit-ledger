@@ -19,6 +19,9 @@ import { openBrowserDatabase } from './sqlite-browser.js';
 
 /** 记账请求体归一化（对齐 REST 层 expenseBody 的默认值与形状） */
 function normalizeExpense(data = {}) {
+  if (data.planIds !== undefined && !Array.isArray(data.planIds)) {
+    throw new BizError('planIds 须为数组', 'INVALID_FIELD');
+  }
   return {
     type: data.type === 'income' ? 'income' : 'expense',
     amountCents: data.amountCents,

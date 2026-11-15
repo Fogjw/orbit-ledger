@@ -40,7 +40,8 @@
     const timePct = clamp(elapsed / totalDays * 100, 0, 100);
     const daysLeft = status === 'ended' ? 0
       : (status === 'upcoming' ? totalDays : Math.max(0, dayDiff(today, plan.end_date)));
-    const rawUsedPct = budget > 0 ? spent / budget * 100 : (spent > 0 ? 100 : 0);
+    // 预算 0 = 纯信封（靠入账），「已用 / 预算」没有分母：按 0 处理，不显示满格
+    const rawUsedPct = budget > 0 ? spent / budget * 100 : 0;
     const usedPct = clamp(rawUsedPct, 0, 100);
     const dailyLeftCents = daysLeft > 0 ? Math.floor(remaining / daysLeft) : 0;
     let projectedOverspendCents = 0;

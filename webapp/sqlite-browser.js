@@ -67,6 +67,10 @@ function wrapStatement(sqlDb, sql) {
 export async function openBrowserDatabase(bytes = null, opts = {}) {
   const SQL = await initSqlite(opts);
   const sqlDb = bytes && bytes.length ? new SQL.Database(bytes) : new SQL.Database();
+  // 外键必须显式打开：migrate() 里的 v3 迁移会在正常升级时顺手 ON 一次，但**重开已迁移的库**
+  // 时 migrate 是 no-op，PRAGMA 会回到默认 OFF —— 于是删计划只删 plans 行、留下孤儿
+  // expense_plan_links，下一次导出的备份会被 import 以 BACKUP_INCOMPLETE 拒绝。
+  sqlDb.exec('PRAGMA foreign_keys = ON;');
   return {
     /** 与 node:sqlite 一致：执行但不返回结果（PRAGMA / BEGIN / COMMIT / DDL 用） */
     exec(sql) { sqlDb.exec(sql); },

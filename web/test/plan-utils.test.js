@@ -33,6 +33,16 @@ describe('计划余额口径', () => {
     assert.equal(m2.remainingLabel, '超支');
   });
 
+  test('预算为 0 时进度按 0 处理（信封计划不显示满格）', () => {
+    const m = U.planMetrics({
+      budget_cents: 0, spent_cents: 500, income_cents: 1000,
+      start_date: '2026-11-01', end_date: '2026-11-30', bill_count: 1,
+    }, '2026-11-15');
+    assert.equal(m.usedPct, 0);
+    assert.equal(m.rawUsedPct, 0);
+    assert.equal(m.remainingCents, 500);
+  });
+
   test('预算为 0 / 无账单不产生 NaN', () => {
     const m = U.planMetrics({
       budget_cents: 0, spent_cents: 0, income_cents: 0,

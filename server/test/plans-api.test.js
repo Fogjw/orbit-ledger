@@ -94,3 +94,33 @@ describe('计划 REST', () => {
     assert.equal((await out.json()).error, 'PLAN_OUT_OF_RANGE');
   });
 });
+
+describe('计划入参校验（review 补测）', () => {
+  test('不存在的账本建计划 → 404，不是 500', async () => {
+    const r = await post('/api/ledgers/99999/plans', {
+      name: '孤儿', budgetCents: 0, startDate: '2026-11-01', endDate: '2026-11-30',
+    });
+    assert.equal(r.status, 404);
+    assert.equal((await r.json()).error, 'LEDGER_NOT_FOUND');
+  });
+
+  test('planIds 非数组 → 400，且不清空已有关联', async () => {
+    const l = await json(await post('/api/ledgers', { name: '校验' }));
+    const p = await json(await post(`/api/ledgers/${l.id}/plans`, {
+      name: 'P', budgetCents: 0, startDate: '2026-11-01', endDate: '2026-11-30',
+    }));
+    const exp = await json(await post(`/api/ledgers/${l.id}/expenses`, {
+      type: 'expense', amountCents: 100, date: '2026-11-05', planIds: [p.id],
+    }));
+
+    const bad = await fetch(`${base}/api/ledgers/${l.id}/expenses/${exp.id}`, {
+      method: 'PUT', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ type: 'expense', amountCents: 100, date: '2026-11-05', planIds: 3 }),
+    });
+    assert.equal(bad.status, 400);
+    assert.equal((await bad.json()).error, 'INVALID_FIELD');
+
+    const after = await json(await fetch(`${base}/api/ledgers/${l.id}/expenses/${exp.id}`));
+    assert.deepEqual(after.plans.map(x => x.id), [p.id], '坏入参不得静默解绑');
+  });
+});
