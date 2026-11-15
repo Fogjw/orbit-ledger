@@ -299,7 +299,9 @@ describe('API 全流程', () => {
     assert.equal(r.status, 200);
     const snap = await j(r);
     assert.equal(snap.format, 'orbit-ledger-backup');
-    assert.equal(snap.version, 1);
+    assert.equal(snap.version, 2);
+    assert.equal(Array.isArray(snap.plans), true);
+    assert.equal(Array.isArray(snap.expense_plan_links), true);
     assert.equal(snap.ledger.id, ledger.id);
     assert.equal(snap.expenses.length, 1);
     assert.equal(snap.expenses[0].amount_cents, 1234);
