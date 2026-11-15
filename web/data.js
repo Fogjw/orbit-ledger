@@ -53,6 +53,8 @@ const Data = {
   incomeRowsCtx: [],   // 同上，但按**情境**维度聚合：收入的缺省占位「收入·未分类」住在每个维度里
   prevMonthTotal: 0,
   monthRange: { from: null, to: null },
+  plans: [],                                // 计划列表（含 spent/income/remaining/bill_count）
+  scope: { kind: 'ledger', planId: null },  // 当前观测范围：整本账 或 某个计划
 
   // —— 维度原始缓存（渲染层不直接用）——
   _currentMonthY: null,
@@ -73,7 +75,9 @@ const Data = {
   // ===== 账本切换 =====
   async selectLedger(id) {
     this.ledgerId = id;
+    this.scope = { kind: 'ledger', planId: null };   // 换账本 = 退出计划作用域
     await this._loadDims();
+    await this.loadPlans();
     await this._loadMonths();
     if (this.months.length) {
       const last = this.months[this.months.length - 1];
@@ -110,10 +114,12 @@ const Data = {
    */
   async _loadWindow(from, to) {
     this.monthRange = { from, to };
+    // 计划作用域：同一套统计查询加 planId 过滤，星图/星轨/读数因此自动只剩计划内的账
+    const planId = this.scope.kind === 'plan' ? this.scope.planId : undefined;
     const [periodStats, dailyStats, incomeStats] = await Promise.all([
-      API.getStats(this.ledgerId, { from, to, type: 'expense' }),
-      API.getStats(this.ledgerId, {}),                              // 日序列取全量：星轨要能拖到任意时间
-      API.getStats(this.ledgerId, { from, to, type: 'income' }),    // 收入：星图里的独立样式节点（需求基线 §5.3）
+      API.getStats(this.ledgerId, { from, to, type: 'expense', planId }),
+      API.getStats(this.ledgerId, { planId }),                      // 日序列取全量：星轨要能拖到任意时间
+      API.getStats(this.ledgerId, { from, to, type: 'income', planId }), // 收入：星图里的独立样式节点
     ]);
 
     this.monthTotal = centsToYuan(periodStats.totals.expense || 0);
@@ -245,6 +251,9 @@ const Data = {
     // 前端缓存里没有它们，星图上就画不出那颗节点 —— 用户实测「给 2025 年记了笔收入，
     // 星轨上有 2025 的节点，但星图上没有这个收入节点」。支出走同一条路径，同样受影响。
     await this._loadDims();
+    await this.loadPlans();
+    // 计划被别处删掉：退出计划作用域，回到整本账（不能停在已不存在的 scope 上）
+    if (this.scope.kind === 'plan' && !this.currentPlan()) return this.exitPlan();
     await this._loadMonths();
     const w = this._window;
     if (w && w.kind === 'day' && w.date) { await this.selectDay(w.date); return; }
@@ -281,6 +290,53 @@ const Data = {
     return dim;
   },
 
+  // ===== 计划（预算轨道）=====
+
+  /** 重拉计划列表（含余额）；旧测试替身没有 listPlans 时保持空列表 */
+  async loadPlans() {
+    if (typeof API.listPlans !== 'function') { this.plans = []; return this.plans; }
+    const res = await API.listPlans(this.ledgerId);
+    this.plans = (res && res.items) || [];
+    return this.plans;
+  },
+
+  /** 当前 scope 对应的计划行；不在计划作用域 → null */
+  currentPlan() {
+    if (this.scope.kind !== 'plan') return null;
+    return this.plans.find(p => String(p.id) === String(this.scope.planId)) || null;
+  },
+
+  /**
+   * 进入计划：统计全部带 planId；默认落在计划内最后一个有账的月份。
+   * 没有账时保留计划区间作为窗口，星图/星轨为空。
+   * @returns {Promise<boolean>} 计划不存在返回 false（scope 不变）
+   */
+  async selectPlan(planId) {
+    await this.loadPlans();
+    const plan = this.plans.find(p => String(p.id) === String(planId));
+    if (!plan) return false;
+    this.scope = { kind: 'plan', planId: plan.id };
+    await this._loadMonths();
+    const last = this.months[this.months.length - 1];
+    if (last) {
+      await this.selectMonth({ year: last.y, month: last.m });
+    } else {
+      this._resetMonthView();
+      this.monthRange = { from: plan.start_date, to: plan.end_date };
+      this._window = { kind: 'plan', year: null, month: null };
+    }
+    return true;
+  },
+
+  /** 退出计划，回到整本账的最新月份 */
+  async exitPlan() {
+    this.scope = { kind: 'ledger', planId: null };
+    await this._loadMonths();
+    const last = this.months[this.months.length - 1];
+    if (last) await this.selectMonth({ year: last.y, month: last.m });
+    else this._resetMonthView();
+  },
+
   // —— 私有方法 ——
 
   async _loadDims() {
@@ -307,7 +363,8 @@ const Data = {
   },
 
   async _loadMonths() {
-    const raw = await API.getStats(this.ledgerId);
+    const planId = this.scope.kind === 'plan' ? this.scope.planId : undefined;
+    const raw = await API.getStats(this.ledgerId, { planId });
     const monthly = raw.monthly || [];
 
     // 按月聚合：**支出和收入都算** —— 星轨节点的存在与否看的是「这个月有没有账」，

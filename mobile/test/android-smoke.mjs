@@ -210,6 +210,35 @@ try {
   await sleep(1200);
   screenshot('android-after-add');
 
+  // 计划：总览页/新建浮层在 Android 硬件返回键下必须逐层关闭（不能退出 Activity）
+  const planId = await page.evaluate(`(async () => {
+    const today = new Date().toLocaleDateString('sv-SE');
+    const [y,m] = today.split('-');
+    const last = new Date(Number(y), Number(m), 0);
+    const p = await OrbitAPI.createPlan(OrbitData.ledgerId, {
+      name: '安卓验收计划', budgetCents: 10000,
+      startDate: y + '-' + m + '-01',
+      endDate: y + '-' + m + '-' + String(last.getDate()).padStart(2, '0'),
+    });
+    await OrbitData.loadPlans();
+    openPlanPage({ history: false });
+    return p.id;
+  })()`);
+  await waitEval(page, `Boolean(document.querySelector('.plan-card[data-plan-id="${planId}"]'))`, Boolean, '计划总览卡片');
+  screenshot('android-plans');
+  adb('shell', 'input', 'keyevent', '4');
+  await waitEval(page, `document.querySelector('#planPage').hidden`, Boolean, '返回键关计划总览');
+  await waitEval(page, `typeof window.OrbitAPI === 'object'`, Boolean, '返回后 app 仍在');
+  await page.evaluate(`openPlanPage({ history: false })`);
+  await page.evaluate(`document.querySelector('#ppNew').click()`);
+  await waitEval(page, `!document.querySelector('#planMask').hidden`, Boolean, '新建计划浮层');
+  adb('shell', 'input', 'keyevent', '4');
+  await waitEval(page, `document.querySelector('#planMask').hidden`, Boolean, '返回键关新建计划');
+  await waitEval(page, `typeof window.OrbitAPI === 'object'`, Boolean, '返回后 app 仍在');
+  await page.evaluate(`window.__orbitBack()`);   // 关掉仍打开的总览
+  await waitEval(page, `document.querySelector('#planPage').hidden`, Boolean, '关计划总览');
+  console.log('[android] plan back: page/mask closed, app alive');
+
   // 横屏：Android 系统旋转，不是 CSS 假横屏。settings 偶发不生效，用 window 命令兜底。
   shell('settings put system accelerometer_rotation 0');
   try { shell('cmd window user-rotation lock 1'); } catch { shell('settings put system user_rotation 1'); }

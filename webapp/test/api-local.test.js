@@ -142,3 +142,42 @@ describe('本地版 API 与 REST 版一致性', () => {
     local.close();
   });
 });
+
+describe('重开数据库后的计划删除（FK 必须打开）', () => {
+  test('删计划清链接，备份仍可回读', async () => {
+    const local = await createLocalApi();
+    const l = await local.createLedger('计划账本');
+    const p = await local.createPlan(l.id, {
+      name: 'P', budgetCents: 10000, startDate: '2026-06-01', endDate: '2026-06-30',
+    });
+    await local.addExpense(l.id, { amountCents: 100, date: '2026-06-05', planIds: [p.id] });
+    const bytes = local.exportBytes();
+    local.close();
+
+    // 重开连接：migrate() 是 no-op，foreign_keys 不会被迁移顺手打开 —— 这里必须显式 ON
+    const reopened = await createLocalApi({ bytes });
+    await reopened.deletePlan(l.id, p.id);
+    const snap = await reopened.exportLedger(l.id);
+    assert.equal(snap.plans.length, 0);
+    assert.equal(snap.expense_plan_links.length, 0, '删计划后不应留下孤儿链接');
+    const imported = await reopened.importLedger(snap);
+    assert.equal(imported.counts.plans, 0);
+    reopened.close();
+  });
+});
+
+describe('本地版计划入参校验', () => {
+  test('planIds 非数组 → INVALID_FIELD，且不清空关联', async () => {
+    const local = await createLocalApi();
+    const l = await local.createLedger('校验');
+    const p = await local.createPlan(l.id, { name: 'P', budgetCents: 0, startDate: '2026-06-01', endDate: '2026-06-30' });
+    const e = await local.addExpense(l.id, { amountCents: 100, date: '2026-06-05', planIds: [p.id] });
+    const err = await local.updateExpense(l.id, e.id, {
+      amountCents: 100, date: '2026-06-05', planIds: 3,
+    }).then(() => null, (x) => x);
+    assert.equal(err && err.code, 'INVALID_FIELD');
+    const list = await local.listExpenses(l.id, {});
+    assert.deepEqual(list.items[0].plans.map((x) => x.id), [p.id]);
+    local.close();
+  });
+});

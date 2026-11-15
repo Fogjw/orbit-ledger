@@ -43,5 +43,18 @@ export function createImportRepo(db) {
       db.prepare('INSERT INTO expense_tag_links (expense_id, tag_id, role) VALUES (?, ?, ?)')
         .run(expenseId, tagId, role ?? 'secondary');
     },
+
+    /** @returns {number} 新计划 id */
+    insertPlan(ledgerId, { name, budgetCents, startDate, endDate, position, createdAt }) {
+      const { lastInsertRowid } = db.prepare(
+        `INSERT INTO plans (ledger_id, name, budget_cents, start_date, end_date, position, created_at)
+         VALUES (?, ?, ?, ?, ?, ?, COALESCE(?, datetime('now')))`
+      ).run(ledgerId, name, budgetCents, startDate, endDate, position ?? 0, createdAt ?? null);
+      return Number(lastInsertRowid);
+    },
+
+    insertPlanLink(expenseId, planId) {
+      db.prepare('INSERT INTO expense_plan_links (expense_id, plan_id) VALUES (?, ?)').run(expenseId, planId);
+    },
   };
 }

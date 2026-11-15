@@ -7,6 +7,7 @@ import { createLedgerService } from '../src/services/ledgerService.js';
 import { createTagService } from '../src/services/tagService.js';
 import { createExpenseService } from '../src/services/expenseService.js';
 import { createExportService } from '../src/services/exportService.js';
+import { createPlanService } from '../src/services/planService.js';
 
 function setup() {
   const db = openDatabase(':memory:');
@@ -15,6 +16,7 @@ function setup() {
     ledgers: createLedgerService(db),
     tags: createTagService(db),
     expenses: createExpenseService(db),
+    plans: createPlanService(db),
     exports: createExportService(db),
   };
   return { db, svc };
@@ -33,11 +35,11 @@ describe('导出（S3-3：账本 JSON 全量快照）', () => {
 
     const snap = svc.exports.ledgerSnapshot(l.id);
     assert.equal(snap.format, 'orbit-ledger-backup');
-    assert.equal(snap.version, 1);
+    assert.equal(snap.version, 2);
     assert.ok(typeof snap.exportedAt === 'string' && snap.exportedAt.length > 0);
     // 扁平五表 + 账本单行
     assert.deepEqual(Object.keys(snap).sort(),
-      ['dimensions', 'expense_tag_links', 'expenses', 'exportedAt', 'format', 'ledger', 'tags', 'version']);
+      ['dimensions', 'expense_plan_links', 'expense_tag_links', 'expenses', 'exportedAt', 'format', 'ledger', 'plans', 'tags', 'version']);
     assert.equal(snap.ledger.id, l.id);
     assert.equal(snap.ledger.name, '生活费');
     assert.equal(snap.dimensions.length, 2, '品类+情境两维');
@@ -101,4 +103,18 @@ describe('导出（S3-3：账本 JSON 全量快照）', () => {
     assert.equal(snapA.expenses[0].amount_cents, 111);
     assert.equal(svc.exports.ledgerSnapshot(99999), null);
   });
+});
+
+
+test('计划随快照导出：plans + expense_plan_links', () => {
+  const { svc } = setup();
+  const l = svc.ledgers.create('计划账本');
+  const p = svc.plans.create(l.id, { name: '六月', budgetCents: 100000, startDate: '2026-06-01', endDate: '2026-06-30' });
+  svc.expenses.add({ ledgerId: l.id, amountCents: 4560, date: '2026-06-07', planIds: [p.id] });
+
+  const snap = svc.exports.ledgerSnapshot(l.id);
+  assert.equal(snap.plans.length, 1);
+  assert.equal(snap.plans[0].budget_cents, 100000);
+  assert.equal(snap.expense_plan_links.length, 1);
+  assert.equal(snap.expense_plan_links[0].plan_id, p.id);
 });

@@ -87,6 +87,31 @@ CREATE UNIQUE INDEX IF NOT EXISTS ux_tags_parent_name
   ON tags(dimension_id, IFNULL(parent_tag_id, -1), name);
 `;
 
+// v6：计划（预算轨道）—— 账本内的一段时间 + 预算，账单与计划多对多。
+// 余额口径：预算 + 入账 − 已用，允许为负（允许超支）。
+// 账单只存一份：删计划/删账单都只级联清链接，另一方保留。
+const DDL_V6 = `
+CREATE TABLE IF NOT EXISTS plans (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  ledger_id INTEGER NOT NULL REFERENCES ledgers(id) ON DELETE CASCADE,
+  name TEXT NOT NULL,
+  budget_cents INTEGER NOT NULL DEFAULT 0 CHECK (budget_cents >= 0),
+  start_date TEXT NOT NULL CHECK (start_date GLOB '[0-9][0-9][0-9][0-9]-[0-9][0-9]-[0-9][0-9]'),
+  end_date   TEXT NOT NULL CHECK (end_date   GLOB '[0-9][0-9][0-9][0-9]-[0-9][0-9]-[0-9][0-9]'),
+  position INTEGER NOT NULL DEFAULT 0,
+  created_at TEXT NOT NULL DEFAULT (datetime('now')),
+  CHECK (end_date >= start_date)
+);
+CREATE INDEX IF NOT EXISTS idx_plans_ledger_dates ON plans(ledger_id, start_date, end_date);
+
+CREATE TABLE IF NOT EXISTS expense_plan_links (
+  expense_id INTEGER NOT NULL REFERENCES expenses(id) ON DELETE CASCADE,
+  plan_id INTEGER NOT NULL REFERENCES plans(id) ON DELETE CASCADE,
+  PRIMARY KEY (expense_id, plan_id)
+);
+CREATE INDEX IF NOT EXISTS idx_plan_links_plan ON expense_plan_links(plan_id);
+`;
+
 /**
  * 迁移序列（只追加、不改已发布项）。version 唯一且递增。
  * foreignKeysOff: true 表示该迁移需临时关闭外键（表重建类迁移专用）。
@@ -170,6 +195,11 @@ export const MIGRATIONS = [
         }
       }
     },
+  },
+  {
+    version: 6,
+    name: '计划：plans + expense_plan_links（账本内、多对多、允许超支）',
+    up(db) { db.exec(DDL_V6); },
   },
 ];
 

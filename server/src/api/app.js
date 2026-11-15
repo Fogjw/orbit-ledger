@@ -4,6 +4,7 @@ import { BizError } from '../services/ledgerService.js';
 import { ledgersRouter } from './routes/ledgers.js';
 import { expensesRouter } from './routes/expenses.js';
 import { statsRouter } from './routes/stats.js';
+import { plansRouter } from './routes/plans.js';
 import { createMcpMiddleware } from '../mcp/index.js';
 
 /**
@@ -29,6 +30,7 @@ export function createApp(svc, opts = {}) {
 
   app.get('/api/health', (req, res) => res.json({ ok: true }));
   app.use('/api/ledgers', ledgersRouter(svc));
+  app.use('/api/ledgers/:ledgerId/plans', plansRouter(svc));    // .../plans
   app.use('/api/ledgers/:ledgerId', statsRouter(svc));          // .../stats
   app.use('/api/ledgers/:ledgerId/expenses', expensesRouter(svc)); // .../expenses
 

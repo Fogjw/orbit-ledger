@@ -119,6 +119,24 @@ buildGraph(); syncChrome();               // 重绘星图/星轨 + 同步顶栏�
 必要时先制造前提（本例是把今天的账挪走，否则今天恰好就是末尾，下标法分不出新旧）；
 **改了源码必须重建产物**（`npm run build:web` 会把 `web/*.js` 拷进 `webapp/dist/`）。
 
+## 8. 计划作用域（schema v6）
+
+- 计划页不是第二份账单：同一套星图/星轨/读数，`Data.scope = {kind:'plan', planId}`；进入计划后
+  `stats` / `expenses` 的每次请求都带 `planId`，月份序列与日序列随之只剩计划内的账。
+- 余额口径：`预算 + 入账 − 已用`（分），允许为负。显示沿用全项目规则——**只显示绝对值**，
+  `Data.balanceColor`（入参是**元**）决定正红负绿，标签写「剩余 / 超支」；金额文本用 `moneyText`
+  （入参是**分**）。两者口径不同，计划代码里最容易把分当元传。
+- 左栏：`#planReadout` 替换 `#ledgerReadout`；余额/双进度是整段计划的，TOP 跟随当前时间窗。
+  进入计划默认落在计划内最后一个有账的月份，看整段切星轨「全部」。
+- 记一笔：`#mPlans` 多选；从计划页打开默认勾选当前计划（仅当今天在跨度内）；编辑回填已有计划，
+  已关联但日期越界的计划仍显示、可手动取消。
+- 启动页：`localStorage.orbit.startPage = {"ledgerId":1,"planId":2|null}`；账本/计划不存在则回落并清除。
+- 刷新链不变：`Data.afterChange()` 保留 scope 并重拉计划；计划被删则 `exitPlan()` 回到整本账。
+- 计划总览 `#planPage`：>3 张横向轨道（箭头 / 拖拽 / 滚轮 / 铜色刻度），≤3 张等分铺满；
+  移动端入口仍走顶栏「计划」，不新增底部导航。
+- `web/plan-utils.js` 必须在 `data.js`、`timeline-nav.js` 之后、`app.js` 之前加载；
+  `webapp/boot.js` 的 `UI_SCRIPTS` 与 `webapp/build.mjs` 的复制清单同步维护。
+
 ## 相关
 
 - [architecture.md](architecture.md) —— 业务逻辑层：分层、数据模型、REST / MCP 契约

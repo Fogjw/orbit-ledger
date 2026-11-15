@@ -29,6 +29,13 @@ export function windowFrom(query = {}) {
   return win;
 }
 
+/** query → 时间窗 + 可选 planId（非法 id 直接 400，与其它路径参数同口径） */
+export function windowWithPlan(query = {}) {
+  const win = windowFrom(query);
+  if (query.planId !== undefined && query.planId !== '') win.planId = idOf(query.planId, 'planId');
+  return win;
+}
+
 /** 必填数字字段 */
 export function requireInt(body, name, { min = null } = {}) {
   const v = body[name];

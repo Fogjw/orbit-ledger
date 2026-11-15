@@ -7,6 +7,7 @@
 //  - 所有 tag 必须属于同一账本（隔离校验，防跨账本关联）
 import { createExpenseRepo } from '../repos/expenseRepo.js';
 import { createTagRepo } from '../repos/tagRepo.js';
+import { createPlanService } from './planService.js';
 import { transaction } from '../transaction.js';
 import { BizError } from './ledgerService.js';
 
@@ -21,6 +22,7 @@ export const INCOME_UNNAMED_TAG_NAME = '收入·未分类';
 export function createExpenseService(db) {
   const expenses = createExpenseRepo(db);
   const tags = createTagRepo(db);
+  const plans = createPlanService(db);
 
   /**
    * 解析维度主 tag。**所有维度都不强制必填**（产品规则：记一笔不要求用户选 tag）：
@@ -91,7 +93,7 @@ export function createExpenseService(db) {
    *  - 某主 tag 下一个副 tag 都没选 → 补该主 tag 的「未分类」副 tag（没有则当场创建）
    * 因此本函数**可能写库**（懒创建占位 tag），调用方必须包在事务内，保证与记账同生共死。
    */
-  function plan(input) {
+  function plan(input, existingPlanIds = []) {
     const { ledgerId, amountCents, date } = input;
     if (!Number.isInteger(amountCents) || amountCents <= 0) {
       throw new BizError('金额必须为正整数（分）', 'INVALID_AMOUNT');
@@ -122,8 +124,15 @@ export function createExpenseService(db) {
       }
     }
 
+    // 计划：undefined = 保持现状（编辑）/空（新增）；显式 [] = 清空。
+    // existingPlanIds 豁免日期校验：把账单改到计划区间外时不能静默丢链接。
+    const existing = (existingPlanIds || []).map(Number);
+    const requested = input.planIds === undefined ? existing : input.planIds;
+    const planIds = plans.assertLinkable(ledgerId, date, requested, existing);
+
     return {
       fields: { ledgerId, type, amountCents, date, note: input.note ?? null },
+      planIds,
       links: [
         ...primaries.map(p => ({ tagId: p.tag.id, role: 'primary' })),
         ...secondaries.map(t => ({ tagId: t.id, role: 'secondary' })),
@@ -148,6 +157,7 @@ export function createExpenseService(db) {
         const p = plan(input);
         const expenseId = expenses.insert(p.fields);
         expenses.linkTags(expenseId, p.links);
+        if (p.planIds.length) expenses.linkPlans(expenseId, p.planIds);
         return api.byId(expenseId);
       });
     },
@@ -156,7 +166,7 @@ export function createExpenseService(db) {
     byId(id) {
       const e = expenses.byId(id);
       if (!e) return null;
-      return { ...e, tags: expenses.tagsOf(id) };
+      return { ...e, tags: expenses.tagsOf(id), plans: expenses.plansOf(id) };
     },
 
     /**
@@ -172,7 +182,7 @@ export function createExpenseService(db) {
     /** 时间窗内花销（含各自 tag 明细） */
     listByWindow(ledgerId, win = {}) {
       const rows = expenses.listByWindow(ledgerId, win);
-      return rows.map(e => ({ ...e, tags: expenses.tagsOf(e.id) }));
+      return rows.map(e => ({ ...e, tags: expenses.tagsOf(e.id), plans: expenses.plansOf(e.id) }));
     },
 
     /**
@@ -187,10 +197,12 @@ export function createExpenseService(db) {
       if (!existing || existing.ledger_id !== ledgerId) {
         throw new BizError(`花销不存在: ${expenseId}`, 'NOT_FOUND', 404);
       }
+      const existingPlanIds = expenses.plansOf(expenseId).map(p => p.id);
       return transaction(db, () => {
-        const p = plan({ ...input, ledgerId });
+        const p = plan({ ...input, ledgerId }, existingPlanIds);
         expenses.update(expenseId, p.fields);
         expenses.replaceLinks(expenseId, p.links);
+        expenses.replacePlans(expenseId, p.planIds);
         return api.byId(expenseId);
       });
     },

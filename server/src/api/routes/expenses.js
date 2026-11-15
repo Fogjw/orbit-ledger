@@ -1,6 +1,6 @@
 // 路由：账本下花销（挂载于 /api/ledgers/:ledgerId/expenses）
 import { Router } from 'express';
-import { idOf, windowFrom, requireInt, requireStr, optStr } from '../validate.js';
+import { idOf, windowWithPlan, requireInt, requireStr, optStr } from '../validate.js';
 import { BizError } from '../../services/ledgerService.js';
 
 /**
@@ -12,6 +12,10 @@ function expenseBody(body) {
   if (typeof primary !== 'object' || Array.isArray(primary)) {
     throw new BizError('primary 须为对象', 'INVALID_FIELD');
   }
+  // 只有「不传」和「数组」两种合法形态：传错类型必须是 400，不能悄悄当成 [] 把关联清空
+  if (body.planIds !== undefined && !Array.isArray(body.planIds)) {
+    throw new BizError('planIds 须为数组', 'INVALID_FIELD');
+  }
   return {
     type: body.type === 'income' ? 'income' : 'expense',
     amountCents: requireInt(body, 'amountCents', { min: 1 }),
@@ -19,6 +23,10 @@ function expenseBody(body) {
     note: optStr(body, 'note'),
     primary,
     tags: Array.isArray(body.tags) ? body.tags : [],
+    // undefined 与 [] 语义不同：编辑时不传 = 保留原有关联，显式 [] = 清空
+    planIds: body.planIds === undefined
+      ? undefined
+      : (Array.isArray(body.planIds) ? body.planIds.map(Number) : []),
   };
 }
 
@@ -32,10 +40,10 @@ export function expensesRouter(svc) {
     res.status(201).json(expense);
   });
 
-  /** 时间窗列表 GET ?from&to&type */
+  /** 时间窗列表 GET ?from&to&type&planId */
   r.get('/', (req, res) => {
     const ledgerId = idOf(req.params.ledgerId);
-    const list = svc.expenses.listByWindow(ledgerId, windowFrom(req.query));
+    const list = svc.expenses.listByWindow(ledgerId, windowWithPlan(req.query));
     res.json({ items: list, count: list.length });
   });
 

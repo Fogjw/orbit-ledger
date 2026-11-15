@@ -7,11 +7,12 @@ export function createExportRepo(db) {
 
   return {
     /**
-     * 账本全量快照：账本单行 + 五表扁平行。
-     * expense_tag_links 无 ledger_id 列，须 join expenses 按账本过滤。
+     * 账本全量快照：账本单行 + 七表扁平行（含计划）。
+     * expense_tag_links / expense_plan_links 无 ledger_id 列，须 join expenses 按账本过滤。
      * @param {number} ledgerId
      * @returns {null | {ledger: object, dimensions: object[], tags: object[],
-     *   expenses: object[], expense_tag_links: object[]}}
+     *   expenses: object[], expense_tag_links: object[], plans: object[],
+     *   expense_plan_links: object[]}}
      */
     snapshot(ledgerId) {
       const ledger = plain(db.prepare('SELECT id, name, created_at FROM ledgers WHERE id = ?').get(ledgerId));
@@ -32,7 +33,18 @@ export function createExportRepo(db) {
          WHERE e.ledger_id = ?
          ORDER BY l.expense_id, l.role, l.tag_id`
       ).all(ledgerId));
-      return { ledger, dimensions, tags, expenses, expense_tag_links };
+      const plans = plainAll(db.prepare(
+        `SELECT id, ledger_id, name, budget_cents, start_date, end_date, position, created_at
+           FROM plans WHERE ledger_id = ? ORDER BY start_date, id`
+      ).all(ledgerId));
+      const expense_plan_links = plainAll(db.prepare(
+        `SELECT l.expense_id, l.plan_id
+           FROM expense_plan_links l
+           JOIN expenses e ON e.id = l.expense_id
+          WHERE e.ledger_id = ?
+          ORDER BY l.expense_id, l.plan_id`
+      ).all(ledgerId));
+      return { ledger, dimensions, tags, expenses, expense_tag_links, plans, expense_plan_links };
     },
   };
 }

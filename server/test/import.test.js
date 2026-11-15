@@ -9,6 +9,7 @@ import { createTagService } from '../src/services/tagService.js';
 import { createExpenseService } from '../src/services/expenseService.js';
 import { createExportService } from '../src/services/exportService.js';
 import { createImportService } from '../src/services/importService.js';
+import { createPlanService } from '../src/services/planService.js';
 
 function setup() {
   const db = openDatabase(':memory:');
@@ -17,6 +18,7 @@ function setup() {
     ledgers: createLedgerService(db),
     tags: createTagService(db),
     expenses: createExpenseService(db),
+    plans: createPlanService(db),
     exports: createExportService(db),
     imports: createImportService(db),
   };
@@ -100,6 +102,7 @@ describe('导入（备份回读）', () => {
     assert.deepEqual(out.counts, {
       dimensions: dst.dimensions.length, tags: dst.tags.length,
       expenses: dst.expenses.length, links: dst.expense_tag_links.length,
+      plans: 0, planLinks: 0,
     });
   });
 
@@ -202,4 +205,37 @@ describe('导入（备份回读）', () => {
     assert.equal(svc.ledgers.list().length, before, '失败导入不新增账本');
     assert.equal(svc.exports.ledgerSnapshot(src.id).tags.length, good.tags.length, '既有数据零变化');
   });
+});
+
+
+test('计划与关联随备份回读：主键重分配，余额不变', () => {
+  const { svc } = setup();
+  const src = svc.ledgers.create('计划源');
+  const p = svc.plans.create(src.id, { name: '六月', budgetCents: 100000, startDate: '2026-06-01', endDate: '2026-06-30' });
+  svc.expenses.add({ ledgerId: src.id, amountCents: 4560, date: '2026-06-07', planIds: [p.id] });
+  const snap = svc.exports.ledgerSnapshot(src.id);
+
+  const out = svc.imports.importSnapshot(snap);
+  const dst = svc.exports.ledgerSnapshot(out.ledger.id);
+  assert.equal(dst.plans.length, 1);
+  assert.notEqual(dst.plans[0].id, p.id, '计划主键重分配');
+  assert.equal(dst.expense_plan_links.length, 1);
+  assert.equal(dst.expense_plan_links[0].plan_id, dst.plans[0].id, '关联指向新计划');
+  assert.equal(out.counts.plans, 1);
+  assert.equal(out.counts.planLinks, 1);
+  const plan = svc.plans.list(out.ledger.id)[0];
+  assert.equal(plan.remaining_cents, 100000 - 4560);
+});
+
+test('v1 旧备份（无 plans 字段）仍可导入', () => {
+  const { svc } = setup();
+  const src = seedSource(svc);
+  const v2 = svc.exports.ledgerSnapshot(src.id);
+  const v1 = { ...v2, version: 1 };
+  delete v1.plans;
+  delete v1.expense_plan_links;
+  const out = svc.imports.importSnapshot(v1);
+  assert.equal(out.counts.expenses, v2.expenses.length);
+  assert.equal(out.counts.plans, 0);
+  assert.equal(out.counts.planLinks, 0);
 });
