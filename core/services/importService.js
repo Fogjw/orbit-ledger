@@ -10,9 +10,11 @@ import { transaction } from '../transaction.js';
 import { BizError } from './ledgerService.js';
 
 const BACKUP_FORMAT = 'orbit-ledger-backup';
-const SUPPORTED_VERSIONS = new Set([1]);
+const SUPPORTED_VERSIONS = new Set([1, 2]);
 /** 快照必须携带的扁平表（与 exportRepo.snapshot 的输出对齐） */
 const TABLES = ['dimensions', 'tags', 'expenses', 'expense_tag_links'];
+/** v2 新增；v1 备份没有这两张表，按空计划导入 */
+const PLAN_TABLES = ['plans', 'expense_plan_links'];
 
 const DATE_RE = /^\d{4}-\d{2}-\d{2}$/;
 const DIM_KEYS = new Set(['category', 'context', 'payment']);
@@ -43,6 +45,11 @@ export function createImportService(db) {
     const name = isNonEmptyStr(snapshot.ledger.name) ? snapshot.ledger.name.trim() : '';
     if (!name) throw bad('账本名为空');
     for (const t of TABLES) if (!Array.isArray(snapshot[t])) throw bad(`缺少数组 ${t}`);
+    if (snapshot.version >= 2) {
+      for (const t of PLAN_TABLES) if (!Array.isArray(snapshot[t])) throw bad(`缺少数组 ${t}`);
+    }
+    const plans = snapshot.plans ?? [];
+    const planLinks = snapshot.expense_plan_links ?? [];
 
     // 字段级
     for (const d of snapshot.dimensions) {
@@ -63,11 +70,22 @@ export function createImportService(db) {
     for (const l of snapshot.expense_tag_links) {
       if (l.role !== undefined && !LINK_ROLES.has(l.role)) throw bad(`未知关联角色「${l.role}」`);
     }
+    for (const p of plans) {
+      if (!isNonEmptyStr(p.name)) throw bad('计划名称为空');
+      if (!Number.isInteger(p.budget_cents) || p.budget_cents < 0) throw bad(`计划「${p.name}」预算应为非负整数（分）`);
+      if (typeof p.start_date !== 'string' || !DATE_RE.test(p.start_date)) throw bad(`计划「${p.name}」开始日期格式错误`);
+      if (typeof p.end_date !== 'string' || !DATE_RE.test(p.end_date)) throw bad(`计划「${p.name}」结束日期格式错误`);
+      if (p.end_date < p.start_date) throw bad(`计划「${p.name}」结束日期早于开始日期`);
+      if (p.ledger_id != null && String(p.ledger_id) !== String(snapshot.ledger.id)) {
+        throw incomplete(`计划「${p.name}」不属于备份账本`);
+      }
+    }
 
     // 引用完整性（快照必须自洽，否则重建出来的图会缺边）
     const dimIds = new Set(snapshot.dimensions.map(d => d.id));
     const tagIds = new Set(snapshot.tags.map(t => t.id));
     const expIds = new Set(snapshot.expenses.map(e => e.id));
+    const planIds = new Set(plans.map(p => p.id));
     const parentOf = new Map(snapshot.tags.map(t => [t.id, t.parent_tag_id ?? null]));
     for (const t of snapshot.tags) {
       if (!dimIds.has(t.dimension_id)) throw incomplete(`tag「${t.name}」的维度不在备份里`);
@@ -81,17 +99,22 @@ export function createImportService(db) {
       if (!expIds.has(l.expense_id)) throw incomplete(`关联引用了不存在的花销 ${l.expense_id}`);
       if (!tagIds.has(l.tag_id)) throw incomplete(`关联引用了不存在的 tag ${l.tag_id}`);
     }
-    return name;
+    for (const l of planLinks) {
+      if (!expIds.has(l.expense_id)) throw incomplete(`计划关联引用了不存在的花销 ${l.expense_id}`);
+      if (!planIds.has(l.plan_id)) throw incomplete(`计划关联引用了不存在的计划 ${l.plan_id}`);
+    }
+    return { name, plans, planLinks };
   }
 
   return {
     /**
      * 回读备份快照为**新账本**（单事务）。
      * @param {object} snapshot exportService.ledgerSnapshot 的产物
-     * @returns {{ledger: object, counts: {dimensions:number, tags:number, expenses:number, links:number}}}
+     * @returns {{ledger: object, counts: {dimensions:number, tags:number, expenses:number,
+     *   links:number, plans:number, planLinks:number}}}
      */
     importSnapshot(snapshot) {
-      const name = validate(snapshot);
+      const { name, plans, planLinks } = validate(snapshot);
 
       return transaction(db, () => {
         const ledgerId = repo.insertLedger(name, snapshot.ledger.created_at ?? null);
@@ -133,6 +156,18 @@ export function createImportService(db) {
           repo.insertLink(expMap.get(l.expense_id), tagMap.get(l.tag_id), l.role);
         }
 
+        // 计划：先建计划，再重建账单↔计划关联（旧 id → 新 id）
+        const planMap = new Map();
+        for (const p of plans) {
+          planMap.set(p.id, repo.insertPlan(ledgerId, {
+            name: p.name, budgetCents: p.budget_cents, startDate: p.start_date,
+            endDate: p.end_date, position: p.position, createdAt: p.created_at,
+          }));
+        }
+        for (const l of planLinks) {
+          repo.insertPlanLink(expMap.get(l.expense_id), planMap.get(l.plan_id));
+        }
+
         return {
           ledger: ledgers.byId(ledgerId),
           counts: {
@@ -140,6 +175,8 @@ export function createImportService(db) {
             tags: snapshot.tags.length,
             expenses: snapshot.expenses.length,
             links: snapshot.expense_tag_links.length,
+            plans: plans.length,
+            planLinks: planLinks.length,
           },
         };
       });

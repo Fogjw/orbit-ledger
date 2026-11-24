@@ -52,7 +52,7 @@ orbit-ledger/
 - Android 签名与 CD：`android-release.yml` 在桌面 Release 成功后自动构建签名 APK/AAB 并挂到同一 tag；
   keystore 只来自 GitHub Actions secrets。
 
-## 数据模型（五表；正交多维度 —— 每维内部互斥、维度之间互不影响）
+## 数据模型（七表；正交多维度 —— 每维内部互斥、维度之间互不影响）
 
 | 表 | 职责 | 要点 |
 |---|---|---|
@@ -61,8 +61,14 @@ orbit-ledger/
 | `tags` | 维度取值（两级） | `parent_tag_id` 自引用：NULL = **主 tag**（维度取值，如「餐饮」）；非 NULL = **副 tag**（主 tag 的细分，如 餐饮→午餐）。每维/每主 tag 各有一个 **「未分类」占位**（is_unnamed=1，产品层弱化）；颜色可选覆盖 |
 | `expenses` | 花销事实表 | type expense/income；**amount_cents 分存储**；date YYYY-MM-DD |
 | `expense_tag_links` | 花销↔tag | role primary/secondary；每维一个 primary + N 个 secondary（secondary 须挂在本笔某个 primary 之下） |
+| `plans` | 计划（预算轨道） | 账本内的一段时间 + 预算；`budget_cents` 允许 0；`end_date >= start_date` |
+| `expense_plan_links` | 花销↔计划 | 多对多；删计划/删账单都只级联清链接，另一方保留 |
 
 **核心不变量（D-03）**：每笔花销每维恰好一个 primary ⇒ 每维 Σ = 总额（「未分类」参与求和）。统计按 type 过滤。
+
+**计划（v6）**：计划是账本上的一个作用域，不是第二份账单。余额 = `预算 + 入账 − 已用`（分），允许为负（允许超支）；
+同一笔账单可进多个计划、每个计划全额计入。**新增**计划关联要求账单日期落在跨度内；账单随后改到区间外时
+已有链接保留（不静默丢数据）。编辑（PUT）不带 `planIds` 时保留原链接，显式 `[]` 才清空。
 
 **缺省兜底（记一笔不要求用户选任何 tag）**：
 - 某维主 tag 未选 → 落到该维「未分类」主 tag
@@ -95,24 +101,27 @@ Base: `http://localhost:5310/api`（端口 env `ORBIT_PORT` 覆盖）。CORS 放
 | GET | `/ledgers/:id` | 账本 |
 | GET | `/ledgers/:id/dimensions` | 维度+tag 树（录入下拉/图谱源） |
 | POST | `/ledgers/:id/dimensions` | 启用扩展维度 `{key,name?}`（如 payment；不预设占位 tag） |
-| GET | `/ledgers/:id/export` | 账本全量 JSON 快照（备份，D-13） |
-| POST | `/ledgers/import` | 用快照回读为**新账本**（不覆盖/不合并，主键全部重分配）；坏备份 → 400 `INVALID_BACKUP` / `BACKUP_INCOMPLETE`。路由须声明在 `/:id` 之前，否则 `import` 会被当成账本 id |
+| GET | `/ledgers/:id/export` | 账本全量 JSON 快照（备份，D-13；v2 含 `plans` / `expense_plan_links`） |
+| POST | `/ledgers/import` | 用快照回读为**新账本**（不覆盖/不合并，主键全部重分配；兼容 v1/v2 备份，v1 计划为空）；坏备份 → 400 `INVALID_BACKUP` / `BACKUP_INCOMPLETE`。路由须声明在 `/:id` 之前，否则 `import` 会被当成账本 id |
 | PATCH/DELETE | `/ledgers/:id` | 改名 `{name}` / 删除 |
 | POST | `/ledgers/:id/tags` | 建 tag `{dimensionKey,name,color?,parentTagId?}`——带 `parentTagId` 则在其下建副 tag（父须为同维度主 tag） |
 | PATCH/DELETE | `/ledgers/:id/tags/:tagId` | 改名/改色 `{name?,color?}`（同层级唯一，「未分类」锁定） / 删除（「未分类」与被引用 tag、以及副 tag 被引用的父 tag 409 保护） |
 | POST | `/ledgers/:id/expenses` | 记一笔（见下） |
-| GET | `/ledgers/:id/expenses?from&to&type` | 时间窗列表（含 tag 明细） |
+| GET | `/ledgers/:id/expenses?from&to&type&planId` | 时间窗列表（含 tag 与 `plans` 明细） |
 | GET/PUT/DELETE | `/ledgers/:id/expenses/:eid` | 单笔 / 编辑 / 删除（单笔操作账本内校验，跨账本 404） |
-| GET | `/ledgers/:id/stats?from&to&type` | 聚合视图 |
+| GET | `/ledgers/:id/stats?from&to&type&planId` | 聚合视图（planId 只统计该计划） |
+| GET/POST | `/ledgers/:id/plans` | 计划列表（含 `spent_cents/income_cents/remaining_cents/bill_count`）/ 新建 |
+| PATCH/DELETE | `/ledgers/:id/plans/:planId` | 改 / 删（删只解绑，不删账单） |
 
 请求体上限 **32mb**（`express.json({ limit })`）：导入备份走同一 JSON 解析器，默认 100kb 装不下千笔级快照。
 
-记一笔与编辑共用请求体（D-10：PUT = 全量替换）：
+记一笔与编辑共用请求体（D-10：PUT = 全量替换；`planIds` 例外：缺省保留原链接，显式 `[]` 清空）：
 ```json
 { "type": "expense", "amountCents": 4560, "date": "2026-06-07", "note": "撸串",
   "primary": { "category": "餐饮", "context": "和朋友" },
-  "tags": ["夜宵"] }
+  "tags": ["夜宵"], "planIds": [3, 5] }
 ```
+- `planIds` 是计划 id 列表（0..N，按 id 引用）；响应花销含 `plans: [{id,name}]`。
 - `tags` 是副 tag 列表（元素可为 id 或名称），必须挂在**本笔某个主 tag** 下（S6-v3）；用数字 id 可避开重名歧义。
 - PUT 语义：金额/日期/类型/备注/主副 tag **一次重写**（旧关联清空），单事务回滚；校验同记一笔（账本内 tag、副 tag 归属）。
 - 响应花销含 `tags[]`（role primary/secondary、dim_key、is_unnamed）。
@@ -152,7 +161,7 @@ Base: `http://localhost:5310/api`（端口 env `ORBIT_PORT` 覆盖）。CORS 放
 ## 质量
 
 - 测试：`npm test`（node:test 70 项：Σ 守恒/隔离/回滚/校验/编辑全量替换/tag 维护保护/维度扩展贯通/迁移机制（含 v3 表重建安全性）/导出快照/**导入回读（等价重建·引用完整性·事务无残留）**/MCP 真实协议/聚合/API 全流程/错误映射/副 tag 归属校验）。
-- schema 版本：当前 **v3**（v1 五表、v2 dimensions.required、v3 tags 两级化）。v3 走表重建流程，属 `foreignKeysOff` 类迁移。
+- schema 版本：当前 **v6**（v1 五表、v2 dimensions.required、v3 tags 两级化、v4/v5 收入情境归属、v6 plans + expense_plan_links）。v3 走表重建流程，属 `foreignKeysOff` 类迁移。
 - 金额守恒是记账正确性生死线，回归必查。
 
 ## 技术要点与取舍

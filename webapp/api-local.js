@@ -11,6 +11,7 @@ import { migrate } from '../core/schema.js';
 import { createLedgerService, BizError } from '../core/services/ledgerService.js';
 import { createTagService } from '../core/services/tagService.js';
 import { createExpenseService } from '../core/services/expenseService.js';
+import { createPlanService } from '../core/services/planService.js';
 import { createReportService } from '../core/services/reportService.js';
 import { createExportService } from '../core/services/exportService.js';
 import { createImportService } from '../core/services/importService.js';
@@ -18,6 +19,9 @@ import { openBrowserDatabase } from './sqlite-browser.js';
 
 /** 记账请求体归一化（对齐 REST 层 expenseBody 的默认值与形状） */
 function normalizeExpense(data = {}) {
+  if (data.planIds !== undefined && !Array.isArray(data.planIds)) {
+    throw new BizError('planIds 须为数组', 'INVALID_FIELD');
+  }
   return {
     type: data.type === 'income' ? 'income' : 'expense',
     amountCents: data.amountCents,
@@ -25,6 +29,9 @@ function normalizeExpense(data = {}) {
     note: data.note,
     primary: data.primary ?? {},
     tags: Array.isArray(data.tags) ? data.tags : [],
+    planIds: data.planIds === undefined
+      ? undefined
+      : (Array.isArray(data.planIds) ? data.planIds.map(Number) : []),
   };
 }
 
@@ -34,6 +41,7 @@ function normalizeWindow(win = {}) {
   if (win.from) out.from = win.from;
   if (win.to) out.to = win.to;
   if (win.type) out.type = win.type;
+  if (win.planId) out.planId = Number(win.planId);
   return out;
 }
 
@@ -53,6 +61,7 @@ export async function createLocalApi(opts = {}) {
     ledgers: createLedgerService(db),
     tags: createTagService(db),
     expenses: createExpenseService(db),
+    plans: createPlanService(db),
     reports: createReportService(db),
     exports: createExportService(db),
     imports: createImportService(db),
@@ -113,6 +122,15 @@ export async function createLocalApi(opts = {}) {
     deleteTag: (ledgerId, tagId) => call(() => svc.tags.remove(Number(ledgerId), Number(tagId)), true),
     reorderTags: (ledgerId, dimensionKey, orderedIds, parentTagId) =>
       call(() => svc.tags.reorder(Number(ledgerId), dimensionKey, parentTagId ?? null, orderedIds), true),
+
+    // ---- 计划 ----
+    listPlans: async (ledgerId) => {
+      const items = await call(() => svc.plans.list(Number(ledgerId)));
+      return { items, count: items.length };   // 与 REST 的响应形状一致
+    },
+    createPlan: (ledgerId, data = {}) => call(() => svc.plans.create(Number(ledgerId), data), true),
+    updatePlan: (ledgerId, planId, data = {}) => call(() => svc.plans.update(Number(ledgerId), Number(planId), data), true),
+    deletePlan: (ledgerId, planId) => call(() => svc.plans.remove(Number(ledgerId), Number(planId)), true),
 
     // ---- 花销 ----
     addExpense: (ledgerId, data) => call(() => svc.expenses.add({ ledgerId: Number(ledgerId), ...normalizeExpense(data) }), true),

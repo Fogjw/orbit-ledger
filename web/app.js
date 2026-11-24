@@ -1156,7 +1156,7 @@ async function reloadDetailExpenses(){
   if(!detailTag)return;
   const {from,to}=Data.monthRange;
   try{
-    const {items=[]}=await OrbitAPI.listExpenses(Data.ledgerId,{from,to});
+    const {items=[]}=await OrbitAPI.listExpenses(Data.ledgerId,{from,to,planId:currentPlanId()});
     detailExpenses=items.filter(e=>e.tags.some(t=>t.role==='primary'&&t.tag_id===detailTag.tagId));
   }catch(e){detailExpenses=[]}
 }
@@ -1524,7 +1524,7 @@ async function enterDetail(id,opts={}){
   if(!tag)return;
   const {from,to}=Data.monthRange;
   try{
-    const {items=[]}=await OrbitAPI.listExpenses(Data.ledgerId,{from,to});
+    const {items=[]}=await OrbitAPI.listExpenses(Data.ledgerId,{from,to,planId:currentPlanId()});
     detailExpenses=items.filter(e=>e.tags.some(t=>t.role==='primary'&&t.tag_id===tag.tagId));
   }catch(e){
     detailExpenses=[];
@@ -1559,13 +1559,15 @@ $('#btnBack').onclick=goBack;
    启动时先立一条基线（见 boot ），所以站内第一次后退是回主视图，而不是退出站点。 */
 /** 当前视图快照（历史里存的就是它） */
 function viewState(){
-  return {orbit:1,ledgerId:S.ledgerId,dim:S.dim,view:S.view,focus:S.focus};
+  return {orbit:1,ledgerId:S.ledgerId,dim:S.dim,view:S.view,focus:S.focus,planPage:planPageOpen,
+    planId:(Data&&Data.scope&&Data.scope.kind==='plan')?Data.scope.planId:null};
 }
 const vkey=x=>x==null?'':String(x);
 /** 两个视图快照是否等价 */
 function sameView(a,b){
   return !!(a&&b&&a.orbit&&b.orbit)&&vkey(a.ledgerId)===vkey(b.ledgerId)
-      &&a.dim===b.dim&&a.view===b.view&&vkey(a.focus)===vkey(b.focus);
+      &&a.dim===b.dim&&a.view===b.view&&vkey(a.focus)===vkey(b.focus)
+      &&!!a.planPage===!!b.planPage&&vkey(a.planId)===vkey(b.planId);
 }
 /** 视图切换后记账：一次切换＝一条历史。
     popstate 恢复路径上必须传 {history:false}，否则后退自己又记一条，历史会越堆越深。
@@ -1584,6 +1586,8 @@ function closeOverlays(){
   expMask.hidden=true;                         // 花销明细
   tagMask.hidden=true;                         // 标签管理
   const m=$('#ledgerMenu');if(m)m.hidden=true; // 账本下拉
+  const pm=$('#planMenu');if(pm)pm.hidden=true; // 计划下拉
+  const pfm=$('#planMask');if(pfm)pfm.hidden=true; // 计划表单
 }
 let viewSeq=0;   // 连点后退时丢弃过期结果（恢复里有 await，可能交错）
 async function applyView(s){
@@ -1595,10 +1599,20 @@ async function applyView(s){
   if(ledgerChanged)await switchLedger(s.ledgerId,{history:false});
   if(seq!==viewSeq)return;
   if(s.dim&&s.dim!==S.dim)setDim(s.dim,{history:false});
+  const curPlan=(Data&&Data.scope&&Data.scope.kind==='plan')?Data.scope.planId:null;
+  if(vkey(s.planId)!==vkey(curPlan)){
+    if(s.planId!=null)await Data.selectPlan(s.planId);else await Data.exitPlan();
+    refreshTagArrays();refreshMonths();refreshAmounts();
+    TL.z=1;TL.pan=0;if(typeof relockSel==='function')relockSel();
+    buildGraph();syncChrome();syncRail&&syncRail();
+  }
   // 「同一个下钻」也要在账本刚换过时重新拉数：下钻内容是按账本 + 当月取的
   const same=!ledgerChanged&&S.view==='detail'&&vkey(S.focus)===vkey(s.focus);
   if(s.view==='detail'&&s.focus!=null){if(!same)await enterDetail(s.focus,{history:false})}
   else goBack({history:false});
+  // 计划总览是独立页面：历史里存 planPage，后退/前进时跟着开关
+  if(s.planPage&&!planPageOpen)openPlanPage({history:false});
+  else if(!s.planPage&&planPageOpen)closePlanPage({history:false});
 }
 addEventListener('popstate',e=>{applyView(e.state)});
 
@@ -1667,7 +1681,7 @@ async function refreshExpList(){
   $('#expSub').textContent=(from&&to)?(from.slice(0,7).replace('-','年')+'月 · '+expCtx.name):expCtx.name;
   box.innerHTML='<div class="e-empty">加载中…</div>';
   try{
-    const {items=[]}=await OrbitAPI.listExpenses(Data.ledgerId,{from,to});
+    const {items=[]}=await OrbitAPI.listExpenses(Data.ledgerId,{from,to,planId:currentPlanId()});
     // 匹配：该 tag 作为 primary（category 维按 primary；context 同）——也包含副 tag 提及？只列 primary
     // 主 tag 匹配 primary；副 tag 匹配 secondary
     const mine=items.filter(e=>e.tags.some(t=>t.tag_id===expCtx.tagId&&t.role===(expCtx.isSub?'secondary':'primary')));
@@ -1869,14 +1883,19 @@ function toast(msg){
   if(msg) console.debug('[orbit-toast]',msg);
 }
 function animateNum(el,to,fmt){
+  // _freeze：计划 scope 下总金额由计划自己直接写，旧账本动画必须立刻停，
+  // 否则进计划后它会继续跑完 700ms，把大字改回账本总额。
+  if(el._freeze){el.textContent=fmt(to);el._v=to;return}
   const from=el._v||0;el._v=to;const t0=performance.now();
-  (function f(t){const k=clamp((t-t0)/700,0,1),e=1-Math.pow(1-k,3);
+  (function f(t){if(el._freeze)return;const k=clamp((t-t0)/700,0,1),e=1-Math.pow(1-k,3);
     el.textContent=fmt(lerp(from,to,e));if(k<1)requestAnimationFrame(f)})(t0);
 }
 function syncChrome(){
   const tot=selTotal();
   const w=Data&&Data._window;
   const lv=(w&&w.kind)||'month';
+  const planScope=(Data&&Data.scope&&Data.scope.kind==='plan')?Data.currentPlan():null;
+  const mtv=$('#mtValue');if(mtv)mtv._freeze=!!planScope;
   // 笔数：Data.days 为有支出的天数，笔数保守估算；总额必须真实
   // nExp 的两个来源语义不同：Data.days.length 是「有支出的**天数**」，
   // 而兜底的 tot/58 是笔数估算 —— 以前两者都写成「共 N 笔」，于是「615 天」被读成「615 笔」，
@@ -1887,6 +1906,7 @@ function syncChrome(){
     if(Data&&Data.days){nExp=Data.days.length;nUnit='天'}
     else nExp=Math.max(1,Math.round(tot/58));
   }catch(e){nExp=Math.max(1,Math.round(tot/58))}
+  if(!planScope){
   $('#mtLabel').textContent=`${selLabel()} · 支出 · ${nUnit==='天'?nExp+' 天有记录':'共 '+nExp+' 笔'}`;
   // 面板标题写清**看的是哪一段时间**（「本月」在选中八月时也会说本月，那是另一层歧义）
   $('#pTitle').textContent=`${selLabel()||periodWord()}星图`;
@@ -1908,6 +1928,7 @@ function syncChrome(){
   if(mBalSub)mBalSub.innerHTML=`${selLabel()} · `
     +`<span style="color:${Data.EXPENSE_GREEN}">支出 ${fmtYuan(tot)}</span> · `
     +`<span style="color:${Data.INCOME_RED}">收入 ${fmtYuan(inc)}</span>`;
+  }
   // 日均按当前窗口天数算（日档 1 天、年档 365 天、「全部」按整段时间轴、其余按 30 天）
   const span=lv==='day'?1:(lv==='all'?Math.max(1,Math.round(timelineFull().to-timelineFull().from)):(lv==='year'?365:30));
   $('#pCount').textContent=`${nUnit==='天'?nExp+' 天有记录':nExp+' 笔'} · 日均支出 ${fmtYuan(tot/span)}`;
@@ -1923,7 +1944,33 @@ function syncChrome(){
       ?'拖空白平移画面 · 点花销星编辑该笔 · 点细分星看明细 · 轻点空白返回主视图'
       :'拖拽星体 · 拖空白平移画面 · 悬停看关联 · 点击星星下钻 · 滚轮缩放星轨';
   }
+  const lr=$('#ledgerReadout'),pr=$('#planReadout');
+  if(lr)lr.hidden=!!planScope;
+  if(pr)pr.hidden=!planScope;
+  if(planScope){
+    const m=PlanU.planMetrics(planScope,todayISO());
+    $('#mtLabel').textContent=planScope.start_date.replace(/-/g,'.')+' — '+planScope.end_date.replace(/-/g,'.')
+      +' · '+(m.status==='ended'?'已结束':m.status==='upcoming'?'未开始':'剩 '+m.daysLeft+' 天');
+    $('#mtValue').textContent=planAmount(m.remainingCents);
+    $('#mtValue').style.color=planTone(m.remainingCents);
+    renderPlanReadout(planScope,m);
+    if(mBalNum){mBalNum.textContent=planAmount(m.remainingCents);mBalNum.style.color=planTone(m.remainingCents);}
+    if(mBalSub)mBalSub.textContent='预算 '+planAmount(m.budgetCents)+' · 已用 '+planAmount(m.spentCents);
+    const lab=document.querySelector('.mb-main small');if(lab)lab.textContent=m.remainingLabel;
+  }else{
+    const lab=document.querySelector('.mb-main small');if(lab)lab.textContent='结余';
+  }
   renderTop();
+  if(planScope){const src=$('#topList'),dst=$('#prTop');if(src&&dst){dst.innerHTML=src.innerHTML;bindTopRows(dst);}}
+  renderPlanMenu();
+}
+function bindTopRows(root){
+  if(!root)return;
+  root.querySelectorAll('.top-row').forEach(el=>{
+    el.onmouseenter=()=>setHover({kind:'cat',id:el.dataset.id});
+    el.onmouseleave=()=>setHover(null);
+    el.onclick=()=>{const tag=(CATS.concat(CTXS)).find(c=>c.id===el.dataset.id);if(tag)openExpenseList(tag)};
+  });
 }
 function renderTop(){
   // 与主视图主 tag 同一口径：只列当前窗口有账单的类目，别把只在其他月份
@@ -1944,11 +1991,7 @@ function renderTop(){
       <span class="top-bar"><span class="top-fill" style="display:block;width:${Math.round((amts[c.id]||0)/max*100)}%;background:${c.color}"></span></span>
       <span class="top-amt">${fmtYuan(amts[c.id]||0)}</span>
     </div>`).join('');
-  document.querySelectorAll('.top-row').forEach(el=>{
-    el.onmouseenter=()=>setHover({kind:'cat',id:el.dataset.id});
-    el.onmouseleave=()=>setHover(null);
-    el.onclick=()=>{const tag=(CATS.concat(CTXS)).find(c=>c.id===el.dataset.id);if(tag)openExpenseList(tag)};
-  });
+  bindTopRows($('#topList'));
   const topName=items[0]?items[0].name:'—';
   $('#insightBox').innerHTML=`${pw} 最大支出星系：<b>${topName}</b>`;
 }
@@ -1972,6 +2015,7 @@ async function switchLedger(id,opts={}){
   }catch(e){toast('切换账本失败：'+(e.message||e))}
   renderLedgerDD();
   buildGraph();syncChrome();
+  renderPlanPage();renderPlanMenu();
   if(opts.history!==false)pushView();   // 换账本＝换视图
   const cur=(Data.ledgers||[]).find(l=>String(l.id)===String(S.ledgerId));
   toast('账本 · '+(cur?cur.name:''));
@@ -2101,7 +2145,7 @@ function importBackup(){
 
 // 下拉开关：点按钮展开，点外部/Esc 收起
 $('#ledgerBtn').onclick=(e)=>{e.stopPropagation();const m=$('#ledgerMenu');m.hidden=!m.hidden;if(!m.hidden)renderLedgerDD()};
-document.addEventListener('click',()=>{const m=$('#ledgerMenu');if(m)m.hidden=true});
+document.addEventListener('click',()=>{const m=$('#ledgerMenu');if(m)m.hidden=true;const pm=$('#planMenu');if(pm)pm.hidden=true});
 addEventListener('keydown',e=>{if(e.key==='Escape'){const m=$('#ledgerMenu');if(m)m.hidden=true}});
 
 /** 切维度：段控点击与浏览器前进/后退共用同一条路径 */
@@ -2194,6 +2238,7 @@ function setModalDate(value){
   syncDateLabel();
   const p=parseISODate(value);
   if(p)calMonth={y:p.y,mo:p.mo};
+  if(typeof renderModalPlans==='function')renderModalPlans();
 }
 function closeCalendar(){
   if(!mCalendar)return;
@@ -2386,6 +2431,7 @@ function syncModalLedgerOptions(){
 }
 /* 记一笔浮层的选择状态（单一真相源：渲染与提交都读它，不靠 DOM class 反推） */
 let modalSel={category:{primary:null,subs:new Set()},context:{primary:null,subs:new Set()}};
+let modalPlans=new Set();   // 记一笔/编辑时勾选的计划 id
 function resetModalSel(){
   modalSel={category:{primary:null,subs:new Set()},context:{primary:null,subs:new Set()}};
 }
@@ -2429,6 +2475,44 @@ function renderSubRow(dimKey){
   });
   addBtn.onclick=()=>openNameBox({kind:'tag',dimKey,parentTagId:st.primary,parentName:parent?parent.name:''});
 }
+/** 记一笔里的计划候选：日期落在跨度内；编辑时已关联的计划即使越界也保留可取消 */
+function renderModalPlans(){
+  const box=$('#mPlans');if(!box)return;
+  const date=document.querySelector('.m-row input[type=date]')?.value||todayISO();
+  const linked=new Set(editingExpense?(editingExpense.plans||[]).map(p=>p.id):[]);
+  const list=(Data.plans||[]).filter(p=>linked.has(p.id)||modalPlans.has(p.id)
+    ||(date>=p.start_date&&date<=p.end_date));
+  if(!list.length){box.innerHTML='<span class="m-plan-empty">跨度内还没有计划；可在计划页新建</span>';updatePlanPreview();return}
+  box.innerHTML=list.map(p=>{
+    const m=PlanU.planMetrics(p,todayISO());
+    const on=modalPlans.has(p.id);
+    return `<button type="button" class="m-chip m-plan-chip${on?' on':''}" data-plan-id="${p.id}">
+      <i class="m-plan-check">${on?'✓':''}</i>${escHtml(p.name)}
+      <small style="color:${planTone(m.remainingCents)}">${planAmount(m.remainingCents)}</small>
+    </button>`;
+  }).join('');
+  box.querySelectorAll('[data-plan-id]').forEach(b=>b.onclick=()=>{
+    const id=Number(b.dataset.planId);
+    modalPlans.has(id)?modalPlans.delete(id):modalPlans.add(id);
+    renderModalPlans();
+  });
+  updatePlanPreview();
+}
+/** 「记账后剩余 680.50 → 592.50」：支出减、收入加 */
+function updatePlanPreview(){
+  const box=$('#mPlanPreview');if(!box)return;
+  const amount=Math.round((parseFloat($('#mAmount')?.value)||0)*100);
+  const income=document.querySelector('.m-tab.active')?.textContent.trim()==='收入';
+  const picked=[...modalPlans].map(id=>(Data.plans||[]).find(p=>String(p.id)===String(id))).filter(Boolean);
+  if(!picked.length){box.hidden=true;box.innerHTML='';return}
+  box.hidden=false;
+  box.innerHTML=picked.map(p=>{
+    const m=PlanU.planMetrics(p,todayISO());
+    const after=m.remainingCents+(income?amount:-amount);
+    return `<div>${escHtml(p.name)} ${m.remainingLabel} <b>${planAmount(m.remainingCents)}</b> → <b style="color:${planTone(after)}">${planAmount(after)}</b></div>`;
+  }).join('');
+}
+
 function renderModalChips(){
   const catList0=catCandidates();
   if(!catList0.length){
@@ -2485,6 +2569,11 @@ function openExpenseView(exp){
       return `<span class="v-tag${t.role==='primary'?' primary':''}${t.is_unnamed?' unnamed':''}">${t.name}<i>${dim}·${role}</i></span>`;
     }).join('')
     :'<span class="v-empty">无</span>';
+  const plans=(exp.plans||[]);
+  const vp=$('#viewPlans');
+  if(vp)vp.innerHTML=plans.length
+    ?plans.map(p=>`<span class="v-tag">${escHtml(p.name)}</span>`).join('')
+    :'<span class="v-empty">未加入计划</span>';
   const note=(exp.note||'').trim();
   const noteEl=$('#viewNote');
   noteEl.textContent=note||'（无备注）';
@@ -2543,6 +2632,8 @@ function openExpenseEditor(exp){
   const sel=document.querySelector('.m-row select');
   if(sel){sel.value=String(exp.ledger_id);sel.disabled=true}
   renderModalChips();
+  modalPlans=new Set((exp.plans||[]).map(p=>p.id));
+  renderModalPlans();
   mask.hidden=false;
 }
 $('#btnAdd').onclick=()=>{
@@ -2558,7 +2649,14 @@ $('#btnAdd').onclick=()=>{
   const rm=$('#mNote');if(rm)rm.value='';
   $('#mAmount').value='';
   resetModalSel();
+  modalPlans=new Set();
+  // 从计划页进来默认勾选当前计划；但结束/未开始的计划不该默认挂今天这笔账
+  if(Data&&Data.scope&&Data.scope.kind==='plan'){
+    const cur=Data.currentPlan();
+    if(cur&&todayISO()>=cur.start_date&&todayISO()<=cur.end_date)modalPlans.add(cur.id);
+  }
   renderModalChips();
+  renderModalPlans();
   // 记一笔直接聚焦金额：手机弹出数字键盘，桌面直接输入
   requestAnimationFrame(()=>$('#mAmount').focus());
 };
@@ -2586,7 +2684,9 @@ $('#modalSave').onclick=async ()=>{
   const tags=[...modalSel.category.subs,...modalSel.context.subs];
   // 备注
   const note=$('#mNote')?.value.trim()||undefined;
-  const payload={type,amountCents,date,note,primary,tags};
+  const validPlanIds=new Set((Data.plans||[]).map(p=>String(p.id)));
+  const planIds=[...modalPlans].filter(id=>validPlanIds.has(String(id)));
+  const payload={type,amountCents,date,note,primary,tags,planIds};
   try{
     if(editingExpense){
       // 编辑：PUT 全量替换（保持原 ledger_id）
@@ -2661,13 +2761,18 @@ function backOnce(){
   if(hide('#modalMask'))return true;
   if(hide('#expMask'))return true;
   if(hide('#tagMask'))return true;
+  if(hide('#planMask'))return true;
   if(!viewMask.hidden){closeExpenseView();return true}
   if(panelEl.classList.contains('mobile-open')){closePanelSheet();return true}
   if(hide('#ledgerMenu'))return true;
+  if(hide('#planMenu'))return true;
+  if(planPageOpen){closePlanPage({history:false});return true}
   if(S.view==='detail'){goBack();return true}
   return false;
 }
 window.__orbitBack=backOnce;
+$('#mAmount')&&$('#mAmount').addEventListener('input',()=>{if(typeof updatePlanPreview==='function')updatePlanPreview()});
+document.querySelectorAll('.m-tab').forEach(b=>b.addEventListener('click',()=>{if(typeof updatePlanPreview==='function')updatePlanPreview()}));
 addEventListener('keydown',e=>{
   if(e.key!=='Escape')return;
   if(backOnce())return;
@@ -2690,6 +2795,392 @@ function frame(now){
   requestAnimationFrame(frame);
 }
 
+
+/* ---------- 计划（预算轨道） ----------
+   计划是账本上的一个作用域：账单只存一份，计划页复用星图/星轨，只换统计口径。
+   余额 = 预算 + 入账 − 已用（分）。颜色一律走 Data.balanceColor（入参是元），
+   金额文本走 moneyText（入参是分）—— 两个函数口径不同，计划这里最容易传错。 */
+const PlanU=(typeof window!=='undefined'?window:globalThis).OrbitPlanUtils;
+let planPageOpen=false, planFilter='all', editingPlanId=null;
+const START_PAGE_KEY='orbit.startPage';
+
+function escHtml(v){
+  return String(v==null?'':v).replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+}
+function currentPlanId(){
+  return (Data&&Data.scope&&Data.scope.kind==='plan')?Data.scope.planId:undefined;
+}
+function readStartPage(){try{return PlanU.parseStartPage(localStorage.getItem(START_PAGE_KEY))}catch(e){return null}}
+function writeStartPage(planId){
+  try{localStorage.setItem(START_PAGE_KEY,JSON.stringify({ledgerId:Data.ledgerId,planId}))}catch(e){}
+}
+/** 分 → '¥680.5'（绝对值；方向由标签和颜色表达） */
+function planAmount(cents){return '¥'+moneyText(Math.abs(Math.round(Number(cents)||0)))}
+/** 分 → 颜色：正/零红、负绿（balanceColor 的入参是元） */
+function planTone(cents){return Data.balanceColor((Number(cents)||0)/100)}
+function planPad2(n){return String(n).padStart(2,'0')}
+function planYmd(d){return d.getFullYear()+'-'+planPad2(d.getMonth()+1)+'-'+planPad2(d.getDate())}
+function planMonthRange(base,offset){
+  const d=new Date(base.getFullYear(),base.getMonth()+offset,1);
+  const e=new Date(d.getFullYear(),d.getMonth()+1,0);
+  return {startDate:planYmd(d),endDate:planYmd(e)};
+}
+function planTermRange(){
+  const now=new Date(),y=now.getFullYear(),m=now.getMonth()+1;
+  if(m>=2&&m<=8)return {startDate:y+'-03-01',endDate:y+'-07-31'};
+  const ny=m>=9?y:y-1;
+  return {startDate:ny+'-09-01',endDate:(ny+1)+'-01-31'};
+}
+function planRangeText(p){return p.start_date.replace(/-/g,'.')+' — '+p.end_date.replace(/-/g,'.')}
+
+/** 顶栏计划菜单：概览 / 每个计划（名称 + 余额）/ 新建 */
+function renderPlanMenu(){
+  const menu=$('#planMenu'),btn=$('#planBtn');
+  if(!btn)return;
+  const plans=(Data&&Data.plans)||[];
+  const today=todayISO();
+  const active=plans.filter(p=>PlanU.planStatus(p,today)!=='ended').length;
+  btn.innerHTML='计划'+(active?'<span class="plan-count">'+active+'</span>':'')+' ▾';
+  btn.classList.toggle('has-plan',!!(Data&&Data.scope&&Data.scope.kind==='plan'));
+  if(!menu)return;
+  const ordered=PlanU.planGroups(plans,today);
+  const rows=ordered.active.concat(ordered.ended).map(p=>{
+    const m=PlanU.planMetrics(p,today);
+    return `<button class="dd-item${Data.scope.kind==='plan'&&String(Data.scope.planId)===String(p.id)?' active':''}" data-plan-id="${p.id}">
+      <span class="dd-name">${escHtml(p.name)}</span>
+      <span class="dd-plan-amt" style="color:${planTone(m.remainingCents)}">${planAmount(m.remainingCents)}</span>
+    </button>`;
+  }).join('');
+  menu.innerHTML=(Data.scope.kind==='plan'?'<button class="dd-item" data-nav="ledger"><span class="dd-name">◌ 整本账</span></button>':'')
+    +`<button class="dd-item${planPageOpen?' active':''}" data-nav="overview">
+      <span class="dd-name">▦ 计划总览</span><span class="dd-check">${active?active+' 进行中':''}</span>
+    </button>`+
+    (rows||'<div class="dd-empty">还没有计划</div>')+
+    `<div class="dd-sep"></div><button class="dd-new" data-nav="new">＋ 新建计划</button>`;
+  menu.querySelectorAll('[data-plan-id]').forEach(b=>b.onclick=async()=>{
+    menu.hidden=true;
+    await enterPlan(Number(b.dataset.planId));
+  });
+  const lg=menu.querySelector('[data-nav="ledger"]');
+  if(lg)lg.onclick=async()=>{menu.hidden=true;await leavePlan()};
+  const ov=menu.querySelector('[data-nav="overview"]');
+  if(ov)ov.onclick=()=>{menu.hidden=true;openPlanPage()};
+  const nw=menu.querySelector('[data-nav="new"]');
+  if(nw)nw.onclick=()=>{menu.hidden=true;openPlanForm()};
+}
+
+/** 单张计划卡：剩余/超支、钱与时间的双刻度、已用/入账/预算 */
+function planCardHtml(p){
+  const today=todayISO();
+  const m=PlanU.planMetrics(p,today);
+  const status=PlanU.planStatus(p,today);
+  const over=m.remainingCents<0;
+  const sp=readStartPage();
+  const isStart=sp&&String(sp.ledgerId)===String(Data.ledgerId)&&String(sp.planId)===String(p.id);
+  const when=status==='ended'?'已结束':(status==='upcoming'?'未开始':'剩 '+m.daysLeft+' 天');
+  const actions = status==='ended'
+    ? `<button class="btn small" data-act="open" data-id="${p.id}">查看 ›</button>
+       <button class="btn small" data-act="renew" data-id="${p.id}">一键续期</button>`
+    : `<button class="btn small" data-act="open" data-id="${p.id}">进入计划 ›</button>
+       <button class="btn small primary" data-act="add" data-id="${p.id}">＋ 记一笔</button>`;
+  const meta = `<span>已用 <b style="color:${Data.EXPENSE_GREEN}">${planAmount(m.spentCents)}</b></span>`
+    + (m.incomeCents?`<span>入账 <b style="color:${Data.INCOME_RED}">${planAmount(m.incomeCents)}</b></span>`:'')
+    + `<span>预算 <b>${planAmount(p.budget_cents)}</b></span><span><b>${p.bill_count||0}</b> 笔</span>`;
+  return `<article class="plan-card${over?' over':''}${status==='ended'?' done':''}" data-plan-id="${p.id}">
+    <div class="pc-head"><span class="pc-name">${escHtml(p.name)}</span>
+      <button class="pc-pin${isStart?' on':''}" data-act="pin" data-id="${p.id}">${isStart?'★ 启动页':'☆ 设为启动页'}</button></div>
+    <div class="pc-dates">${planRangeText(p)} <em>${when}</em></div>
+    <div class="pc-remain"><span>${m.remainingLabel}</span><b style="color:${planTone(m.remainingCents)}">${planAmount(m.remainingCents)}</b></div>
+    <div class="pc-bar"><i style="width:${m.usedPct}%"></i><u style="left:${m.timePct}%"></u></div>
+    <div class="pc-meta">${meta}</div>
+    <div class="pc-foot">${actions}</div>
+  </article>`;
+}
+
+function planGroupHtml(title,list){
+  if(!list.length)return `<div class="pp-empty">暂无${title}的计划</div>`;
+  return `<section class="xgroup">
+    <div class="group-h"><b>${title}</b><span>${String(list.length).padStart(2,'0')}</span><i class="rule"></i>
+      <div class="xnav"><button class="arrow" data-dir="-1" aria-label="向左">‹</button><button class="arrow" data-dir="1" aria-label="向右">›</button></div>
+    </div>
+    <div class="xwrap"><div class="xtrack${list.length<=3?' filled':''}">${list.map(planCardHtml).join('')}</div></div>
+    <div class="xbar"><i></i></div>
+  </section>`;
+}
+
+/** 总览：汇总条 + 分组横轨 + 启动页设置 */
+function renderPlanPage(){
+  const page=$('#planPage');
+  if(!page)return;
+  const today=todayISO();
+  const g=PlanU.planGroups((Data&&Data.plans)||[],today);
+  const sum={budget:0,spent:0,left:0,over:0};
+  for(const p of g.active){
+    const m=PlanU.planMetrics(p,today);
+    sum.budget+=Number(p.budget_cents)||0;
+    sum.spent+=m.spentCents;
+    sum.left+=m.remainingCents;
+    if(m.remainingCents<0)sum.over++;
+  }
+  const sumEl=$('#ppSum');
+  if(sumEl)sumEl.innerHTML=`
+    <div class="ps"><span class="k">进行中</span><span class="v">${g.active.length}<small>个计划</small></span></div>
+    <div class="ps"><span class="k">预算合计</span><span class="v">${planAmount(sum.budget)}</span></div>
+    <div class="ps"><span class="k">已用</span><span class="v" style="color:${Data.EXPENSE_GREEN}">${planAmount(sum.spent)}</span></div>
+    <div class="ps"><span class="k">${sum.left<0?'超支合计':'剩余合计'}</span><span class="v" style="color:${planTone(sum.left)}">${planAmount(sum.left)}</span></div>
+    <div class="ps"><span class="k">超支</span><span class="v">${sum.over}<small>个</small></span></div>`;
+  const groups = planFilter==='active'?[['进行中',g.active]]
+    : planFilter==='ended'?[['已结束',g.ended]]
+    : [['进行中',g.active],['已结束',g.ended]];
+  const groupsEl=$('#ppGroups');
+  if(groupsEl){
+    groupsEl.innerHTML=groups.map(([t,l])=>planGroupHtml(t,l)).join('');
+    bindRails(groupsEl);
+  }
+  renderPlanBoot();
+}
+
+/** 启动页：概览 / 某个计划（本机、按账本隔离） */
+function renderPlanBoot(){
+  const box=$('#ppBoot');if(!box)return;
+  const sp=readStartPage();
+  const pid=sp&&String(sp.ledgerId)===String(Data.ledgerId)?sp.planId:null;
+  let plans=PlanU.planGroups(Data.plans||[],todayISO()).active.slice(0,4);
+  // 已结束/第 5 个之后的计划也可能被设为启动页：必须让它的 segment 出现，否则条上只显示「概览」
+  if(pid!=null&&!plans.some(p=>String(p.id)===String(pid))){
+    const pinned=(Data.plans||[]).find(p=>String(p.id)===String(pid));
+    if(pinned)plans=plans.slice(0,3).concat([pinned]);
+  }
+  box.innerHTML=`<b>启动页</b>
+    <div class="segment">
+      <button class="seg${pid==null?' active':''}" data-boot="none">概览</button>
+      ${plans.map(p=>`<button class="seg${String(pid)===String(p.id)?' active':''}" data-boot="${p.id}">计划 · ${escHtml(p.name)}</button>`).join('')}
+    </div>
+    <span>下次打开直接进入；计划被删则回落概览</span>`;
+  box.querySelectorAll('[data-boot]').forEach(b=>b.onclick=()=>{
+    writeStartPage(b.dataset.boot==='none'?null:Number(b.dataset.boot));
+    renderPlanPage();
+  });
+}
+
+/** 横向轨道：>3 张出现箭头/刻度，≤3 张等分铺满；支持箭头、滚轮、拖拽 */
+function bindRails(root){
+  root.querySelectorAll('.xgroup').forEach(group=>{
+    const track=group.querySelector('.xtrack'),bar=group.querySelector('.xbar i');
+    if(!track||!bar)return;
+    const arrows=group.querySelectorAll('.xnav .arrow');
+    const update=()=>{
+      const max=track.scrollWidth-track.clientWidth;
+      const w=Math.max(18,track.clientWidth/Math.max(1,track.scrollWidth)*100);
+      bar.style.width=w+'%';
+      bar.style.left=(max?track.scrollLeft/max*(100-w):0)+'%';
+      if(arrows[0])arrows[0].disabled=track.scrollLeft<=1;
+      if(arrows[1])arrows[1].disabled=track.scrollLeft>=max-1;
+      group.classList.toggle('no-overflow',max<=2);
+    };
+    arrows.forEach(b=>b.onclick=()=>track.scrollBy({left:+b.dataset.dir*track.clientWidth*.92,behavior:'smooth'}));
+    track.addEventListener('scroll',update);
+    track.addEventListener('wheel',e=>{
+      if(Math.abs(e.deltaY)>Math.abs(e.deltaX)){track.scrollLeft+=e.deltaY;e.preventDefault();}
+    },{passive:false});
+    let down=false,sx=0,sl=0;
+    track.addEventListener('pointerdown',e=>{
+      if(e.target.closest('button'))return;
+      down=true;sx=e.clientX;sl=track.scrollLeft;
+      track.setPointerCapture&&track.setPointerCapture(e.pointerId);
+      track.style.cursor='grabbing';
+    });
+    track.addEventListener('pointermove',e=>{if(down)track.scrollLeft=sl-(e.clientX-sx)});
+    ['pointerup','pointercancel'].forEach(ev=>track.addEventListener(ev,()=>{down=false;track.style.cursor=''}));
+    requestAnimationFrame(update);
+  });
+}
+
+function openPlanPage(opts={}){
+  planPageOpen=true;
+  const page=$('#planPage');if(!page)return;
+  page.hidden=false;
+  renderPlanPage();renderPlanMenu();
+  if(opts.history!==false)pushView();
+}
+function closePlanPage(opts={}){
+  planPageOpen=false;
+  const page=$('#planPage');if(page)page.hidden=true;
+  renderPlanMenu();
+  if(opts.history!==false)pushView();
+}
+
+/** 新建/编辑计划；prefill 用于「一键续期」「复制为新计划」 */
+function openPlanForm(plan=null,prefill=null){
+  editingPlanId=plan?plan.id:null;
+  $('#planFormTitle').textContent=plan?'编辑计划':'新建计划';
+  $('#planName').value=plan?plan.name:(prefill&&prefill.name)||'';
+  $('#planBudget').value=plan?String(plan.budget_cents/100):(prefill&&prefill.budgetCents!=null?String(prefill.budgetCents/100):'');
+  const r=plan?{startDate:plan.start_date,endDate:plan.end_date}
+    :(prefill&&prefill.startDate?prefill:planMonthRange(new Date(),0));
+  $('#planStart').value=r.startDate;
+  $('#planEnd').value=r.endDate;
+  $('#planDelete').hidden=!plan;
+  $('#planMask').hidden=false;
+  requestAnimationFrame(()=>$('#planName').focus());
+}
+async function savePlanForm(){
+  const name=$('#planName').value.trim();
+  if(!name){toast('请输入计划名称');return}
+  const yuan=Number($('#planBudget').value||0);
+  if(!Number.isFinite(yuan)||yuan<0){toast('预算金额不合法');return}
+  const startDate=$('#planStart').value,endDate=$('#planEnd').value;
+  if(!startDate||!endDate||endDate<startDate){toast('时间跨度不合法');return}
+  const payload={name,budgetCents:Math.round(yuan*100),startDate,endDate};
+  try{
+    if(editingPlanId)await OrbitAPI.updatePlan(Data.ledgerId,editingPlanId,payload);
+    else await OrbitAPI.createPlan(Data.ledgerId,payload);
+    $('#planMask').hidden=true;editingPlanId=null;
+    await Data.loadPlans();
+    if(Data.scope.kind==='plan'&&!Data.currentPlan()){
+      await Data.exitPlan();
+      refreshTagArrays();refreshMonths();refreshAmounts();
+      buildGraph();syncChrome();
+    }else if(Data.scope.kind==='plan'){
+      // 编辑/新建时若正在看某个计划：只重载它的统计，不要把总览页关掉（enterPlan 会）
+      const curId=Data.scope.planId;
+      if(await Data.selectPlan(curId)){
+        refreshTagArrays();refreshMonths();refreshAmounts();
+        TL.z=1;TL.pan=0;if(typeof relockSel==='function')relockSel();
+        buildGraph();syncChrome();syncRail&&syncRail();
+      }
+    }
+    renderPlanPage();renderPlanMenu();
+  }catch(e){toast('保存失败：'+(e.message||e))}
+}
+async function deletePlan(){
+  if(!editingPlanId)return;
+  if(!confirm('删除这个计划？\n\n关联的账单会保留，只解除与计划的关联，不删除任何账单。'))return;
+  try{
+    await OrbitAPI.deletePlan(Data.ledgerId,editingPlanId);
+    $('#planMask').hidden=true;editingPlanId=null;
+    await Data.loadPlans();
+    if(Data.scope.kind==='plan'&&!Data.currentPlan()){
+      await Data.exitPlan();
+      refreshTagArrays();refreshMonths();refreshAmounts();
+      buildGraph();syncChrome();
+    }
+    renderPlanPage();renderPlanMenu();
+  }catch(e){toast('删除失败：'+(e.message||e))}
+}
+
+/** 左栏计划读数：余额是整段计划的，TOP 跟随当前时间窗 */
+function renderPlanReadout(plan,m){
+  if(!plan)return;
+  $('#prTitle').textContent='计划 · '+plan.name;
+  const sp=readStartPage();
+  const isStart=sp&&String(sp.ledgerId)===String(Data.ledgerId)&&String(sp.planId)===String(plan.id);
+  $('#prStar').textContent=isStart?'★ 启动页':'';
+  $('#prLabel').textContent=m.remainingLabel;
+  $('#prBalance').textContent=planAmount(m.remainingCents);
+  $('#prBalance').style.color=planTone(m.remainingCents);
+  $('#prBudget').textContent=planAmount(plan.budget_cents);
+  const used=$('#prUsed');used.textContent=planAmount(m.spentCents);used.style.color=Data.EXPENSE_GREEN;
+  const inc=$('#prIncome');inc.textContent=planAmount(m.incomeCents);
+  inc.style.color=m.incomeCents?Data.INCOME_RED:'var(--dim2)';
+  $('#prUsedBar').style.width=m.usedPct+'%';
+  $('#prTimeBar').style.left=m.timePct+'%';
+  let pace='时间 '+Math.round(m.timePct)+'% · 已用 '+Math.round(m.rawUsedPct)+'%';
+  if(m.status==='active'&&m.projectedOverspendCents>0)pace+=' · 月底预计超支 '+planAmount(m.projectedOverspendCents);
+  $('#prPace').textContent=pace;
+  $('#prDaily').textContent=planAmount(m.dailyLeftCents);
+  $('#prCount').textContent=(plan.bill_count||0)+' 笔';
+}
+
+/** 进入计划：统计带 planId，星图/星轨自动只剩计划内的账 */
+async function enterPlan(planId){
+  const ok=await Data.selectPlan(planId);
+  if(!ok){toast('计划不存在');return false}
+  closePlanPage({history:false});
+  refreshTagArrays();refreshMonths();refreshAmounts();
+  TL.z=1;TL.pan=0;
+  if(typeof relockSel==='function')relockSel();
+  if(S.view==='detail')goBack({history:false});
+  buildGraph();syncChrome();syncRail&&syncRail();
+  pushView();
+  return true;
+}
+
+/** 退出计划，回到整本账（菜单「整本账」） */
+async function leavePlan(){
+  await Data.exitPlan();
+  refreshTagArrays();refreshMonths();refreshAmounts();
+  TL.z=1;TL.pan=0;if(typeof relockSel==='function')relockSel();
+  if(S.view==='detail')goBack({history:false});
+  buildGraph();syncChrome();syncRail&&syncRail();
+  pushView();
+}
+
+$('#planBtn')&&($('#planBtn').onclick=(e)=>{
+  e.stopPropagation();
+  const m=$('#planMenu');if(!m)return;
+  if(m.hidden)renderPlanMenu();
+  m.hidden=!m.hidden;
+});
+$('#ppNew')&&($('#ppNew').onclick=()=>openPlanForm());
+$('#ppClose')&&($('#ppClose').onclick=()=>closePlanPage());
+$('#ppFilter')&&$('#ppFilter').querySelectorAll('.seg').forEach(b=>b.onclick=()=>{
+  planFilter=b.dataset.v;
+  $('#ppFilter').querySelectorAll('.seg').forEach(x=>x.classList.toggle('active',x===b));
+  renderPlanPage();
+});
+$('#ppGroups')&&($('#ppGroups').addEventListener('click',async(e)=>{
+  const btn=e.target.closest('button[data-act]');if(!btn)return;
+  const p=(Data.plans||[]).find(x=>String(x.id)===btn.dataset.id);if(!p)return;
+  const act=btn.dataset.act;
+  if(act==='pin'){
+    const sp=readStartPage();
+    const isCur=sp&&String(sp.ledgerId)===String(Data.ledgerId)&&String(sp.planId)===String(p.id);
+    writeStartPage(isCur?null:p.id);
+    renderPlanPage();
+  }else if(act==='open'){
+    await enterPlan(p.id);
+  }else if(act==='add'){
+    await enterPlan(p.id);
+    $('#btnAdd').click();
+  }else if(act==='renew'){
+    openPlanForm(null,PlanU.nextRange(p));
+  }
+}));
+$('#ppBoot')&&($('#ppBoot').addEventListener('click',()=>{})); // 由 renderPlanBoot 绑定
+$('#prEdit')&&($('#prEdit').onclick=()=>{const p=Data.currentPlan();if(p)openPlanForm(p)});
+$('#planCancel')&&($('#planCancel').onclick=()=>{ $('#planMask').hidden=true;editingPlanId=null; });
+$('#planCancel2')&&($('#planCancel2').onclick=()=>{ $('#planMask').hidden=true;editingPlanId=null; });
+$('#planMask')&&($('#planMask').addEventListener('click',e=>{if(e.target===$('#planMask')){ $('#planMask').hidden=true;editingPlanId=null; }}));
+$('#planSave')&&($('#planSave').onclick=savePlanForm);
+$('#planDelete')&&($('#planDelete').onclick=deletePlan);
+document.querySelectorAll('#planMask [data-preset]').forEach(b=>b.onclick=()=>{
+  const r=b.dataset.preset==='month'?planMonthRange(new Date(),0)
+    :b.dataset.preset==='next'?planMonthRange(new Date(),1)
+    :planTermRange();
+  $('#planStart').value=r.startDate;$('#planEnd').value=r.endDate;
+});
+$('#mAmount')&&$('#mAmount').addEventListener('input',()=>{if(typeof updatePlanPreview==='function')updatePlanPreview()});
+document.querySelectorAll('.m-tab').forEach(b=>b.addEventListener('click',()=>{if(typeof updatePlanPreview==='function')updatePlanPreview()}));
+addEventListener('keydown',e=>{
+  if(e.key!=='Escape')return;
+  const pm=$('#planMenu');if(pm)pm.hidden=true;
+  const pfm=$('#planMask');if(pfm&&!pfm.hidden){pfm.hidden=true;editingPlanId=null}
+});
+
+/** 启动页：本机记录 {ledgerId, planId}；账本/计划不存在则回落并清除设置 */
+async function applyStartup(){
+  const sp=readStartPage();
+  if(!sp)return false;
+  const hasLedger=(Data.ledgers||[]).some(l=>String(l.id)===String(sp.ledgerId));
+  if(!hasLedger){try{localStorage.removeItem(START_PAGE_KEY)}catch(e){}return false}
+  if(String(sp.ledgerId)!==String(Data.ledgerId))await Data.selectLedger(sp.ledgerId);
+  if(sp.planId==null)return false;
+  const ok=await Data.selectPlan(sp.planId);
+  if(!ok){try{localStorage.removeItem(START_PAGE_KEY)}catch(e){}return false}
+  return true;
+}
+
 /* 启动（真实数据） */
 async function boot(){
   applyLayout();
@@ -2702,16 +3193,20 @@ async function boot(){
     return;
   }
   S.ledgerId=Data.ledgerId;
+  const startedPlan=await applyStartup();
+  S.ledgerId=Data.ledgerId;
   refreshTagArrays();refreshMonths();refreshAmounts();
-  const last=Data.months[Data.months.length-1];
-  if(last){
-    try{await Data.selectMonth({year:last.y,month:last.m});}catch(e){}
-    refreshDays();refreshMonths();refreshAmounts();
+  if(!startedPlan){
+    const last=Data.months[Data.months.length-1];
+    if(last){
+      try{await Data.selectMonth({year:last.y,month:last.m});}catch(e){}
+      refreshDays();refreshMonths();refreshAmounts();
+    }
   }
   const ni=MONTHS.findIndex(m=>m.y===Data._currentMonthY&&m.m===Data._currentMonthM);
   TL.sel={level:'month',idx:ni>=0?ni:lastMonthIdx()};
   TL.z=1;TL.pan=0;   // 默认月档（需求基线 §5.4：启动默认月视图）
-  renderLedgerDD();
+  renderLedgerDD();renderPlanMenu();
   buildGraph();syncChrome();syncRail&&syncRail();
   // 顶栏数据加载后可能从一行变两行，移动端图谱上边界要跟着重新量一次
   if(isMobile())setTimeout(resize,0);

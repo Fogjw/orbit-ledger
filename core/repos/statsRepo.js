@@ -25,17 +25,25 @@ export function createStatsRepo(db) {
       if (win.from) { sql += ' AND e.date >= ?'; args.push(win.from); }
       if (win.to) { sql += ' AND e.date <= ?'; args.push(win.to); }
       if (win.type) { sql += ' AND e.type = ?'; args.push(win.type); }
+      if (win.planId) {
+        sql += ' AND EXISTS (SELECT 1 FROM expense_plan_links pl WHERE pl.expense_id = e.id AND pl.plan_id = ?)';
+        args.push(win.planId);
+      }
       sql += ' GROUP BY t.id ORDER BY amount_cents DESC';
       return plainAll(db.prepare(sql).all(...args));
     },
 
-    /** 时间窗总金额（按 type 分组） */
-    totals(ledgerId, { from = null, to = null } = {}) {
-      let sql = 'SELECT type, SUM(amount_cents) AS amount_cents FROM expenses WHERE ledger_id = ?';
+    /** 时间窗总金额（按 type 分组）；planId 给定时只算该计划内的账单 */
+    totals(ledgerId, { from = null, to = null, planId = null } = {}) {
+      let sql = 'SELECT e.type, SUM(e.amount_cents) AS amount_cents FROM expenses e WHERE e.ledger_id = ?';
       const args = [ledgerId];
-      if (from) { sql += ' AND date >= ?'; args.push(from); }
-      if (to) { sql += ' AND date <= ?'; args.push(to); }
-      sql += ' GROUP BY type';
+      if (from) { sql += ' AND e.date >= ?'; args.push(from); }
+      if (to) { sql += ' AND e.date <= ?'; args.push(to); }
+      if (planId) {
+        sql += ' AND EXISTS (SELECT 1 FROM expense_plan_links pl WHERE pl.expense_id = e.id AND pl.plan_id = ?)';
+        args.push(planId);
+      }
+      sql += ' GROUP BY e.type';
       const rows = plainAll(db.prepare(sql).all(...args));
       const out = { expense: 0, income: 0 };
       for (const r of rows) out[r.type] = r.amount_cents;
@@ -48,12 +56,20 @@ export function createStatsRepo(db) {
      * 供星轨「颜色 = 该月花销最大 tag 色」上色（需求基线 §5.2）。
      * @param {string} [topDimKey='category'] 取哪个维度的 tag 作为主导色
      */
-    monthlySeries(ledgerId, { from = null, to = null, type = null, topDimKey = 'category' } = {}) {
+    monthlySeries(ledgerId, { from = null, to = null, type = null, planId = null, topDimKey = 'category' } = {}) {
       const args = [ledgerId];
       let where = ' WHERE e.ledger_id = ?';
       if (from) { where += ' AND e.date >= ?'; args.push(from); }
       if (to) { where += ' AND e.date <= ?'; args.push(to); }
       if (type) { where += ' AND e.type = ?'; args.push(type); }
+      if (planId) {
+        where += ' AND EXISTS (SELECT 1 FROM expense_plan_links pl WHERE pl.expense_id = e.id AND pl.plan_id = ?)';
+        args.push(planId);
+      }
+      // 主导色也必须只看计划内账单，否则颜色会来自计划外的那一笔
+      const topPlan = planId
+        ? ' AND EXISTS (SELECT 1 FROM expense_plan_links pl2 WHERE pl2.expense_id = e2.id AND pl2.plan_id = ?)'
+        : '';
       const sql = `
         SELECT m.month, m.type, m.amount_cents, top.name AS top_name, top.color AS top_color
         FROM (
@@ -72,24 +88,31 @@ export function createStatsRepo(db) {
             JOIN expense_tag_links l2 ON l2.expense_id = e2.id AND l2.role = 'primary'
             JOIN tags t ON t.id = l2.tag_id
             JOIN dimensions d2 ON d2.id = t.dimension_id
-            WHERE e2.ledger_id = ? AND d2.key = ?
+            WHERE e2.ledger_id = ? AND d2.key = ?${topPlan}
             GROUP BY month, e2.type, t.id
           ) WHERE rn = 1
         ) top ON top.month = m.month AND top.type = m.type
         ORDER BY m.month`;
-      return plainAll(db.prepare(sql).all(...args, ledgerId, topDimKey));
+      return plainAll(db.prepare(sql).all(...args, ledgerId, topDimKey, ...(planId ? [planId] : [])));
     },
 
     /**
      * 每日序列（date → 金额），日粒度视图/星轨日节点。
      * 同样附带 top_name / top_color（该日该 type 的金额最大 tag）。
      */
-    dailySeries(ledgerId, { from = null, to = null, type = null, topDimKey = 'category' } = {}) {
+    dailySeries(ledgerId, { from = null, to = null, type = null, planId = null, topDimKey = 'category' } = {}) {
       const args = [ledgerId];
       let where = ' WHERE e.ledger_id = ?';
       if (from) { where += ' AND e.date >= ?'; args.push(from); }
       if (to) { where += ' AND e.date <= ?'; args.push(to); }
       if (type) { where += ' AND e.type = ?'; args.push(type); }
+      if (planId) {
+        where += ' AND EXISTS (SELECT 1 FROM expense_plan_links pl WHERE pl.expense_id = e.id AND pl.plan_id = ?)';
+        args.push(planId);
+      }
+      const topPlan = planId
+        ? ' AND EXISTS (SELECT 1 FROM expense_plan_links pl2 WHERE pl2.expense_id = e2.id AND pl2.plan_id = ?)'
+        : '';
       const sql = `
         SELECT d.date, d.type, d.amount_cents, top.name AS top_name, top.color AS top_color
         FROM (
@@ -108,12 +131,12 @@ export function createStatsRepo(db) {
             JOIN expense_tag_links l2 ON l2.expense_id = e2.id AND l2.role = 'primary'
             JOIN tags t ON t.id = l2.tag_id
             JOIN dimensions d2 ON d2.id = t.dimension_id
-            WHERE e2.ledger_id = ? AND d2.key = ?
+            WHERE e2.ledger_id = ? AND d2.key = ?${topPlan}
             GROUP BY e2.date, e2.type, t.id
           ) WHERE rn = 1
         ) top ON top.date = d.date AND top.type = d.type
         ORDER BY d.date`;
-      return plainAll(db.prepare(sql).all(...args, ledgerId, topDimKey));
+      return plainAll(db.prepare(sql).all(...args, ledgerId, topDimKey, ...(planId ? [planId] : [])));
     },
   };
 }

@@ -27,6 +27,12 @@
       <div class="dd-menu" id="ledgerMenu" hidden></div>
     </div>
 
+    <!-- 计划（预算轨道）：概览 / 某计划 / 全部计划 / 新建 -->
+    <div class="plan-dd">
+      <button class="btn ghost plan-btn" id="planBtn" title="计划">计划 ▾</button>
+      <div class="dd-menu" id="planMenu" hidden></div>
+    </div>
+
     <div class="segment" id="dimSeg">
       <button class="seg active" data-v="category">品类</button>
       <button class="seg" data-v="context">情境</button>
@@ -58,6 +64,7 @@
     <button class="panel-collapse" id="panelCollapse" type="button" title="收起左栏" aria-label="收起左栏" aria-expanded="true">‹</button>
     <button class="panel-sheet-close" id="panelSheetClose" type="button" aria-label="关闭读数">×</button>
     <div class="panel-resize" id="panelResize" title="拖动调整左栏宽度"></div>
+    <div id="ledgerReadout">
     <div class="p-title"><span id="pTitle">本月星图</span> <span class="live-dot"></span></div>
     <div class="p-total">
       <div class="p-balance"><span class="p-key">结余</span><span class="p-num" id="pNum">¥0</span></div>
@@ -69,6 +76,23 @@
     <div id="topList"></div>
     <div class="p-sec">交叉洞察</div>
     <div class="insight" id="insightBox">✨ <b>和朋友</b> 的聚餐占餐饮 <b>62%</b>，娱乐多与朋友同行。</div>
+    </div>
+
+    <!-- 计划读数（scope=plan 时替换上面的整本账读数） -->
+    <div id="planReadout" class="plan-readout" hidden>
+      <div class="pr-title"><span id="prTitle">计划</span><span class="pr-star" id="prStar"></span></div>
+      <div class="pr-balance"><span class="k" id="prLabel">剩余</span><span class="v" id="prBalance">¥0</span></div>
+      <div class="pr-row"><span>预算</span><b id="prBudget">¥0</b></div>
+      <div class="pr-row"><span>已用</span><b id="prUsed">¥0</b></div>
+      <div class="pr-row"><span>入账</span><b id="prIncome">¥0</b></div>
+      <div class="pr-gauge"><i id="prUsedBar"></i><u id="prTimeBar"></u></div>
+      <div class="pr-pace" id="prPace"></div>
+      <div class="pr-row"><span>日均可用</span><b id="prDaily">¥0</b></div>
+      <div class="pr-row"><span>计划内笔数</span><b id="prCount">0 笔</b></div>
+      <div class="pr-sec">本期 TOP</div>
+      <div id="prTop"></div>
+      <div class="pr-edit" id="prEdit">编辑计划 · 起止与预算</div>
+    </div>
   </aside>
 
   <!-- 右侧粒度轨 -->
@@ -121,6 +145,67 @@
   <div class="tooltip" id="tooltip" hidden></div>
   <div class="toast" id="toast" hidden></div>
 
+
+  <!-- 计划总览（预算轨道）：>3 张自动横向滑动 -->
+  <section class="plan-page" id="planPage" hidden aria-label="计划总览">
+    <div class="pp-head">
+      <div>
+        <div class="pp-title">计划<em>预算轨道</em></div>
+        <div class="pp-sub">把一段时间里的钱装进一条可观测的轨道：设置跨度与预算，每一笔都同时留在总账里。</div>
+      </div>
+      <div class="pp-actions">
+        <div class="segment pp-seg" id="ppFilter">
+          <button class="seg" data-v="active">进行中</button>
+          <button class="seg" data-v="ended">已结束</button>
+          <button class="seg active" data-v="all">全部</button>
+        </div>
+        <button class="btn primary" id="ppNew">＋ 新建计划</button>
+        <button class="btn ghost pp-close" id="ppClose" aria-label="关闭计划页">✕</button>
+      </div>
+    </div>
+    <div class="pp-sum" id="ppSum"></div>
+    <div id="ppGroups"></div>
+    <div class="pp-boot" id="ppBoot"></div>
+  </section>
+
+  <!-- 新建 / 编辑计划 -->
+  <div class="modal-mask" id="planMask" hidden>
+    <div class="modal plan-modal">
+      <div class="m-head">
+        <span class="n-title" id="planFormTitle">新建计划</span>
+        <button class="m-close" id="planCancel">✕</button>
+      </div>
+      <div class="pf-field">
+        <label>名称</label>
+        <input class="m-input" id="planName" maxlength="40" placeholder="例：生活费 / 旅行基金 / 双十一" />
+      </div>
+      <div class="pf-field">
+        <label>预算金额 <small>允许为 0；允许超支</small></label>
+        <div class="pf-money"><span>¥</span><input id="planBudget" inputmode="decimal" placeholder="0.00" /></div>
+      </div>
+      <div class="pf-field">
+        <label>时间跨度</label>
+        <div class="pf-range">
+          <input class="m-input" type="date" id="planStart" />
+          <span>—</span>
+          <input class="m-input" type="date" id="planEnd" />
+        </div>
+        <div class="pf-presets">
+          <button type="button" class="btn small" data-preset="month">本月</button>
+          <button type="button" class="btn small" data-preset="next">下月</button>
+          <button type="button" class="btn small" data-preset="term">本学期</button>
+        </div>
+      </div>
+      <div class="pf-info">余额 = <b>预算 ＋ 入账 − 已用</b>。计划允许超支：超出的部分照常记，余额转负后按项目规则显示为绿色。加入计划的账单同时保留在总账里。</div>
+      <div class="m-foot">
+        <button class="btn danger" id="planDelete" hidden>删除计划</button>
+        <div class="spacer"></div>
+        <button class="btn ghost" id="planCancel2">取消</button>
+        <button class="btn primary" id="planSave">保存</button>
+      </div>
+    </div>
+  </div>
+
   <!-- 记一笔浮层 -->
   <div class="modal-mask" id="modalMask" hidden>
     <div class="modal">
@@ -168,6 +253,9 @@
         <div class="m-cal-week" aria-hidden="true"><span>一</span><span>二</span><span>三</span><span>四</span><span>五</span><span>六</span><span>日</span></div>
         <div class="m-cal-grid" id="mCalGrid"></div>
       </div>
+      <div class="m-label">加入计划 <span class="m-hint">可多选 · 同时留在总账里</span></div>
+      <div class="m-chips" id="mPlans"></div>
+      <div class="m-plan-preview" id="mPlanPreview" hidden></div>
       <textarea class="m-input m-remark" id="mNote" rows="3" placeholder="备注…（可写多行；Ctrl/Cmd+Enter 保存）"></textarea>
       <div class="m-foot">
         <button class="btn ghost" id="modalCancel">取消</button>
@@ -215,6 +303,8 @@
       </div>
       <div class="v-sec">关联标签</div>
       <div class="v-tags" id="viewTags"></div>
+      <div class="v-sec">所属计划</div>
+      <div class="v-tags" id="viewPlans"></div>
       <div class="v-sec">备注</div>
       <div class="v-note" id="viewNote"></div>
       <div class="m-foot">
@@ -283,6 +373,7 @@
 <script src="api.js"></script>
 <script src="data.js"></script>
 <script src="timeline-nav.js"></script>
+<script src="plan-utils.js"></script>
 <script src="app.js"></script>
 </body>
 </html>
