@@ -11,6 +11,7 @@ description: >-
 
 - `main` 推送即 CD：每次从 `develop` 同步都必须带一个**新版本号**。
 - 版本号写在仓库根 `package.json`；用 `npm version` 让它与 `package-lock.json` 同步。
+- 安卓签名包另有版本：`mobile/package.json` 与 `mobile/android/app/build.gradle` 的 `versionName`（必须等于根版本）+ `versionCode`（`major*10000 + minor*100 + patch`，如 1.4.1 = 10401）。不同步则 Android Signed Release 在第一步失败，桌面 Release 已发布却没有 APK。
 - 已发布的版本不能重发；`release.yml` 发现同名 tag 或 Release 会直接失败。
 - **不要手工推 tag**；tag 由 `gh release create --target` 在发布时创建。
 
@@ -22,8 +23,11 @@ git switch develop && git pull --ff-only origin develop
 # 版本号只改在短分支上，通过正常流程合入 develop
 git switch -c chore/release-x.y.z
 npm version x.y.z --no-git-tag-version
+npm --prefix mobile version x.y.z --no-git-tag-version
+# 同步安卓签名版本：versionName=x.y.z，versionCode=major*10000+minor*100+patch（x.y.z=1.4.1 → 10401）
+$EDITOR mobile/android/app/build.gradle
 cd server && npm test
-git add package.json package-lock.json
+git add package.json package-lock.json mobile/package.json mobile/package-lock.json mobile/android/app/build.gradle
 git commit -m "chore(release): x.y.z"
 
 git switch develop
@@ -42,6 +46,7 @@ git push origin main
 - 发布产物应包含 `Orbit-Setup-<version>.exe`、`Orbit-<version>-amd64.deb`、`Orbit-<version>-x86_64.rpm`，以及 Windows 的 `latest.yml`/blockmap。Linux 不发布 AppImage。
 - 发版前用 `gh release list --limit 1` 确认最新已发布版本；新版本必须高于它。例如最新是 `v1.1.11`，下一次至少是 `1.1.12`。
 - 发版分支合入 `develop` 后、合入 `main` 前，必须确认 `develop` 的 CI 为绿。
+- `Android Signed Release` 由 Release 成功后自动触发，只剩 `读取版本并校验 Android 版本` 这步会因版本不一致秒失败；发版前先核对 `build.gradle`。
 
 ## 生产 hotfix
 
